@@ -86,3 +86,57 @@ describe("messages tools - managing", () => {
     );
   });
 });
+
+describe("messages tools - attachments", () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
+
+  it("list_attachments passes correct params", async () => {
+    mockRunAppleScript.mockResolvedValue([]);
+    const { handleListAttachments } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleListAttachments(123, "INBOX", "Gmail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/list-attachments.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail" }
+    );
+  });
+
+  it("save_attachment uses extended timeout", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleSaveAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "~/Downloads");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/save-attachment.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "file.pdf", savePath: "~/Downloads" },
+      { timeout: 120_000 }
+    );
+  });
+
+  it("save_all_attachments uses extended timeout", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true, savedFiles: [] });
+    const { handleSaveAllAttachments } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleSaveAllAttachments(123, "INBOX", "Gmail", "~/Downloads");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/save-all-attachments.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", savePath: "~/Downloads" },
+      { timeout: 120_000 }
+    );
+  });
+
+  it("read_attachment calls runAppleScript for text files", async () => {
+    mockRunAppleScript.mockResolvedValue({ name: "data.csv", content: "a,b,c" });
+    const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    const result = await handleReadAttachment(123, "INBOX", "Gmail", "data.csv");
+    expect(result).toEqual({ name: "data.csv", content: "a,b,c" });
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/read-attachment.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "data.csv" },
+      { timeout: 120_000 }
+    );
+  });
+
+  it("read_attachment rejects binary file extensions", async () => {
+    const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    await expect(handleReadAttachment(123, "INBOX", "Gmail", "photo.jpg"))
+      .rejects.toThrow("Binary file type");
+  });
+});

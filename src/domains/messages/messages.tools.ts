@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { runAppleScript } from "../../bridge/applescript-runner.js";
+import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
 
 export async function handleListMessages(
   accountName: string,
@@ -98,6 +98,82 @@ export async function handleMarkRead(
     accountName: String(accountName),
     read: String(read),
   });
+}
+
+const TEXT_EXTENSIONS = [".txt", ".csv", ".json", ".html", ".md", ".xml", ".log"];
+
+export async function handleListAttachments(
+  messageId: number,
+  mailboxName: string,
+  accountName: string
+): Promise<unknown> {
+  return runAppleScript("messages/scripts/list-attachments.applescript", {
+    messageId: String(messageId),
+    mailboxName: String(mailboxName),
+    accountName: String(accountName),
+  });
+}
+
+export async function handleSaveAttachment(
+  messageId: number,
+  mailboxName: string,
+  accountName: string,
+  attachmentName: string,
+  savePath: string
+): Promise<unknown> {
+  return runAppleScript(
+    "messages/scripts/save-attachment.applescript",
+    {
+      messageId: String(messageId),
+      mailboxName: String(mailboxName),
+      accountName: String(accountName),
+      attachmentName: String(attachmentName),
+      savePath: String(savePath),
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
+}
+
+export async function handleSaveAllAttachments(
+  messageId: number,
+  mailboxName: string,
+  accountName: string,
+  savePath: string
+): Promise<unknown> {
+  return runAppleScript(
+    "messages/scripts/save-all-attachments.applescript",
+    {
+      messageId: String(messageId),
+      mailboxName: String(mailboxName),
+      accountName: String(accountName),
+      savePath: String(savePath),
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
+}
+
+export async function handleReadAttachment(
+  messageId: number,
+  mailboxName: string,
+  accountName: string,
+  attachmentName: string
+): Promise<unknown> {
+  const ext = attachmentName.slice(attachmentName.lastIndexOf(".")).toLowerCase();
+  if (!TEXT_EXTENSIONS.includes(ext)) {
+    throw new Error(
+      "Binary file type not supported for inline reading. Use save_attachment instead."
+    );
+  }
+  return runAppleScript(
+    "messages/scripts/read-attachment.applescript",
+    {
+      messageId: String(messageId),
+      mailboxName: String(mailboxName),
+      accountName: String(accountName),
+      attachmentName: String(attachmentName),
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
 }
 
 export function registerMessagesTools(server: McpServer): void {
@@ -263,6 +339,106 @@ export function registerMessagesTools(server: McpServer): void {
     async ({ messageId, mailboxName, accountName, read }) => {
       try {
         const result = await handleMarkRead(messageId, mailboxName, accountName, read);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        return {
+          content: [{ type: "text", text: "Error: " + err.message }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "list_attachments",
+    "List all attachments for a message, including their name, MIME type, file size, and download status.",
+    {
+      messageId: z.number().int().describe("The numeric ID of the message"),
+      mailboxName: z.string().describe("The name of the mailbox containing the message"),
+      accountName: z.string().describe("The name of the account containing the mailbox"),
+    },
+    async ({ messageId, mailboxName, accountName }) => {
+      try {
+        const result = await handleListAttachments(messageId, mailboxName, accountName);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        return {
+          content: [{ type: "text", text: "Error: " + err.message }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "save_attachment",
+    "Save a specific attachment from a message to disk.",
+    {
+      messageId: z.number().int().describe("The numeric ID of the message"),
+      mailboxName: z.string().describe("The name of the mailbox containing the message"),
+      accountName: z.string().describe("The name of the account containing the mailbox"),
+      attachmentName: z.string().describe("The name of the attachment to save"),
+      savePath: z.string().default("~/Downloads").describe("The directory path to save the attachment to (default ~/Downloads)"),
+    },
+    async ({ messageId, mailboxName, accountName, attachmentName, savePath }) => {
+      try {
+        const result = await handleSaveAttachment(messageId, mailboxName, accountName, attachmentName, savePath);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        return {
+          content: [{ type: "text", text: "Error: " + err.message }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "save_all_attachments",
+    "Save all downloaded attachments from a message to disk.",
+    {
+      messageId: z.number().int().describe("The numeric ID of the message"),
+      mailboxName: z.string().describe("The name of the mailbox containing the message"),
+      accountName: z.string().describe("The name of the account containing the mailbox"),
+      savePath: z.string().default("~/Downloads").describe("The directory path to save the attachments to (default ~/Downloads)"),
+    },
+    async ({ messageId, mailboxName, accountName, savePath }) => {
+      try {
+        const result = await handleSaveAllAttachments(messageId, mailboxName, accountName, savePath);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: unknown) {
+        const err = error as Error;
+        return {
+          content: [{ type: "text", text: "Error: " + err.message }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "read_attachment",
+    "Read the text content of a text-based attachment inline. Supported types: .txt, .csv, .json, .html, .md, .xml, .log. Use save_attachment for binary files.",
+    {
+      messageId: z.number().int().describe("The numeric ID of the message"),
+      mailboxName: z.string().describe("The name of the mailbox containing the message"),
+      accountName: z.string().describe("The name of the account containing the mailbox"),
+      attachmentName: z.string().describe("The name of the attachment to read"),
+    },
+    async ({ messageId, mailboxName, accountName, attachmentName }) => {
+      try {
+        const result = await handleReadAttachment(messageId, mailboxName, accountName, attachmentName);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
