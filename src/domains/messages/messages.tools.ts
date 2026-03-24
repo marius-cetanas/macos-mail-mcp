@@ -237,7 +237,7 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "search_messages",
-    "Search messages by subject, sender, or content. WARNING: searching by content on large mailboxes can be very slow and may time out. Narrow results with mailboxName or accountName when possible.",
+    "Search messages by subject, sender, or content. WARNING: Mail.app loads all matching messages into memory before applying the limit, so searches on large mailboxes can be very slow and may time out. Always narrow results with mailboxName and accountName when possible.",
     {
       field: z.enum(["subject", "sender", "content"]).describe("The field to search in"),
       query: z.string().describe("The search query string"),

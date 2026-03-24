@@ -63,4 +63,12 @@ describe("parseAppleScriptOutput", () => {
   it("handles empty string", () => {
     expect(() => parseAppleScriptOutput("")).toThrow();
   });
+  it("handles error messages containing double quotes", () => {
+    // Mail.app errors often contain quotes, e.g.: Can't get mailbox "INBOX"
+    // After escapeForJson in AppleScript, the quotes become \" in the JSON string
+    const input = '{"error": "Can\'t get mailbox \\"INBOX\\" of account \\"Gmail\\"", "errorNumber": -1728}';
+    expect(() => parseAppleScriptOutput(input)).toThrow(
+      'Can\'t get mailbox "INBOX" of account "Gmail"'
+    );
+  });
 });
