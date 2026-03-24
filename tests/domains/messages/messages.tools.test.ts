@@ -42,3 +42,47 @@ describe("messages tools - reading", () => {
     );
   });
 });
+
+describe("messages tools - managing", () => {
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
+
+  it("move_message passes all params", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleMoveMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleMoveMessage(123, "INBOX", "Archive", "Gmail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/move-message.applescript",
+      { messageId: "123", mailboxName: "INBOX", toMailbox: "Archive", accountName: "Gmail" }
+    );
+  });
+
+  it("delete_message passes correct params", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleDeleteMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleDeleteMessage(123, "INBOX", "Gmail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/delete-message.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail" }
+    );
+  });
+
+  it("flag_message passes flagged and flagIndex", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleFlagMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleFlagMessage(123, "INBOX", "Gmail", true, 2);
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/flag-message.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", flagged: "true", flagIndex: "2" }
+    );
+  });
+
+  it("mark_read passes read status", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleMarkRead } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleMarkRead(123, "INBOX", "Gmail", true);
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/mark-read.applescript",
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", read: "true" }
+    );
+  });
+});
