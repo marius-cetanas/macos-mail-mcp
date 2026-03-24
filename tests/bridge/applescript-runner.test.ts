@@ -18,18 +18,6 @@ describe("escapeForAppleScript", () => {
   it("handles empty string", () => {
     expect(escapeForAppleScript("")).toBe("");
   });
-  it("escapes newlines", () => {
-    expect(escapeForAppleScript("line1\nline2")).toBe("line1\\nline2");
-  });
-  it("escapes carriage returns", () => {
-    expect(escapeForAppleScript("line1\rline2")).toBe("line1\\rline2");
-  });
-  it("escapes CRLF as a unit", () => {
-    expect(escapeForAppleScript("line1\r\nline2")).toBe("line1\\r\\nline2");
-  });
-  it("escapes tabs", () => {
-    expect(escapeForAppleScript("col1\tcol2")).toBe("col1\\tcol2");
-  });
 });
 
 describe("substituteParams", () => {

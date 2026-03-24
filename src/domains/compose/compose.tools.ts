@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { writeFile, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
 
 export async function handleSendMessage(
@@ -10,15 +13,22 @@ export async function handleSendMessage(
   bcc?: string,
   attachmentPaths?: string[]
 ): Promise<unknown> {
-  return runAppleScript("compose/scripts/send-message.applescript", {
-    to: String(to),
-    subject: String(subject),
-    body: String(body),
-    cc: cc !== undefined ? String(cc) : "__NONE__",
-    bcc: bcc !== undefined ? String(bcc) : "__NONE__",
-    attachmentPaths:
-      attachmentPaths !== undefined ? attachmentPaths.join(",") : "__NONE__",
-  });
+  // Write body to temp file so AppleScript can read it with proper newlines
+  const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
+  const bodyFile = join(tempDir, "body.txt");
+  await writeFile(bodyFile, body, "utf8");
+  try {
+    return await runAppleScript("compose/scripts/send-message.applescript", {
+      to: String(to),
+      subject: String(subject),
+      bodyFile,
+      cc: cc !== undefined ? String(cc) : "__NONE__",
+      bcc: bcc !== undefined ? String(bcc) : "__NONE__",
+      attachmentPaths: attachmentPaths !== undefined ? attachmentPaths.join("\n") : "__NONE__",
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export async function handleReplyToMessage(
@@ -28,13 +38,20 @@ export async function handleReplyToMessage(
   body: string,
   replyAll: boolean
 ): Promise<unknown> {
-  return runAppleScript("compose/scripts/reply-to-message.applescript", {
-    messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
-    body: String(body),
-    replyAll: String(replyAll),
-  });
+  const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
+  const bodyFile = join(tempDir, "body.txt");
+  await writeFile(bodyFile, body, "utf8");
+  try {
+    return await runAppleScript("compose/scripts/reply-to-message.applescript", {
+      messageId: String(messageId),
+      mailboxName: String(mailboxName),
+      accountName: String(accountName),
+      bodyFile,
+      replyAll: String(replyAll),
+    });
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export async function handleForwardMessage(
@@ -44,19 +61,32 @@ export async function handleForwardMessage(
   to: string,
   body?: string
 ): Promise<unknown> {
-  return runAppleScript("compose/scripts/forward-message.applescript", {
-    messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
-    to: String(to),
-    body: body !== undefined ? String(body) : "__NONE__",
-  });
+  let tempDir: string | undefined;
+  let bodyFile = "__NONE__";
+  if (body !== undefined) {
+    tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
+    bodyFile = join(tempDir, "body.txt");
+    await writeFile(bodyFile, body, "utf8");
+  }
+  try {
+    return await runAppleScript("compose/scripts/forward-message.applescript", {
+      messageId: String(messageId),
+      mailboxName: String(mailboxName),
+      accountName: String(accountName),
+      to: String(to),
+      bodyFile,
+    });
+  } finally {
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  }
 }
 
 export function registerComposeTools(server: McpServer): void {
   server.tool(
     "send_message",
-    "Compose and send a new email message as plain text.",
+    "Compose and send a new email message as plain text. Returns success when the message is queued for sending; actual delivery is not confirmed. Check Mail's Sent or Outbox mailbox to verify delivery.",
     {
       to: z.string().describe("The recipient email address"),
       subject: z.string().describe("The subject of the email"),

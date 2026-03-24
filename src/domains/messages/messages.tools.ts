@@ -1,6 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { homedir } from "node:os";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
+
+function expandTilde(p: string): string {
+  if (p.startsWith("~/")) {
+    return homedir() + p.slice(1);
+  }
+  return p;
+}
 
 export async function handleListMessages(
   accountName: string,
@@ -128,7 +136,7 @@ export async function handleSaveAttachment(
       mailboxName: String(mailboxName),
       accountName: String(accountName),
       attachmentName: String(attachmentName),
-      savePath: String(savePath),
+      savePath: expandTilde(String(savePath)),
     },
     { timeout: EXTENDED_TIMEOUT }
   );
@@ -146,7 +154,7 @@ export async function handleSaveAllAttachments(
       messageId: String(messageId),
       mailboxName: String(mailboxName),
       accountName: String(accountName),
-      savePath: String(savePath),
+      savePath: expandTilde(String(savePath)),
     },
     { timeout: EXTENDED_TIMEOUT }
   );

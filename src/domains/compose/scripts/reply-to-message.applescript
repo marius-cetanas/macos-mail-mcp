@@ -1,3 +1,22 @@
+on escapeForJson(theString)
+    set oldDelims to AppleScript's text item delimiters
+    set AppleScript's text item delimiters to "\\"
+    set parts to text items of theString
+    set AppleScript's text item delimiters to "\\\\"
+    set theString to parts as text
+    set AppleScript's text item delimiters to "\""
+    set parts to text items of theString
+    set AppleScript's text item delimiters to "\\\""
+    set theString to parts as text
+    set AppleScript's text item delimiters to oldDelims
+    return theString
+end escapeForJson
+
+set bodyContent to ""
+if "{{bodyFile}}" is not "__NONE__" then
+    set bodyContent to do shell script "cat " & quoted form of "{{bodyFile}}"
+end if
+
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
@@ -8,13 +27,13 @@ tell application "Mail"
             set replyMsg to reply msg without opening window
         end if
         tell replyMsg
-            if "{{body}}" is not "__NONE__" then
-                set content to "{{body}}" & return & return & content
+            if bodyContent is not "" then
+                set content to bodyContent & return & return & content
             end if
             send
         end tell
         return "{\"success\": true}"
     on error errMsg number errNum
-        return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
     end try
 end tell

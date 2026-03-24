@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { homedir } from "node:os";
 
 vi.mock("../../../src/bridge/applescript-runner.js", () => ({
   runAppleScript: vi.fn(),
@@ -100,24 +101,24 @@ describe("messages tools - attachments", () => {
     );
   });
 
-  it("save_attachment uses extended timeout", async () => {
+  it("save_attachment uses extended timeout and expands tilde", async () => {
     mockRunAppleScript.mockResolvedValue({ success: true });
     const { handleSaveAttachment } = await import("../../../src/domains/messages/messages.tools.js");
     await handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "~/Downloads");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/save-attachment.applescript",
-      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "file.pdf", savePath: "~/Downloads" },
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "file.pdf", savePath: homedir() + "/Downloads" },
       { timeout: 120_000 }
     );
   });
 
-  it("save_all_attachments uses extended timeout", async () => {
+  it("save_all_attachments uses extended timeout and expands tilde", async () => {
     mockRunAppleScript.mockResolvedValue({ success: true, savedFiles: [] });
     const { handleSaveAllAttachments } = await import("../../../src/domains/messages/messages.tools.js");
     await handleSaveAllAttachments(123, "INBOX", "Gmail", "~/Downloads");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/save-all-attachments.applescript",
-      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", savePath: "~/Downloads" },
+      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", savePath: homedir() + "/Downloads" },
       { timeout: 120_000 }
     );
   });
