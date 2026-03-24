@@ -1,0 +1,22 @@
+tell application "Mail"
+    try
+        set accountList to ""
+        set allAccounts to every account
+        repeat with acct in allAccounts
+            set acctName to name of acct
+            set acctType to account type of acct as text
+            set acctEnabled to enabled of acct
+            set acctEmails to email addresses of acct
+            set emailsJson to ""
+            repeat with i from 1 to count of acctEmails
+                if i > 1 then set emailsJson to emailsJson & ", "
+                set emailsJson to emailsJson & "\"" & item i of acctEmails & "\""
+            end repeat
+            if accountList is not "" then set accountList to accountList & ", "
+            set accountList to accountList & "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"emails\": [" & emailsJson & "]}"
+        end repeat
+        return "[" & accountList & "]"
+    on error errMsg number errNum
+        return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
+    end try
+end tell
