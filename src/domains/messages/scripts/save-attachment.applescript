@@ -16,7 +16,7 @@ end escapeQuotes
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to first message of theMailbox whose id is {{messageId}}
+        set msg to message id {{messageId}} of theMailbox
 
         set targetAttachment to missing value
         repeat with att in mail attachments of msg
@@ -27,15 +27,14 @@ tell application "Mail"
         end repeat
 
         if targetAttachment is missing value then
-            return "{\"error\": \"Attachment not found: {{attachmentName}}\", \"errorNumber\": -1}"
+            return "{\"error\": \"Attachment not found\", \"errorNumber\": -1}"
         end if
 
         if downloaded of targetAttachment is false then
             return "{\"error\": \"Attachment is not yet downloaded. Open the message in Mail.app first.\", \"errorNumber\": -2}"
         end if
 
-        set saveFolderPath to "{{savePath}}"
-        set attFileName to my escapeQuotes(name of targetAttachment as text)
+        set saveFolderPath to do shell script "echo " & quoted form of "{{savePath}}"
         set fullSavePath to saveFolderPath & "/" & name of targetAttachment
 
         save targetAttachment in POSIX file fullSavePath

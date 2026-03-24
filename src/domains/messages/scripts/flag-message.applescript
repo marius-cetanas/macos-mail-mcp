@@ -1,8 +1,10 @@
 tell application "Mail"
     try
-        set msg to first message of mailbox "{{mailboxName}}" of account "{{accountName}}" whose id is {{messageId}}
+        set msg to message id {{messageId}} of mailbox "{{mailboxName}}" of account "{{accountName}}"
         set flagged status of msg to {{flagged}}
-        set flag index of msg to {{flagIndex}}
+        if {{flagIndex}} is not -1 then
+            set flag index of msg to {{flagIndex}}
+        end if
         return "{\"success\": true}"
     on error errMsg number errNum
         return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"

@@ -17,8 +17,14 @@ export const EXTENDED_TIMEOUT = 120_000;
  * Backslashes must be escaped first, then double quotes.
  */
 export function escapeForAppleScript(value: string): string {
-  // Escape backslashes first, then double quotes
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  // Escape backslashes first, then double quotes, then control characters
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r\n/g, "\\r\\n")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
 }
 
 /**

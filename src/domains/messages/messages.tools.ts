@@ -158,7 +158,8 @@ export async function handleReadAttachment(
   accountName: string,
   attachmentName: string
 ): Promise<unknown> {
-  const ext = attachmentName.slice(attachmentName.lastIndexOf(".")).toLowerCase();
+  const dotIndex = attachmentName.lastIndexOf(".");
+  const ext = dotIndex >= 0 ? attachmentName.slice(dotIndex).toLowerCase() : "";
   if (!TEXT_EXTENSIONS.includes(ext)) {
     throw new Error(
       "Binary file type not supported for inline reading. Use save_attachment instead."

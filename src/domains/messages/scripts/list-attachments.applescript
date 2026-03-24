@@ -16,13 +16,14 @@ end escapeQuotes
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to first message of theMailbox whose id is {{messageId}}
+        set msg to message id {{messageId}} of theMailbox
 
         set attachJson to ""
         repeat with att in mail attachments of msg
             set attName to my escapeQuotes(name of att as text)
             set attMime to my escapeQuotes(MIME type of att as text)
             set attSize to file size of att
+            if attSize is missing value then set attSize to 0
             set attDownloaded to downloaded of att
             if attachJson is not "" then set attachJson to attachJson & ", "
             set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & attSize & ", \"downloaded\": " & attDownloaded & "}"

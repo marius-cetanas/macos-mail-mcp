@@ -35,10 +35,13 @@ on escapeForJson(theString)
     return resultStr
 end escapeForJson
 
+set saveSucceeded to false
+set tempPath to ""
+
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to first message of theMailbox whose id is {{messageId}}
+        set msg to message id {{messageId}} of theMailbox
 
         set targetAttachment to missing value
         repeat with att in mail attachments of msg
@@ -49,7 +52,7 @@ tell application "Mail"
         end repeat
 
         if targetAttachment is missing value then
-            return "{\"error\": \"Attachment not found: {{attachmentName}}\", \"errorNumber\": -1}"
+            return "{\"error\": \"Attachment not found\", \"errorNumber\": -1}"
         end if
 
         if downloaded of targetAttachment is false then
@@ -58,29 +61,24 @@ tell application "Mail"
 
         set attName to name of targetAttachment as text
         set tempPath to (POSIX path of (path to temporary items)) & attName
-
         save targetAttachment in POSIX file tempPath
+        set saveSucceeded to true
     on error errMsg number errNum
         return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
     end try
 end tell
 
--- Read the saved temp file as UTF-8 text using shell
-try
-    set attName to "{{attachmentName}}"
-    set tempPath to (POSIX path of (path to temporary items)) & attName
-    set fileContent to do shell script "cat " & quoted form of tempPath
-    set escapedName to my escapeQuotes(attName)
-    set escapedContent to my escapeForJson(fileContent)
-    -- Clean up temp file
-    do shell script "rm -f " & quoted form of tempPath
-    return "{\"name\": \"" & escapedName & "\", \"content\": \"" & escapedContent & "\"}"
-on error errMsg number errNum
-    -- Attempt cleanup even on error
+if saveSucceeded then
     try
-        set attName to "{{attachmentName}}"
-        set tempPath to (POSIX path of (path to temporary items)) & attName
+        set fileContent to do shell script "cat " & quoted form of tempPath
+        set escapedName to my escapeQuotes("{{attachmentName}}")
+        set escapedContent to my escapeForJson(fileContent)
         do shell script "rm -f " & quoted form of tempPath
+        return "{\"name\": \"" & escapedName & "\", \"content\": \"" & escapedContent & "\"}"
+    on error errMsg number errNum
+        try
+            do shell script "rm -f " & quoted form of tempPath
+        end try
+        return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
     end try
-    return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
-end try
+end if

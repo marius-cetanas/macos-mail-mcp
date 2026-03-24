@@ -1,10 +1,11 @@
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to first message of theMailbox whose id is {{messageId}}
-        set replyMsg to reply msg without opening window
+        set msg to message id {{messageId}} of theMailbox
         if "{{replyAll}}" is "true" then
             set replyMsg to reply msg reply to all yes without opening window
+        else
+            set replyMsg to reply msg without opening window
         end if
         tell replyMsg
             if "{{body}}" is not "__NONE__" then

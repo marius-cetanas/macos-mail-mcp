@@ -13,7 +13,7 @@ on escapeQuotes(theString)
     return resultStr
 end escapeQuotes
 
-on searchInMailbox(theMailbox, theField, theQuery, limitNum)
+on searchInMailbox(theMailbox, theField, theQuery, remainingLimit)
     set resultList to ""
     set matchCount to 0
     if theField is "subject" then
@@ -24,7 +24,7 @@ on searchInMailbox(theMailbox, theField, theQuery, limitNum)
         set matchedMessages to (messages of theMailbox whose content contains theQuery)
     end if
     repeat with msg in matchedMessages
-        if matchCount >= limitNum then exit repeat
+        if matchCount >= remainingLimit then exit repeat
         set msgId to id of msg
         set msgSubject to my escapeQuotes(subject of msg as text)
         set msgSender to my escapeQuotes(sender of msg as text)
@@ -46,7 +46,7 @@ on searchInMailbox(theMailbox, theField, theQuery, limitNum)
         set resultList to resultList & "}"
         set matchCount to matchCount + 1
     end repeat
-    return resultList
+    return {resultList, matchCount}
 end searchInMailbox
 
 tell application "Mail"
@@ -58,25 +58,30 @@ tell application "Mail"
         set limitNum to {{limit}} as integer
 
         set resultList to ""
+        set totalFound to 0
 
         if theAccountName is "__ALL__" then
             repeat with acct in every account
+                if totalFound >= limitNum then exit repeat
                 if theMailboxName is "__ALL__" then
                     repeat with mb in every mailbox of acct
-                        set partial to my searchInMailbox(mb, theField, theQuery, limitNum)
+                        if totalFound >= limitNum then exit repeat
+                        set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
                         if partial is not "" then
                             if resultList is not "" then set resultList to resultList & ", "
                             set resultList to resultList & partial
                         end if
+                        set totalFound to totalFound + partialCount
                     end repeat
                 else
                     try
                         set mb to mailbox theMailboxName of acct
-                        set partial to my searchInMailbox(mb, theField, theQuery, limitNum)
+                        set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
                         if partial is not "" then
                             if resultList is not "" then set resultList to resultList & ", "
                             set resultList to resultList & partial
                         end if
+                        set totalFound to totalFound + partialCount
                     end try
                 end if
             end repeat
@@ -84,15 +89,17 @@ tell application "Mail"
             set theAccount to account theAccountName
             if theMailboxName is "__ALL__" then
                 repeat with mb in every mailbox of theAccount
-                    set partial to my searchInMailbox(mb, theField, theQuery, limitNum)
+                    if totalFound >= limitNum then exit repeat
+                    set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
                     if partial is not "" then
                         if resultList is not "" then set resultList to resultList & ", "
                         set resultList to resultList & partial
                     end if
+                    set totalFound to totalFound + partialCount
                 end repeat
             else
                 set mb to mailbox theMailboxName of theAccount
-                set partial to my searchInMailbox(mb, theField, theQuery, limitNum)
+                set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum)
                 if partial is not "" then set resultList to partial
             end if
         end if
