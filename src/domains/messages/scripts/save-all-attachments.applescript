@@ -13,12 +13,12 @@ on escapeQuotes(theString)
     return resultStr
 end escapeQuotes
 
+set saveFolderPath to do shell script "echo " & quoted form of "{{savePath}}"
+
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
         set msg to message id {{messageId}} of theMailbox
-
-        set saveFolderPath to do shell script "echo " & quoted form of "{{savePath}}"
         set savedFilesJson to ""
         set savedCount to 0
 

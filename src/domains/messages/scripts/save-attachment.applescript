@@ -13,6 +13,8 @@ on escapeQuotes(theString)
     return resultStr
 end escapeQuotes
 
+set saveFolderPath to do shell script "echo " & quoted form of "{{savePath}}"
+
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
@@ -33,8 +35,6 @@ tell application "Mail"
         if downloaded of targetAttachment is false then
             return "{\"error\": \"Attachment is not yet downloaded. Open the message in Mail.app first.\", \"errorNumber\": -2}"
         end if
-
-        set saveFolderPath to do shell script "echo " & quoted form of "{{savePath}}"
         set fullSavePath to saveFolderPath & "/" & name of targetAttachment
 
         save targetAttachment in POSIX file fullSavePath
