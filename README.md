@@ -94,8 +94,10 @@ On first use, macOS will prompt to grant automation permission for controlling M
 src/
   index.ts                          # MCP server entry point
   types.ts                          # TypeScript interfaces
+  utils.ts                          # Shared utilities (sanitize, expandTilde, toolError)
   bridge/
     applescript-runner.ts            # AppleScript execution engine
+    escape-for-json.applescript      # Shared JSON escaping handler (auto-prepended)
   domains/
     accounts/
       accounts.tools.ts             # Tool registration & handlers
@@ -110,14 +112,15 @@ src/
       compose.tools.ts
       scripts/*.applescript
 tests/
+  utils.test.ts                     # Shared utility tests
   bridge/applescript-runner.test.ts  # Bridge unit tests
   domains/*/                         # Domain handler tests
 ```
 
 **Domain-driven layered architecture:**
 - **Tools layer** — Registers MCP tools with Zod schemas, validates input, calls the bridge
-- **Bridge layer** — Reads AppleScript templates, substitutes parameters (with injection-safe escaping), executes via `osascript`, parses JSON output
-- **Script layer** — AppleScript templates with `{{param}}` placeholders, returning JSON strings
+- **Bridge layer** — Reads AppleScript templates, substitutes parameters (with injection-safe escaping), prepends the shared `escapeForJson` handler, executes via `osascript`, parses JSON output
+- **Script layer** — AppleScript templates with `{{param}}` placeholders, returning JSON strings. The `escapeForJson` handler is defined once in `bridge/escape-for-json.applescript` and automatically prepended to every script at runtime.
 
 ## Known Limitations
 
