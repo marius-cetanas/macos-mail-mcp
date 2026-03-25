@@ -52,15 +52,17 @@ on escapeForJson(theString)
 end escapeForJson
 
 set saveFolderPath to "{{savePath}}"
+-- Read attachment name from temp file to avoid AppleScript string escaping issues
+set targetAttName to do shell script "cat " & quoted form of "{{attNameFile}}"
 
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to message id {{messageId}} of theMailbox
+        set msg to (first message of theMailbox whose id is {{messageId}})
 
         set targetAttachment to missing value
         repeat with att in mail attachments of msg
-            if name of att as text is "{{attachmentName}}" then
+            if name of att as text is targetAttName then
                 set targetAttachment to att
                 exit repeat
             end if

@@ -7,8 +7,19 @@ vi.mock("../../../src/bridge/applescript-runner.js", () => ({
   DEFAULT_TIMEOUT: 30_000,
 }));
 
+vi.mock("node:fs/promises", () => ({
+  writeFile: vi.fn().mockResolvedValue(undefined),
+  mkdtemp: vi.fn().mockResolvedValue("/tmp/mail-mcp-att-XXXXXX"),
+  rm: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { runAppleScript } from "../../../src/bridge/applescript-runner.js";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+
 const mockRunAppleScript = vi.mocked(runAppleScript);
+const mockMkdtemp = vi.mocked(mkdtemp);
+const mockWriteFile = vi.mocked(writeFile);
+const mockRm = vi.mocked(rm);
 
 describe("messages tools - reading", () => {
   beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
@@ -89,7 +100,14 @@ describe("messages tools - managing", () => {
 });
 
 describe("messages tools - attachments", () => {
-  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    // Restore fs mock implementations after clearAllMocks
+    mockMkdtemp.mockResolvedValue("/tmp/mail-mcp-att-XXXXXX" as any);
+    mockWriteFile.mockResolvedValue(undefined);
+    mockRm.mockResolvedValue(undefined);
+  });
 
   it("list_attachments passes correct params", async () => {
     mockRunAppleScript.mockResolvedValue([]);
@@ -101,15 +119,37 @@ describe("messages tools - attachments", () => {
     );
   });
 
-  it("save_attachment uses extended timeout and expands tilde", async () => {
+  it("list_attachments returns MIME types from extension-based fallback", async () => {
+    const mockAttachments = [
+      { name: "report.pdf", mimeType: "application/pdf", fileSize: 1024, downloaded: true },
+      { name: "photo.jpg", mimeType: "image/jpeg", fileSize: 2048, downloaded: true },
+      { name: "data.csv", mimeType: "text/csv", fileSize: 512, downloaded: true },
+      { name: "unknown.xyz", mimeType: "application/octet-stream", fileSize: 256, downloaded: false },
+    ];
+    mockRunAppleScript.mockResolvedValue(mockAttachments);
+    const { handleListAttachments } = await import("../../../src/domains/messages/messages.tools.js");
+    const result = await handleListAttachments(123, "INBOX", "Gmail") as typeof mockAttachments;
+    expect(result).toHaveLength(4);
+    expect(result[0].mimeType).toBe("application/pdf");
+    expect(result[1].mimeType).toBe("image/jpeg");
+    expect(result[2].mimeType).toBe("text/csv");
+    expect(result[3].mimeType).toBe("application/octet-stream");
+  });
+
+  it("save_attachment uses extended timeout, expands tilde, and cleans up", async () => {
     mockRunAppleScript.mockResolvedValue({ success: true });
     const { handleSaveAttachment } = await import("../../../src/domains/messages/messages.tools.js");
     await handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "~/Downloads");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/save-attachment.applescript",
-      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "file.pdf", savePath: homedir() + "/Downloads" },
+      expect.objectContaining({
+        messageId: "123", mailboxName: "INBOX", accountName: "Gmail",
+        attNameFile: expect.stringContaining("attname.txt"),
+        savePath: homedir() + "/Downloads",
+      }),
       { timeout: 120_000 }
     );
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
   });
 
   it("save_all_attachments uses extended timeout and expands tilde", async () => {
@@ -123,16 +163,20 @@ describe("messages tools - attachments", () => {
     );
   });
 
-  it("read_attachment calls runAppleScript for text files", async () => {
+  it("read_attachment calls runAppleScript for text files and cleans up", async () => {
     mockRunAppleScript.mockResolvedValue({ name: "data.csv", content: "a,b,c" });
     const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
     const result = await handleReadAttachment(123, "INBOX", "Gmail", "data.csv");
     expect(result).toEqual({ name: "data.csv", content: "a,b,c" });
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/read-attachment.applescript",
-      { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", attachmentName: "data.csv" },
+      expect.objectContaining({
+        messageId: "123", mailboxName: "INBOX", accountName: "Gmail",
+        attNameFile: expect.stringContaining("attname.txt"),
+      }),
       { timeout: 120_000 }
     );
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
   });
 
   it("read_attachment rejects binary file extensions", async () => {

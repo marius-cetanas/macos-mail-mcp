@@ -56,7 +56,7 @@ set saveFolderPath to "{{savePath}}"
 tell application "Mail"
     try
         set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
-        set msg to message id {{messageId}} of theMailbox
+        set msg to (first message of theMailbox whose id is {{messageId}})
         set savedFilesJson to ""
         set savedCount to 0
 

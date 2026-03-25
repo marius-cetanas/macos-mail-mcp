@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { writeFile, mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
 
 function expandTilde(p: string): string {
@@ -10,6 +12,11 @@ function expandTilde(p: string): string {
   return p;
 }
 
+/** Remove newlines/CR that would break AppleScript string literals */
+function sanitize(value: string): string {
+  return value.replace(/[\r\n]+/g, " ");
+}
+
 export async function handleListMessages(
   accountName: string,
   mailboxName: string,
@@ -17,8 +24,8 @@ export async function handleListMessages(
   offset: number
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/list-messages.applescript", {
-    accountName: String(accountName),
-    mailboxName: String(mailboxName),
+    accountName: sanitize(String(accountName)),
+    mailboxName: sanitize(String(mailboxName)),
     limit: String(limit),
     offset: String(offset),
   });
@@ -31,8 +38,8 @@ export async function handleGetMessage(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/get-message.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    accountName: sanitize(String(accountName)),
   });
 }
 
@@ -60,9 +67,9 @@ export async function handleMoveMessage(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/move-message.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    toMailbox: String(toMailbox),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    toMailbox: sanitize(String(toMailbox)),
+    accountName: sanitize(String(accountName)),
   });
 }
 
@@ -73,8 +80,8 @@ export async function handleDeleteMessage(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/delete-message.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    accountName: sanitize(String(accountName)),
   });
 }
 
@@ -87,8 +94,8 @@ export async function handleFlagMessage(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/flag-message.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    accountName: sanitize(String(accountName)),
     flagged: String(flagged),
     flagIndex: String(flagIndex),
   });
@@ -102,8 +109,8 @@ export async function handleMarkRead(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/mark-read.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    accountName: sanitize(String(accountName)),
     read: String(read),
   });
 }
@@ -117,8 +124,8 @@ export async function handleListAttachments(
 ): Promise<unknown> {
   return runAppleScript("messages/scripts/list-attachments.applescript", {
     messageId: String(messageId),
-    mailboxName: String(mailboxName),
-    accountName: String(accountName),
+    mailboxName: sanitize(String(mailboxName)),
+    accountName: sanitize(String(accountName)),
   });
 }
 
@@ -129,17 +136,25 @@ export async function handleSaveAttachment(
   attachmentName: string,
   savePath: string
 ): Promise<unknown> {
-  return runAppleScript(
-    "messages/scripts/save-attachment.applescript",
-    {
-      messageId: String(messageId),
-      mailboxName: String(mailboxName),
-      accountName: String(accountName),
-      attachmentName: String(attachmentName),
-      savePath: expandTilde(String(savePath)),
-    },
-    { timeout: EXTENDED_TIMEOUT }
-  );
+  const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-att-"));
+  try {
+    // Write attachment name to temp file to avoid AppleScript string escaping issues
+    const attNameFile = join(tempDir, "attname.txt");
+    await writeFile(attNameFile, attachmentName, "utf8");
+    return await runAppleScript(
+      "messages/scripts/save-attachment.applescript",
+      {
+        messageId: String(messageId),
+        mailboxName: sanitize(String(mailboxName)),
+        accountName: sanitize(String(accountName)),
+        attNameFile,
+        savePath: expandTilde(String(savePath)),
+      },
+      { timeout: EXTENDED_TIMEOUT }
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export async function handleSaveAllAttachments(
@@ -152,8 +167,8 @@ export async function handleSaveAllAttachments(
     "messages/scripts/save-all-attachments.applescript",
     {
       messageId: String(messageId),
-      mailboxName: String(mailboxName),
-      accountName: String(accountName),
+      mailboxName: sanitize(String(mailboxName)),
+      accountName: sanitize(String(accountName)),
       savePath: expandTilde(String(savePath)),
     },
     { timeout: EXTENDED_TIMEOUT }
@@ -173,16 +188,24 @@ export async function handleReadAttachment(
       "Binary file type not supported for inline reading. Use save_attachment instead."
     );
   }
-  return runAppleScript(
-    "messages/scripts/read-attachment.applescript",
-    {
-      messageId: String(messageId),
-      mailboxName: String(mailboxName),
-      accountName: String(accountName),
-      attachmentName: String(attachmentName),
-    },
-    { timeout: EXTENDED_TIMEOUT }
-  );
+  const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-att-"));
+  try {
+    // Write attachment name to temp file to avoid AppleScript string escaping issues
+    const attNameFile = join(tempDir, "attname.txt");
+    await writeFile(attNameFile, attachmentName, "utf8");
+    return await runAppleScript(
+      "messages/scripts/read-attachment.applescript",
+      {
+        messageId: String(messageId),
+        mailboxName: sanitize(String(mailboxName)),
+        accountName: sanitize(String(accountName)),
+        attNameFile,
+      },
+      { timeout: EXTENDED_TIMEOUT }
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export function registerMessagesTools(server: McpServer): void {
@@ -237,7 +260,7 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "search_messages",
-    "Search messages by subject, sender, or content. WARNING: Mail.app loads all matching messages into memory before applying the limit, so searches on large mailboxes can be very slow and may time out. Always narrow results with mailboxName and accountName when possible.",
+    "Search messages by subject, sender, or content. Prefer 'subject' or 'sender' fields which are fast metadata lookups. The 'content' field searches message bodies and is significantly slower and less reliable — it may trigger full message downloads on IMAP accounts and can time out. WARNING: Mail.app loads all matching messages into memory before applying the limit, so searches on large mailboxes can be very slow. Always narrow results with mailboxName and accountName when possible.",
     {
       field: z.enum(["subject", "sender", "content"]).describe("The field to search in"),
       query: z.string().describe("The search query string"),

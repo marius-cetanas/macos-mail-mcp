@@ -1,6 +1,6 @@
 export interface Account {
   name: string;
-  type: "imap" | "pop" | "iCloud";
+  type: "imap" | "pop" | "iCloud" | "unknown";
   enabled: boolean;
   emails: string[];
 }

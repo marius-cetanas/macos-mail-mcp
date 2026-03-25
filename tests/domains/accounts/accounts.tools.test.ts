@@ -46,4 +46,44 @@ describe("accounts tools", () => {
       { accountName: "Gmail" }
     );
   });
+
+  it("list_accounts handles Exchange accounts with unknown type", async () => {
+    const mockAccounts: Account[] = [
+      { name: "iCloud", type: "iCloud", enabled: true, emails: ["user@icloud.com"] },
+      { name: "Google", type: "imap", enabled: true, emails: ["user@gmail.com"] },
+      { name: "Exchange", type: "unknown", enabled: true, emails: ["user@outlook.com"] },
+    ];
+    mockRunAppleScript.mockResolvedValue(mockAccounts);
+
+    const { handleListAccounts } = await import(
+      "../../../src/domains/accounts/accounts.tools.js"
+    );
+    const result = await handleListAccounts();
+    expect(result).toHaveLength(3);
+    expect((result as Account[])[2].type).toBe("unknown");
+  });
+
+  it("get_account_detail handles Exchange with empty server properties", async () => {
+    const mockDetail = {
+      name: "Exchange",
+      type: "unknown",
+      enabled: true,
+      emails: ["user@outlook.com"],
+      serverName: "",
+      port: 0,
+      usesSsl: false,
+      userName: "user@outlook.com",
+      mailboxCount: 16,
+    };
+    mockRunAppleScript.mockResolvedValue(mockDetail);
+
+    const { handleGetAccountDetail } = await import(
+      "../../../src/domains/accounts/accounts.tools.js"
+    );
+    const result = await handleGetAccountDetail("Exchange") as Record<string, unknown>;
+    expect(result.serverName).toBe("");
+    expect(result.port).toBe(0);
+    expect(result.usesSsl).toBe(false);
+    expect(result.type).toBe("unknown");
+  });
 });

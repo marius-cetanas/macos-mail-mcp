@@ -2,11 +2,16 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
 
+/** Remove newlines/CR that would break AppleScript string literals */
+function sanitize(value: string): string {
+  return value.replace(/[\r\n]+/g, " ");
+}
+
 export async function handleListMailboxes(
   accountName?: string
 ): Promise<unknown> {
   return runAppleScript("mailboxes/scripts/list-mailboxes.applescript", {
-    accountName: accountName ?? "__ALL__",
+    accountName: accountName !== undefined ? sanitize(accountName) : "__ALL__",
   });
 }
 
@@ -15,8 +20,8 @@ export async function handleGetMailboxInfo(
   mailboxName: string
 ): Promise<unknown> {
   return runAppleScript("mailboxes/scripts/get-mailbox-info.applescript", {
-    accountName,
-    mailboxName,
+    accountName: sanitize(accountName),
+    mailboxName: sanitize(mailboxName),
   });
 }
 

@@ -31,7 +31,7 @@ describe("compose tools", () => {
     mockRm.mockResolvedValue(undefined);
   });
 
-  it("send_message passes bodyFile instead of body", async () => {
+  it("send_message passes bodyFile instead of body and cleans up temp dir", async () => {
     const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
     await handleSendMessage("bob@test.com", "Hi", "Hello Bob");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
@@ -42,6 +42,7 @@ describe("compose tools", () => {
         bodyFile: expect.stringMatching(/^\//)
       })
     );
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-body-abc123", { recursive: true, force: true });
   });
 
   it("send_message passes __NONE__ for omitted optional params", async () => {
@@ -49,20 +50,25 @@ describe("compose tools", () => {
     await handleSendMessage("bob@test.com", "Hi", "Hello");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "compose/scripts/send-message.applescript",
-      expect.objectContaining({ cc: "__NONE__", bcc: "__NONE__", attachmentPaths: "__NONE__" })
+      expect.objectContaining({ cc: "__NONE__", bcc: "__NONE__", attachmentPathsFile: "__NONE__" })
     );
   });
 
-  it("send_message joins attachmentPaths with newlines", async () => {
+  it("send_message writes attachmentPaths to temp file", async () => {
     const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
     await handleSendMessage("bob@test.com", "Hi", "Hello", undefined, undefined, ["/tmp/a.pdf", "/tmp/b.pdf"]);
+    expect(mockWriteFile).toHaveBeenCalledWith(
+      "/tmp/mail-mcp-body-abc123/attachments.txt",
+      "/tmp/a.pdf\n/tmp/b.pdf",
+      "utf8"
+    );
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "compose/scripts/send-message.applescript",
-      expect.objectContaining({ attachmentPaths: "/tmp/a.pdf\n/tmp/b.pdf" })
+      expect.objectContaining({ attachmentPathsFile: "/tmp/mail-mcp-body-abc123/attachments.txt" })
     );
   });
 
-  it("reply_to_message passes bodyFile and replyAll as string", async () => {
+  it("reply_to_message passes bodyFile and replyAll as string and cleans up", async () => {
     const { handleReplyToMessage } = await import("../../../src/domains/compose/compose.tools.js");
     await handleReplyToMessage(123, "INBOX", "Gmail", "Thanks!", true);
     expect(mockRunAppleScript).toHaveBeenCalledWith(
@@ -73,6 +79,7 @@ describe("compose tools", () => {
         bodyFile: expect.stringMatching(/^\//)
       })
     );
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-body-abc123", { recursive: true, force: true });
   });
 
   it("forward_message passes __NONE__ bodyFile for omitted body", async () => {

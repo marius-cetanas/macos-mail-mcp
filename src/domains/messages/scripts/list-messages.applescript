@@ -73,7 +73,7 @@ tell application "Mail"
             set msgRead to read status of msg
             set msgFlagged to flagged status of msg
             set msgFlagIndex to flag index of msg
-            set msgHasAttach to has attachment of msg
+            set msgHasAttach to (count of mail attachments of msg) > 0
 
             if resultList is not "" then set resultList to resultList & ", "
             set resultList to resultList & "{"

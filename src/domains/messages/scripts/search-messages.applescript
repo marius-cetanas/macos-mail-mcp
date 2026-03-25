@@ -52,39 +52,42 @@ on escapeForJson(theString)
 end escapeForJson
 
 on searchInMailbox(theMailbox, theField, theQuery, remainingLimit)
-    set resultList to ""
-    set matchCount to 0
-    if theField is "subject" then
-        set matchedMessages to (messages of theMailbox whose subject contains theQuery)
-    else if theField is "sender" then
-        set matchedMessages to (messages of theMailbox whose sender contains theQuery)
-    else
-        set matchedMessages to (messages of theMailbox whose content contains theQuery)
-    end if
-    repeat with msg in matchedMessages
-        if matchCount >= remainingLimit then exit repeat
-        set msgId to id of msg
-        set msgSubject to my escapeForJson(subject of msg as text)
-        set msgSender to my escapeForJson(sender of msg as text)
-        set msgDate to date received of msg as «class isot» as string
-        set msgRead to read status of msg
-        set msgFlagged to flagged status of msg
-        set msgFlagIndex to flag index of msg
-        set msgHasAttach to has attachment of msg
-        if resultList is not "" then set resultList to resultList & ", "
-        set resultList to resultList & "{"
-        set resultList to resultList & "\"id\": " & msgId & ", "
-        set resultList to resultList & "\"subject\": \"" & msgSubject & "\", "
-        set resultList to resultList & "\"sender\": \"" & msgSender & "\", "
-        set resultList to resultList & "\"dateReceived\": \"" & msgDate & "\", "
-        set resultList to resultList & "\"readStatus\": " & msgRead & ", "
-        set resultList to resultList & "\"flagged\": " & msgFlagged & ", "
-        set resultList to resultList & "\"flagIndex\": " & msgFlagIndex & ", "
-        set resultList to resultList & "\"hasAttachments\": " & msgHasAttach
-        set resultList to resultList & "}"
-        set matchCount to matchCount + 1
-    end repeat
-    return {resultList, matchCount}
+    using terms from application "Mail"
+        set resultList to ""
+        set matchCount to 0
+        if theField is "subject" then
+            set matchedMessages to (messages of theMailbox whose subject contains theQuery)
+        else if theField is "sender" then
+            set matchedMessages to (messages of theMailbox whose sender contains theQuery)
+        else
+            set matchedMessages to (messages of theMailbox whose content contains theQuery)
+        end if
+        repeat with msg in matchedMessages
+            if matchCount >= remainingLimit then exit repeat
+            set msgId to id of msg
+            set msgSubject to my escapeForJson(subject of msg as text)
+            set msgSender to my escapeForJson(sender of msg as text)
+            set msgDate to date received of msg as «class isot» as string
+            set msgRead to read status of msg
+            set msgFlagged to flagged status of msg
+            set msgFlagIndex to flag index of msg
+            set attList to mail attachments of msg
+            set msgHasAttach to (count of attList) > 0
+            if resultList is not "" then set resultList to resultList & ", "
+            set resultList to resultList & "{"
+            set resultList to resultList & "\"id\": " & msgId & ", "
+            set resultList to resultList & "\"subject\": \"" & msgSubject & "\", "
+            set resultList to resultList & "\"sender\": \"" & msgSender & "\", "
+            set resultList to resultList & "\"dateReceived\": \"" & msgDate & "\", "
+            set resultList to resultList & "\"readStatus\": " & msgRead & ", "
+            set resultList to resultList & "\"flagged\": " & msgFlagged & ", "
+            set resultList to resultList & "\"flagIndex\": " & msgFlagIndex & ", "
+            set resultList to resultList & "\"hasAttachments\": " & msgHasAttach
+            set resultList to resultList & "}"
+            set matchCount to matchCount + 1
+        end repeat
+        return {resultList, matchCount}
+    end using terms from
 end searchInMailbox
 
 tell application "Mail"

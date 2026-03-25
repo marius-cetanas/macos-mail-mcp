@@ -5,6 +5,11 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
 
+/** Remove newlines/CR that would break AppleScript string literals */
+function sanitize(value: string): string {
+  return value.replace(/[\r\n]+/g, " ");
+}
+
 export async function handleSendMessage(
   to: string,
   subject: string,
@@ -13,18 +18,24 @@ export async function handleSendMessage(
   bcc?: string,
   attachmentPaths?: string[]
 ): Promise<unknown> {
-  // Write body to temp file so AppleScript can read it with proper newlines
   const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
-  const bodyFile = join(tempDir, "body.txt");
-  await writeFile(bodyFile, body, "utf8");
   try {
+    // Write body to temp file so AppleScript can read it with proper newlines
+    const bodyFile = join(tempDir, "body.txt");
+    await writeFile(bodyFile, body, "utf8");
+    // Write attachment paths to temp file (one per line) to avoid multi-line AppleScript string
+    let attachmentPathsFile = "__NONE__";
+    if (attachmentPaths !== undefined && attachmentPaths.length > 0) {
+      attachmentPathsFile = join(tempDir, "attachments.txt");
+      await writeFile(attachmentPathsFile, attachmentPaths.join("\n"), "utf8");
+    }
     return await runAppleScript("compose/scripts/send-message.applescript", {
-      to: String(to),
-      subject: String(subject),
+      to: sanitize(String(to)),
+      subject: sanitize(String(subject)),
       bodyFile,
-      cc: cc !== undefined ? String(cc) : "__NONE__",
-      bcc: bcc !== undefined ? String(bcc) : "__NONE__",
-      attachmentPaths: attachmentPaths !== undefined ? attachmentPaths.join("\n") : "__NONE__",
+      cc: cc !== undefined ? sanitize(String(cc)) : "__NONE__",
+      bcc: bcc !== undefined ? sanitize(String(bcc)) : "__NONE__",
+      attachmentPathsFile,
     });
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -39,13 +50,13 @@ export async function handleReplyToMessage(
   replyAll: boolean
 ): Promise<unknown> {
   const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
-  const bodyFile = join(tempDir, "body.txt");
-  await writeFile(bodyFile, body, "utf8");
   try {
+    const bodyFile = join(tempDir, "body.txt");
+    await writeFile(bodyFile, body, "utf8");
     return await runAppleScript("compose/scripts/reply-to-message.applescript", {
       messageId: String(messageId),
-      mailboxName: String(mailboxName),
-      accountName: String(accountName),
+      mailboxName: sanitize(String(mailboxName)),
+      accountName: sanitize(String(accountName)),
       bodyFile,
       replyAll: String(replyAll),
     });
@@ -62,18 +73,20 @@ export async function handleForwardMessage(
   body?: string
 ): Promise<unknown> {
   let tempDir: string | undefined;
-  let bodyFile = "__NONE__";
   if (body !== undefined) {
     tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
-    bodyFile = join(tempDir, "body.txt");
-    await writeFile(bodyFile, body, "utf8");
   }
   try {
+    let bodyFile = "__NONE__";
+    if (body !== undefined && tempDir !== undefined) {
+      bodyFile = join(tempDir, "body.txt");
+      await writeFile(bodyFile, body, "utf8");
+    }
     return await runAppleScript("compose/scripts/forward-message.applescript", {
       messageId: String(messageId),
-      mailboxName: String(mailboxName),
-      accountName: String(accountName),
-      to: String(to),
+      mailboxName: sanitize(String(mailboxName)),
+      accountName: sanitize(String(accountName)),
+      to: sanitize(String(to)),
       bodyFile,
     });
   } finally {
