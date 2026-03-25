@@ -161,11 +161,27 @@ tests/
 
 ## Known Limitations
 
-- **Message IDs are volatile** — Mail.app's internal IDs can change when the app reindexes. Operations on recently moved/deleted messages may need a fresh `list_messages` call.
+### AppleScript Foundation
+
+This MCP communicates with Mail.app via AppleScript, which is a stable but legacy automation layer. Mail.app's scripting dictionary has been largely unchanged for years, but future macOS updates could require script adjustments. This is an inherent trade-off of the approach — AppleScript is the only officially supported way to automate Mail.app without writing a native plugin.
+
+### Performance
+
+- **Large mailbox searches** — `search_messages` uses Mail.app's `whose` clause, which performs a linear scan and loads all matching messages into memory before applying the limit. Searching by `content` (message bodies) on very large IMAP mailboxes (50K+ messages) can be slow or timeout. Prefer searching by `subject` or `sender` when possible, and narrow results with `accountName` and `mailboxName`.
+- **IMAP attachment downloads** — Attachments on IMAP accounts may not be downloaded locally. The tools check download status and report clearly when an attachment needs to be opened in Mail.app first.
+
+### Message IDs
+
+Mail.app's internal message IDs are volatile — they can change when the app reindexes, or after move/delete operations. This means multi-step workflows (e.g., list → flag → move) should re-fetch message IDs between mutations. For single-step operations this is not an issue.
+
+### Provider-Specific Behavior
+
 - **Exchange accounts** — Server details (hostname, port, SSL) are not exposed via AppleScript for Exchange/EWS accounts. Mailbox and message operations work normally.
-- **Gmail labels** — `move_message` adds the destination label but may not remove the original (Gmail behavior).
+- **Gmail labels** — `move_message` adds the destination label but may not remove the original (Gmail uses labels, not folders).
+
+### Other Limitations
+
 - **Attachments on replies/forwards** — AppleScript does not support adding new attachments to reply/forward messages (Mail.app limitation).
-- **Large mailbox searches** — `search_messages` uses Mail.app's `whose` clause which loads all matching messages before applying the limit. Very large mailboxes may be slow.
 - **MIME type detection** — Uses extension-based fallback when Mail.app's native MIME type property returns `missing value`.
 
 ## Development
