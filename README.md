@@ -1,5 +1,6 @@
 # macos-mail-mcp
 
+[![npm version](https://img.shields.io/npm/v/macos-mail-mcp.svg)](https://www.npmjs.com/package/macos-mail-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js 18+](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 [![macOS](https://img.shields.io/badge/platform-macOS-blue.svg)](https://www.apple.com/macos/)
@@ -18,6 +19,37 @@ Works with **any email account configured in macOS Mail.app** — iCloud, Gmail,
 
 ## Installation
 
+### Quick Install (npm)
+
+The easiest way — no cloning or building required:
+
+**Claude Code (CLI):**
+
+```bash
+claude mcp add macos-mail-mcp -- npx macos-mail-mcp
+```
+
+**Claude Desktop:**
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "macos-mail-mcp": {
+      "command": "npx",
+      "args": ["macos-mail-mcp"]
+    }
+  }
+}
+```
+
+Restart the Claude desktop app after adding the config.
+
+### Install from Source
+
+If you prefer to build locally or want to contribute:
+
 ```bash
 git clone https://github.com/marius-cetanas/macos-mail-mcp.git
 cd macos-mail-mcp
@@ -25,17 +57,13 @@ npm install
 npm run build
 ```
 
-### Register with Claude Code (CLI)
-
-Replace `/path/to/macos-mail-mcp` with the actual path where you cloned the repo:
+Then register with Claude Code:
 
 ```bash
 claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/macos-mail-mcp/build/index.js
 ```
 
-### Register with Claude Desktop
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, replacing the path with your actual clone location:
+Or add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 
 ```json
 {
@@ -47,8 +75,6 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, replac
   }
 }
 ```
-
-Restart the Claude desktop app after adding the config.
 
 ### macOS Permissions
 
