@@ -1,7 +1,8 @@
-on searchInMailbox(theMailbox, theField, theQuery, remainingLimit)
+on searchInMailbox(theMailbox, theField, theQuery, remainingLimit, seenIds)
     using terms from application "Mail"
         set resultList to ""
         set matchCount to 0
+        set newSeenIds to seenIds
         if theField is "subject" then
             set matchedMessages to (messages of theMailbox whose subject contains theQuery)
         else if theField is "sender" then
@@ -12,6 +13,10 @@ on searchInMailbox(theMailbox, theField, theQuery, remainingLimit)
         repeat with msg in matchedMessages
             if matchCount >= remainingLimit then exit repeat
             set msgId to id of msg
+            -- Skip duplicate messages (Gmail labels can cause same message in multiple mailboxes)
+            set idStr to msgId as text
+            if idStr is in seenIds then
+            else
             set msgSubject to my escapeForJson(subject of msg as text)
             set msgSender to my escapeForJson(sender of msg as text)
             set msgDate to date received of msg as «class isot» as string
@@ -32,8 +37,10 @@ on searchInMailbox(theMailbox, theField, theQuery, remainingLimit)
             set resultList to resultList & "\"hasAttachments\": " & msgHasAttach
             set resultList to resultList & "}"
             set matchCount to matchCount + 1
+            set end of newSeenIds to idStr
+            end if
         end repeat
-        return {resultList, matchCount}
+        return {resultList, matchCount, newSeenIds}
     end using terms from
 end searchInMailbox
 
@@ -47,6 +54,7 @@ tell application "Mail"
 
         set resultList to ""
         set totalFound to 0
+        set seenIds to {}
 
         if theAccountName is "__ALL__" then
             repeat with acct in every account
@@ -54,7 +62,7 @@ tell application "Mail"
                 if theMailboxName is "__ALL__" then
                     repeat with mb in every mailbox of acct
                         if totalFound >= limitNum then exit repeat
-                        set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
+                        set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound, seenIds)
                         if partial is not "" then
                             if resultList is not "" then set resultList to resultList & ", "
                             set resultList to resultList & partial
@@ -64,7 +72,7 @@ tell application "Mail"
                 else
                     try
                         set mb to mailbox theMailboxName of acct
-                        set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
+                        set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound, seenIds)
                         if partial is not "" then
                             if resultList is not "" then set resultList to resultList & ", "
                             set resultList to resultList & partial
@@ -78,7 +86,7 @@ tell application "Mail"
             if theMailboxName is "__ALL__" then
                 repeat with mb in every mailbox of theAccount
                     if totalFound >= limitNum then exit repeat
-                    set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound)
+                    set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound, seenIds)
                     if partial is not "" then
                         if resultList is not "" then set resultList to resultList & ", "
                         set resultList to resultList & partial
@@ -87,7 +95,7 @@ tell application "Mail"
                 end repeat
             else
                 set mb to mailbox theMailboxName of theAccount
-                set {partial, partialCount} to my searchInMailbox(mb, theField, theQuery, limitNum)
+                set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum, seenIds)
                 if partial is not "" then set resultList to partial
             end if
         end if
