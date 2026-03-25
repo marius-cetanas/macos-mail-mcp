@@ -20,11 +20,14 @@ An MCP (Model Context Protocol) server that connects Claude to the macOS Mail.ap
 ~/Projects/macos-mail-mcp/
   package.json
   tsconfig.json
+  CLAUDE.md                           # Project context for future Claude sessions
   src/
     index.ts                          # Entry point: creates McpServer, wires domains, starts stdio
     types.ts                          # Shared return type interfaces
+    utils.ts                          # Shared utilities: sanitize(), expandTilde(), toolError()
     bridge/
       applescript-runner.ts           # Shared: executes .applescript files with param substitution
+      escape-for-json.applescript     # Shared JSON escaping handler (auto-prepended to all scripts)
     domains/
       accounts/
         accounts.tools.ts             # Tool registrations for account operations
@@ -65,15 +68,21 @@ Single module responsible for all `osascript` interaction.
 
 **Responsibilities:**
 - Load `.applescript` template files from disk
+- Prepend the shared `escape-for-json.applescript` handler to every script at runtime
 - Substitute `{{paramName}}` placeholders with escaped values
-- Write the interpolated script to a temp file and execute via `child_process.execFile("osascript", [tempFilePath])`. Using a temp file (rather than `-e`) avoids issues with very long scripts and makes debugging easier — the temp file can be inspected if execution fails.
+- Write the interpolated script to a temp file and execute via `execFile("osascript", [tempFilePath])`. Using a temp file (rather than `-e`) avoids issues with very long scripts and makes debugging easier — the temp file can be inspected if execution fails.
 - Parse JSON output from AppleScript into typed objects
 - Catch and wrap errors (non-zero exit, stderr, timeout) into consistent error format
 - Clean up temp files after execution
 
+**Shared Utilities (`src/utils.ts`):**
+- `sanitize(value)` — strips `\r` and `\n` from string params to prevent AppleScript syntax errors
+- `expandTilde(path)` — expands `~/` to the user's home directory (done on the TypeScript side since AppleScript's `quoted form of` suppresses tilde expansion)
+- `toolError(error)` — formats caught errors into MCP tool error response objects
+
 **Timeouts:**
 - Default: 30 seconds for most operations
-- Extended: 120 seconds for attachment operations (`save_attachment`, `save_all_attachments`, `read_attachment`) since large attachments over IMAP may need to be downloaded first
+- Extended: 120 seconds for attachment operations (`save_attachment`, `save_all_attachments`, `read_attachment`) and `search_messages` (content search on IMAP can be very slow)
 
 **Security note:** Uses `execFile` (not `exec`) to avoid spawning a shell, preventing shell metacharacter injection. Template parameters are escaped (quotes → `\"`, backslashes → `\\`) before substitution into the AppleScript string to prevent AppleScript injection.
 
@@ -83,41 +92,35 @@ Single module responsible for all `osascript` interaction.
 
 ### AppleScript Template Convention
 
+**Important:** The `escapeForJson` handler is defined once in `src/bridge/escape-for-json.applescript` and automatically prepended to every script at runtime by the bridge. Domain scripts must NOT define it locally — they call it via `my escapeForJson(...)`.
+
 All templates follow this pattern:
 
 ```applescript
--- list-accounts.applescript
--- Returns JSON array of account objects
+-- example.applescript
+-- Note: escapeForJson is auto-prepended by the bridge — do not include it here
 tell application "Mail"
     try
-        set accountList to ""
-        set allAccounts to every account
-        repeat with acct in allAccounts
-            set acctName to name of acct
-            set acctType to account type of acct as text
-            set acctEnabled to enabled of acct
-            set acctEmails to email addresses of acct
-            -- Build JSON for this account
-            set emailsJson to ""
-            repeat with i from 1 to count of acctEmails
-                if i > 1 then set emailsJson to emailsJson & ", "
-                set emailsJson to emailsJson & "\"" & item i of acctEmails & "\""
-            end repeat
-            if accountList is not "" then set accountList to accountList & ", "
-            set accountList to accountList & "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"emails\": [" & emailsJson & "]}"
-        end repeat
-        return "[" & accountList & "]"
+        set acct to account "{{accountName}}"
+        set acctName to my escapeForJson(name of acct)
+        -- ... build JSON using my escapeForJson() on all string values ...
+        return "{\"name\": \"" & acctName & "\"}"
     on error errMsg number errNum
-        return "{\"error\": \"" & errMsg & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
     end try
 end tell
 ```
 
 Key conventions:
 - All templates are wrapped in `try`/`on error` blocks
+- All string values in JSON output pass through `my escapeForJson(...)` to handle quotes, newlines, tabs, and C0 control characters
+- All `errMsg` values in error handlers pass through `my escapeForJson(errMsg)` to prevent invalid JSON from Mail.app error messages containing quotes
 - Errors return `{"error": "...", "errorNumber": N}` — the bridge detects this and throws a typed error
 - Parameters use `{{paramName}}` placeholders, substituted before execution
 - JSON is built via string concatenation (AppleScript has no native JSON support)
+- Multi-line content (email body, attachment paths, attachment names) is passed via temp files — not template substitution — because AppleScript string literals cannot span multiple lines
+- Exchange/EWS accounts may return `missing value` for server properties — wrap in `try`/`on error` blocks with safe defaults
+- MIME type detection uses `mimeFromExtension()` fallback when Mail.app's native property returns `missing value`
 
 ## Message Identification
 
@@ -131,7 +134,7 @@ Key conventions:
 ```typescript
 interface Account {
   name: string;
-  type: "imap" | "pop" | "iCloud";
+  type: "imap" | "pop" | "iCloud" | "unknown";
   enabled: boolean;
   emails: string[];
 }
@@ -261,7 +264,16 @@ interface Attachment {
 
 **Parameter validation:**
 - Zod schemas validate all inputs before AppleScript execution
-- String params escaped to prevent AppleScript injection
+- String params pass through `sanitize()` (strips newlines/CR) then `escapeForAppleScript()` (escapes `\` and `"`) before template substitution
+- `save_all_attachments` deduplicates attachment filenames to prevent overwriting (e.g., `image.png`, `image (2).png`)
+
+## Supported Accounts
+
+Works with **any email account configured in macOS Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes are needed to support new providers; just add the account in Mail.app's preferences and it becomes available through all 18 tools.
+
+**Provider-specific notes:**
+- **Exchange/EWS:** Server details (hostname, port, SSL) are not exposed via AppleScript. `get_account_detail` returns empty defaults for these fields. All other operations work normally.
+- **Gmail:** Uses labels instead of folders. `move_message` adds the destination label but may not remove the original.
 
 ## Registration & Configuration
 
@@ -271,19 +283,22 @@ interface Attachment {
 claude mcp add --transport stdio --scope user macos-mail-mcp -- node ~/Projects/macos-mail-mcp/build/index.js
 ```
 
-**Resulting config in `~/.claude.json`:**
+**Register in Claude Desktop / Cowork:**
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "type": "stdio",
       "command": "node",
-      "args": ["/Users/mariuscetanas/Projects/macos-mail-mcp/build/index.js"]
+      "args": ["/Users/<your-username>/Projects/macos-mail-mcp/build/index.js"]
     }
   }
 }
 ```
+
+Restart the Claude desktop app after adding the config.
 
 **macOS permissions:**
 - First `osascript` call targeting Mail.app triggers a macOS automation permission prompt

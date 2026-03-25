@@ -2,9 +2,13 @@
 
 An MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via AppleScript. Provides 18 tools for reading, searching, managing, and composing emails.
 
+## Supported Accounts
+
+Works with **any email account configured in macOS Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed; just add the account in Mail.app and it becomes available through all 18 tools.
+
 ## Requirements
 
-- macOS with Mail.app configured
+- macOS with Mail.app configured (with at least one email account)
 - Node.js 18+
 - Claude Code or Claude Desktop app
 
