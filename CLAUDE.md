@@ -37,7 +37,7 @@ src/
   domains/
     accounts/   — 2 tools: list_accounts, get_account_detail
     mailboxes/  — 2 tools: list_mailboxes, get_mailbox_info
-    messages/   — 11 tools: list, get, search, move, delete, flag, mark_read, + 4 attachment tools
+    messages/   — 7 message tools + 4 attachment tools (11 total in this domain)
     compose/    — 3 tools: send_message, reply_to_message, forward_message
 tests/
   utils.test.ts                — Tests for sanitize, expandTilde
@@ -125,16 +125,16 @@ npm run dev          # TypeScript watch mode
 
 **Claude Code CLI:**
 ```bash
-claude mcp add --transport stdio --scope user macos-mail-mcp -- node ~/Projects/macos-mail-mcp/build/index.js
+claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/macos-mail-mcp/build/index.js
 ```
 
-**Claude Desktop / Cowork:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+**Claude Desktop:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
     "macos-mail-mcp": {
       "command": "node",
-      "args": ["/Users/<username>/Projects/macos-mail-mcp/build/index.js"]
+      "args": ["/path/to/macos-mail-mcp/build/index.js"]
     }
   }
 }

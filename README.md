@@ -1,6 +1,10 @@
 # macos-mail-mcp
 
-An MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via AppleScript. Provides 18 tools for reading, searching, managing, and composing emails.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js 18+](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![macOS](https://img.shields.io/badge/platform-macOS-blue.svg)](https://www.apple.com/macos/)
+
+An MCP server for Apple Mail (macOS Mail.app) that connects Claude to your email via AppleScript. Provides 18 tools for reading, searching, managing, and composing emails.
 
 ## Supported Accounts
 
@@ -15,27 +19,30 @@ Works with **any email account configured in macOS Mail.app** — iCloud, Gmail,
 ## Installation
 
 ```bash
-cd ~/Projects/macos-mail-mcp
+git clone https://github.com/marius-cetanas/macos-mail-mcp.git
+cd macos-mail-mcp
 npm install
 npm run build
 ```
 
 ### Register with Claude Code (CLI)
 
+Replace `/path/to/macos-mail-mcp` with the actual path where you cloned the repo:
+
 ```bash
-claude mcp add --transport stdio --scope user macos-mail-mcp -- node ~/Projects/macos-mail-mcp/build/index.js
+claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/macos-mail-mcp/build/index.js
 ```
 
-### Register with Claude Desktop / Cowork
+### Register with Claude Desktop
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`, replacing the path with your actual clone location:
 
 ```json
 {
   "mcpServers": {
     "macos-mail-mcp": {
       "command": "node",
-      "args": ["/Users/<your-username>/Projects/macos-mail-mcp/build/index.js"]
+      "args": ["/path/to/macos-mail-mcp/build/index.js"]
     }
   }
 }

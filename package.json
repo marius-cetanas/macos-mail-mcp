@@ -3,6 +3,29 @@
   "version": "1.0.0",
   "description": "MCP server connecting Claude to macOS Mail.app via AppleScript",
   "type": "module",
+  "author": "Marius Cetanas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/marius-cetanas/macos-mail-mcp.git"
+  },
+  "homepage": "https://github.com/marius-cetanas/macos-mail-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/marius-cetanas/macos-mail-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "macos",
+    "mail",
+    "apple-mail",
+    "applescript",
+    "claude",
+    "email",
+    "model-context-protocol"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "bin": {
     "macos-mail-mcp": "./build/index.js"
   },
@@ -11,7 +34,8 @@
     "copy-scripts": "cp src/bridge/escape-for-json.applescript build/bridge/ && cd src && find domains -name '*.applescript' -exec sh -c 'mkdir -p \"../build/$(dirname \"$1\")\" && cp \"$1\" \"../build/$1\"' _ {} \\;",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build && npm test"
   },
   "files": ["build"],
   "dependencies": {

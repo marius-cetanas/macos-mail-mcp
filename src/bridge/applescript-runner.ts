@@ -1,3 +1,4 @@
+// macos-mail-mcp — MIT License — https://github.com/marius-cetanas/macos-mail-mcp
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile, mkdtemp, rm } from "node:fs/promises";
@@ -129,9 +130,9 @@ export async function runAppleScript(
       );
     }
 
-    // Log stderr warnings if any (non-fatal)
+    // stderr present but osascript exited 0 — treat as non-fatal warning
     if (stderr && stderr.trim()) {
-      // stderr present but didn't cause an error — treat as warning, continue
+      console.warn(`[macos-mail-mcp] AppleScript warning: ${stderr.trim()}`);
     }
 
     return parseAppleScriptOutput(stdout);

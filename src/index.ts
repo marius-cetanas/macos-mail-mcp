@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// macos-mail-mcp — MIT License — https://github.com/marius-cetanas/macos-mail-mcp
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAccountsTools } from "./domains/accounts/accounts.tools.js";

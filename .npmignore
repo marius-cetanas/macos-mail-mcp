@@ -1,0 +1,18 @@
+# Source (only ship build/)
+src/
+tests/
+docs/
+
+# Config
+tsconfig.json
+vitest.config.ts
+.gitignore
+.DS_Store
+.env
+.env.*
+
+# Development
+CLAUDE.md
+CONTRIBUTING.md
+CHANGELOG.md
+*.tsbuildinfo

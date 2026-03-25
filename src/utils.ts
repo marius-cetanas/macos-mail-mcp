@@ -1,3 +1,4 @@
+// macos-mail-mcp — MIT License — https://github.com/marius-cetanas/macos-mail-mcp
 import { homedir } from "node:os";
 
 /**
