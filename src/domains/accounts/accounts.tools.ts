@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
+import { sanitize } from "../../utils.js";
 import type { Account, AccountDetail } from "../../types.js";
 
 export async function handleListAccounts(): Promise<unknown> {
@@ -11,7 +12,7 @@ export async function handleGetAccountDetail(
   accountName: string
 ): Promise<unknown> {
   return runAppleScript("accounts/scripts/get-account-detail.applescript", {
-    accountName,
+    accountName: sanitize(String(accountName)),
   });
 }
 

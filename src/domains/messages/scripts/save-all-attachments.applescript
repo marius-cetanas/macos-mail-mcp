@@ -33,7 +33,7 @@ on escapeForJson(theString)
     set theString to parts as text
 
     -- Escape other C0 control characters (0-8, 11-12, 14-31)
-    set resultStr to ""
+    set resultList to {}
     repeat with i from 1 to length of theString
         set c to character i of theString
         set cCode to id of c
@@ -41,12 +41,14 @@ on escapeForJson(theString)
             set hexChars to "0123456789abcdef"
             set hi to (cCode div 16) + 1
             set lo to (cCode mod 16) + 1
-            set resultStr to resultStr & "\\u00" & character hi of hexChars & character lo of hexChars
+            copy ("\\u00" & character hi of hexChars & character lo of hexChars) to end of resultList
         else
-            set resultStr to resultStr & c
+            copy c to end of resultList
         end if
     end repeat
 
+    set AppleScript's text item delimiters to ""
+    set resultStr to resultList as text
     set AppleScript's text item delimiters to oldDelims
     return resultStr
 end escapeForJson
@@ -60,9 +62,35 @@ tell application "Mail"
         set savedFilesJson to ""
         set savedCount to 0
 
+        set usedNames to {}
         repeat with att in mail attachments of msg
             if downloaded of att is true then
                 set attName to name of att as text
+                -- Deduplicate: if name already used, append (n) before extension
+                if usedNames contains attName then
+                    set dotOffset to -1
+                    repeat with ci from (length of attName) to 1 by -1
+                        if character ci of attName is "." then
+                            set dotOffset to ci
+                            exit repeat
+                        end if
+                    end repeat
+                    set seqNum to 2
+                    if dotOffset > 0 then
+                        set baseName to text 1 thru (dotOffset - 1) of attName
+                        set extPart to text dotOffset thru -1 of attName
+                    else
+                        set baseName to attName
+                        set extPart to ""
+                    end if
+                    set candidateName to baseName & " (" & seqNum & ")" & extPart
+                    repeat while usedNames contains candidateName
+                        set seqNum to seqNum + 1
+                        set candidateName to baseName & " (" & seqNum & ")" & extPart
+                    end repeat
+                    set attName to candidateName
+                end if
+                copy attName to end of usedNames
                 set fullSavePath to saveFolderPath & "/" & attName
                 save att in POSIX file fullSavePath
                 set escapedPath to my escapeForJson(fullSavePath)

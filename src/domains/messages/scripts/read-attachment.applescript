@@ -33,7 +33,7 @@ on escapeForJson(theString)
     set theString to parts as text
 
     -- Escape other C0 control characters (0-8, 11-12, 14-31)
-    set resultStr to ""
+    set resultList to {}
     repeat with i from 1 to length of theString
         set c to character i of theString
         set cCode to id of c
@@ -41,12 +41,14 @@ on escapeForJson(theString)
             set hexChars to "0123456789abcdef"
             set hi to (cCode div 16) + 1
             set lo to (cCode mod 16) + 1
-            set resultStr to resultStr & "\\u00" & character hi of hexChars & character lo of hexChars
+            copy ("\\u00" & character hi of hexChars & character lo of hexChars) to end of resultList
         else
-            set resultStr to resultStr & c
+            copy c to end of resultList
         end if
     end repeat
 
+    set AppleScript's text item delimiters to ""
+    set resultStr to resultList as text
     set AppleScript's text item delimiters to oldDelims
     return resultStr
 end escapeForJson

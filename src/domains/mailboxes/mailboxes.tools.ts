@@ -1,11 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
-
-/** Remove newlines/CR that would break AppleScript string literals */
-function sanitize(value: string): string {
-  return value.replace(/[\r\n]+/g, " ");
-}
+import { sanitize } from "../../utils.js";
 
 export async function handleListMailboxes(
   accountName?: string

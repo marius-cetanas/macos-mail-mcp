@@ -4,11 +4,7 @@ import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
-
-/** Remove newlines/CR that would break AppleScript string literals */
-function sanitize(value: string): string {
-  return value.replace(/[\r\n]+/g, " ");
-}
+import { sanitize } from "../../utils.js";
 
 export async function handleSendMessage(
   to: string,

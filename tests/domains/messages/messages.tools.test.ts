@@ -50,7 +50,8 @@ describe("messages tools - reading", () => {
     await handleSearchMessages("subject", "invoice", undefined, undefined, 50);
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/search-messages.applescript",
-      { field: "subject", query: "invoice", mailboxName: "__ALL__", accountName: "__ALL__", limit: "50" }
+      { field: "subject", query: "invoice", mailboxName: "__ALL__", accountName: "__ALL__", limit: "50" },
+      { timeout: 120_000 }
     );
   });
 });

@@ -1,21 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
-
-function expandTilde(p: string): string {
-  if (p.startsWith("~/")) {
-    return homedir() + p.slice(1);
-  }
-  return p;
-}
-
-/** Remove newlines/CR that would break AppleScript string literals */
-function sanitize(value: string): string {
-  return value.replace(/[\r\n]+/g, " ");
-}
+import { sanitize, expandTilde } from "../../utils.js";
 
 export async function handleListMessages(
   accountName: string,
@@ -50,13 +39,17 @@ export async function handleSearchMessages(
   accountName?: string,
   limit?: number
 ): Promise<unknown> {
-  return runAppleScript("messages/scripts/search-messages.applescript", {
-    field: String(field),
-    query: String(query),
-    mailboxName: mailboxName !== undefined ? String(mailboxName) : "__ALL__",
-    accountName: accountName !== undefined ? String(accountName) : "__ALL__",
-    limit: limit !== undefined ? String(limit) : "50",
-  });
+  return runAppleScript(
+    "messages/scripts/search-messages.applescript",
+    {
+      field: String(field),
+      query: String(query),
+      mailboxName: mailboxName !== undefined ? sanitize(String(mailboxName)) : "__ALL__",
+      accountName: accountName !== undefined ? sanitize(String(accountName)) : "__ALL__",
+      limit: limit !== undefined ? String(limit) : "50",
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
 }
 
 export async function handleMoveMessage(
