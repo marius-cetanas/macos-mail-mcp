@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
-import { sanitize } from "../../utils.js";
+import { sanitize, toolError } from "../../utils.js";
 import type { Account, AccountDetail } from "../../types.js";
 
 export async function handleListAccounts(): Promise<unknown> {
@@ -30,11 +30,7 @@ export function registerAccountsTools(server: McpServer): void {
           ],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -54,11 +50,7 @@ export function registerAccountsTools(server: McpServer): void {
           ],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );

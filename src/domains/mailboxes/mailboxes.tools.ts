@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
-import { sanitize } from "../../utils.js";
+import { sanitize, toolError } from "../../utils.js";
 
 export async function handleListMailboxes(
   accountName?: string
@@ -40,11 +40,7 @@ export function registerMailboxesTools(server: McpServer): void {
           ],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -65,11 +61,7 @@ export function registerMailboxesTools(server: McpServer): void {
           ],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );

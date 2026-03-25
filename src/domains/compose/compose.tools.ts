@@ -4,7 +4,7 @@ import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
-import { sanitize } from "../../utils.js";
+import { sanitize, toolError } from "../../utils.js";
 
 export async function handleSendMessage(
   to: string,
@@ -121,11 +121,7 @@ export function registerComposeTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -155,11 +151,7 @@ export function registerComposeTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -190,11 +182,7 @@ export function registerComposeTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );

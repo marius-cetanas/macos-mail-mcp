@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc && chmod 755 build/index.js && npm run copy-scripts",
-    "copy-scripts": "cd src && find domains -name '*.applescript' -exec sh -c 'mkdir -p \"../build/$(dirname \"$1\")\" && cp \"$1\" \"../build/$1\"' _ {} \\;",
+    "copy-scripts": "cp src/bridge/escape-for-json.applescript build/bridge/ && cd src && find domains -name '*.applescript' -exec sh -c 'mkdir -p \"../build/$(dirname \"$1\")\" && cp \"$1\" \"../build/$1\"' _ {} \\;",
     "test": "vitest run",
     "test:watch": "vitest",
     "dev": "tsc --watch"

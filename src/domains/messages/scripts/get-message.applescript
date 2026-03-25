@@ -1,58 +1,3 @@
-on escapeForJson(theString)
-    -- Use text item delimiters for O(n) performance instead of character-by-character O(n²)
-    set oldDelims to AppleScript's text item delimiters
-
-    -- Escape backslashes first
-    set AppleScript's text item delimiters to "\\"
-    set parts to text items of theString
-    set AppleScript's text item delimiters to "\\\\"
-    set theString to parts as text
-
-    -- Escape double quotes
-    set AppleScript's text item delimiters to "\""
-    set parts to text items of theString
-    set AppleScript's text item delimiters to "\\\""
-    set theString to parts as text
-
-    -- Escape tabs (ASCII 9)
-    set AppleScript's text item delimiters to (ASCII character 9)
-    set parts to text items of theString
-    set AppleScript's text item delimiters to "\\t"
-    set theString to parts as text
-
-    -- Escape newlines (ASCII 10)
-    set AppleScript's text item delimiters to (ASCII character 10)
-    set parts to text items of theString
-    set AppleScript's text item delimiters to "\\n"
-    set theString to parts as text
-
-    -- Escape carriage returns (ASCII 13)
-    set AppleScript's text item delimiters to (ASCII character 13)
-    set parts to text items of theString
-    set AppleScript's text item delimiters to "\\r"
-    set theString to parts as text
-
-    -- Escape other C0 control characters (0-8, 11-12, 14-31)
-    set resultList to {}
-    repeat with i from 1 to length of theString
-        set c to character i of theString
-        set cCode to id of c
-        if cCode >= 0 and cCode <= 31 then
-            set hexChars to "0123456789abcdef"
-            set hi to (cCode div 16) + 1
-            set lo to (cCode mod 16) + 1
-            copy ("\\u00" & character hi of hexChars & character lo of hexChars) to end of resultList
-        else
-            copy c to end of resultList
-        end if
-    end repeat
-
-    set AppleScript's text item delimiters to ""
-    set resultStr to resultList as text
-    set AppleScript's text item delimiters to oldDelims
-    return resultStr
-end escapeForJson
-
 on mimeFromExtension(fileName)
     set lcName to do shell script "echo " & quoted form of fileName & " | tr '[:upper:]' '[:lower:]'"
     if lcName ends with ".pdf" then return "application/pdf"
@@ -63,19 +8,25 @@ on mimeFromExtension(fileName)
     if lcName ends with ".ppt" then return "application/vnd.ms-powerpoint"
     if lcName ends with ".pptx" then return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     if lcName ends with ".zip" then return "application/zip"
+    if lcName ends with ".gz" then return "application/gzip"
+    if lcName ends with ".tar" then return "application/x-tar"
     if lcName ends with ".jpg" or lcName ends with ".jpeg" then return "image/jpeg"
     if lcName ends with ".png" then return "image/png"
     if lcName ends with ".gif" then return "image/gif"
     if lcName ends with ".svg" then return "image/svg+xml"
-    if lcName ends with ".txt" then return "text/plain"
-    if lcName ends with ".csv" then return "text/csv"
-    if lcName ends with ".html" or lcName ends with ".htm" then return "text/html"
-    if lcName ends with ".json" then return "application/json"
-    if lcName ends with ".xml" then return "application/xml"
-    if lcName ends with ".md" then return "text/markdown"
+    if lcName ends with ".webp" then return "image/webp"
     if lcName ends with ".mp3" then return "audio/mpeg"
     if lcName ends with ".mp4" then return "video/mp4"
     if lcName ends with ".mov" then return "video/quicktime"
+    if lcName ends with ".txt" then return "text/plain"
+    if lcName ends with ".csv" then return "text/csv"
+    if lcName ends with ".html" or lcName ends with ".htm" then return "text/html"
+    if lcName ends with ".css" then return "text/css"
+    if lcName ends with ".js" then return "application/javascript"
+    if lcName ends with ".json" then return "application/json"
+    if lcName ends with ".xml" then return "application/xml"
+    if lcName ends with ".md" then return "text/markdown"
+    if lcName ends with ".log" then return "text/plain"
     if lcName ends with ".ics" then return "text/calendar"
     if lcName ends with ".eml" then return "message/rfc822"
     return "application/octet-stream"

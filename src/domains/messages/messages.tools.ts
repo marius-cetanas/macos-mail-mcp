@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
-import { sanitize, expandTilde } from "../../utils.js";
+import { sanitize, expandTilde, toolError } from "../../utils.js";
 
 export async function handleListMessages(
   accountName: string,
@@ -218,11 +218,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -242,11 +238,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -268,11 +260,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -293,11 +281,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -317,11 +301,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -343,11 +323,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -368,11 +344,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -392,11 +364,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -418,11 +386,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -443,11 +407,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );
@@ -468,11 +428,7 @@ export function registerMessagesTools(server: McpServer): void {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
       } catch (error: unknown) {
-        const err = error as Error;
-        return {
-          content: [{ type: "text", text: "Error: " + err.message }],
-          isError: true,
-        };
+        return toolError(error);
       }
     }
   );

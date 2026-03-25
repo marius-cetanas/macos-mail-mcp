@@ -81,11 +81,16 @@ export async function runAppleScript(
   const thisDir = dirname(fileURLToPath(import.meta.url));
   const resolvedScriptPath = join(thisDir, "..", "domains", scriptPath);
 
-  // Read template
-  const template = await readFile(resolvedScriptPath, "utf8");
+  // Read shared escapeForJson handler and domain script template
+  const sharedHandlerPath = join(thisDir, "escape-for-json.applescript");
+  const [sharedHandler, template] = await Promise.all([
+    readFile(sharedHandlerPath, "utf8"),
+    readFile(resolvedScriptPath, "utf8"),
+  ]);
 
-  // Substitute params if provided
-  const script = params ? substituteParams(template, params) : template;
+  // Substitute params if provided, then prepend shared handler
+  const interpolated = params ? substituteParams(template, params) : template;
+  const script = sharedHandler + "\n" + interpolated;
 
   // Write to temp file
   const tempDir = await mkdtemp(join(tmpdir(), "macos-mail-mcp-"));
