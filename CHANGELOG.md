@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-03-29
+
+### Added
+
+- `create_mailbox` — Create new mailboxes (top-level or nested under a parent)
+- `move_messages` — Bulk move multiple messages in a single operation (more efficient than repeated `move_message` calls)
+- Date filtering on `search_messages` and `list_messages` — optional `after` and `before` ISO 8601 date params
+- `search_messages` results now include `mailboxName` for each result
+- `get_message` no longer requires `mailboxName` — omit it to search all mailboxes in the account
+- `get_thread` added to roadmap (v2) in README
+- 62 unit tests (up from 56)
+
+### Changed
+
+- Tool count: 18 → 20
+- `search_messages` `query` param is now optional when using date filters
+
 ## [1.0.2] - 2026-03-25
 
 ### Fixed

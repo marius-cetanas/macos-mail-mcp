@@ -1,0 +1,128 @@
+on mimeFromExtension(fileName)
+    set lcName to do shell script "echo " & quoted form of fileName & " | tr '[:upper:]' '[:lower:]'"
+    if lcName ends with ".pdf" then return "application/pdf"
+    if lcName ends with ".doc" then return "application/msword"
+    if lcName ends with ".docx" then return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if lcName ends with ".xls" then return "application/vnd.ms-excel"
+    if lcName ends with ".xlsx" then return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if lcName ends with ".ppt" then return "application/vnd.ms-powerpoint"
+    if lcName ends with ".pptx" then return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    if lcName ends with ".zip" then return "application/zip"
+    if lcName ends with ".gz" then return "application/gzip"
+    if lcName ends with ".tar" then return "application/x-tar"
+    if lcName ends with ".jpg" or lcName ends with ".jpeg" then return "image/jpeg"
+    if lcName ends with ".png" then return "image/png"
+    if lcName ends with ".gif" then return "image/gif"
+    if lcName ends with ".svg" then return "image/svg+xml"
+    if lcName ends with ".webp" then return "image/webp"
+    if lcName ends with ".mp3" then return "audio/mpeg"
+    if lcName ends with ".mp4" then return "video/mp4"
+    if lcName ends with ".mov" then return "video/quicktime"
+    if lcName ends with ".txt" then return "text/plain"
+    if lcName ends with ".csv" then return "text/csv"
+    if lcName ends with ".html" or lcName ends with ".htm" then return "text/html"
+    if lcName ends with ".css" then return "text/css"
+    if lcName ends with ".js" then return "application/javascript"
+    if lcName ends with ".json" then return "application/json"
+    if lcName ends with ".xml" then return "application/xml"
+    if lcName ends with ".md" then return "text/markdown"
+    if lcName ends with ".log" then return "text/plain"
+    if lcName ends with ".ics" then return "text/calendar"
+    if lcName ends with ".eml" then return "message/rfc822"
+    return "application/octet-stream"
+end mimeFromExtension
+
+on buildRecipientsJson(recipientList)
+    using terms from application "Mail"
+        set recipJson to ""
+        repeat with r in recipientList
+            set rName to my escapeForJson(name of r as text)
+            set rAddr to my escapeForJson(address of r as text)
+            if recipJson is not "" then set recipJson to recipJson & ", "
+            set recipJson to recipJson & "{\"name\": \"" & rName & "\", \"address\": \"" & rAddr & "\"}"
+        end repeat
+        return "[" & recipJson & "]"
+    end using terms from
+end buildRecipientsJson
+
+tell application "Mail"
+    try
+        set targetId to {{messageId}} as integer
+        set theAccount to account "{{accountName}}"
+        set foundMsg to missing value
+        set foundMboxName to ""
+
+        repeat with mb in every mailbox of theAccount
+            try
+                set msg to (first message of mb whose id is targetId)
+                set foundMsg to msg
+                set foundMboxName to name of mb
+                exit repeat
+            end try
+        end repeat
+
+        if foundMsg is missing value then
+            return "{\"error\": \"Message with ID " & targetId & " not found in any mailbox of account {{accountName}}\", \"errorNumber\": -1}"
+        end if
+
+        set msg to foundMsg
+        set msgId to id of msg
+        set msgSubject to my escapeForJson(subject of msg as text)
+        set msgSender to my escapeForJson(sender of msg as text)
+        set msgDate to date received of msg as «class isot» as string
+        set msgRead to read status of msg
+        set msgFlagged to flagged status of msg
+        set msgFlagIndex to flag index of msg
+        set msgHasAttach to (count of mail attachments of msg) > 0
+
+        set msgBody to my escapeForJson(content of msg as text)
+        set msgHeaders to my escapeForJson(all headers of msg as text)
+
+        set toJson to my buildRecipientsJson(to recipients of msg)
+        set ccJson to my buildRecipientsJson(cc recipients of msg)
+        set bccJson to my buildRecipientsJson(bcc recipients of msg)
+
+        set attachJson to ""
+        repeat with att in mail attachments of msg
+            set attName to my escapeForJson(name of att as text)
+            set attMime to "unknown"
+            try
+                set rawMime to MIME type of att
+                if rawMime is not missing value and (rawMime as text) is not "missing value" then
+                    set attMime to my escapeForJson(rawMime as text)
+                else
+                    set attMime to my mimeFromExtension(name of att as text)
+                end if
+            on error
+                set attMime to my mimeFromExtension(name of att as text)
+            end try
+            set attSize to file size of att
+            if attSize is missing value then set attSize to 0
+            set attDownloaded to downloaded of att
+            if attachJson is not "" then set attachJson to attachJson & ", "
+            set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & attSize & ", \"downloaded\": " & attDownloaded & "}"
+        end repeat
+
+        set mboxNameEsc to my escapeForJson(foundMboxName)
+        set result to "{"
+        set result to result & "\"id\": " & msgId & ", "
+        set result to result & "\"mailboxName\": \"" & mboxNameEsc & "\", "
+        set result to result & "\"subject\": \"" & msgSubject & "\", "
+        set result to result & "\"sender\": \"" & msgSender & "\", "
+        set result to result & "\"dateReceived\": \"" & msgDate & "\", "
+        set result to result & "\"readStatus\": " & msgRead & ", "
+        set result to result & "\"flagged\": " & msgFlagged & ", "
+        set result to result & "\"flagIndex\": " & msgFlagIndex & ", "
+        set result to result & "\"hasAttachments\": " & msgHasAttach & ", "
+        set result to result & "\"toRecipients\": " & toJson & ", "
+        set result to result & "\"ccRecipients\": " & ccJson & ", "
+        set result to result & "\"bccRecipients\": " & bccJson & ", "
+        set result to result & "\"body\": \"" & msgBody & "\", "
+        set result to result & "\"headers\": \"" & msgHeaders & "\", "
+        set result to result & "\"attachments\": [" & attachJson & "]"
+        set result to result & "}"
+        return result
+    on error errMsg number errNum
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+    end try
+end tell

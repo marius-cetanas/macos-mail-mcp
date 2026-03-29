@@ -5,11 +5,11 @@
 [![Node.js 18+](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
 [![macOS](https://img.shields.io/badge/platform-macOS-blue.svg)](https://www.apple.com/macos/)
 
-An MCP server for Apple Mail (macOS Mail.app) that connects Claude to your email via AppleScript. Provides 18 tools for reading, searching, managing, and composing emails.
+An MCP server for Apple Mail (macOS Mail.app) that connects Claude to your email via AppleScript. Provides 20 tools for reading, searching, managing, and composing emails.
 
 ## Supported Accounts
 
-Works with **any email account configured in macOS Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed; just add the account in Mail.app and it becomes available through all 18 tools.
+Works with **any email account configured in macOS Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed; just add the account in Mail.app and it becomes available through all 20 tools.
 
 ## Requirements
 
@@ -89,21 +89,23 @@ On first use, macOS will prompt to grant automation permission for controlling M
 | `list_accounts` | List all mail accounts (name, type, enabled, emails) |
 | `get_account_detail` | Get full account details (server, port, SSL, mailbox count) |
 
-### Mailboxes (2)
+### Mailboxes (3)
 
 | Tool | Description |
 |---|---|
 | `list_mailboxes` | List mailboxes for an account or all accounts |
 | `get_mailbox_info` | Get mailbox details (message count, unread count) |
+| `create_mailbox` | Create a new mailbox (top-level or nested under a parent) |
 
-### Messages (7)
+### Messages (8)
 
 | Tool | Description |
 |---|---|
-| `list_messages` | List messages with pagination (limit/offset) |
-| `get_message` | Get full message content, headers, recipients, attachments |
-| `search_messages` | Search by subject, sender, or content |
+| `list_messages` | List messages with pagination (limit/offset) and optional date filtering (after/before) |
+| `get_message` | Get full message content, headers, recipients, attachments. Mailbox name is optional — omit to search all mailboxes in the account. |
+| `search_messages` | Search by subject, sender, or content with optional date filtering (after/before). Results include the mailbox name. |
 | `move_message` | Move a message to a different mailbox |
+| `move_messages` | Bulk move multiple messages to a different mailbox in a single operation |
 | `delete_message` | Delete a message (moves to Trash) |
 | `flag_message` | Set/clear flag with optional color index (0-6) |
 | `mark_read` | Mark message as read or unread |
@@ -183,6 +185,11 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 
 - **Attachments on replies/forwards** — AppleScript does not support adding new attachments to reply/forward messages (Mail.app limitation).
 - **MIME type detection** — Uses extension-based fallback when Mail.app's native MIME type property returns `missing value`.
+- **Mailbox management** — Creating mailboxes is supported, but deleting and renaming mailboxes is not possible via AppleScript (Mail.app limitation).
+
+### Roadmap
+
+- **`get_thread`** — Retrieve all messages in a conversation thread. Mail.app has no native threading support; implementation would require parsing RFC headers (`Message-ID`, `In-Reply-To`, `References`) which is slow on large mailboxes. Planned for v2.
 
 ## Development
 

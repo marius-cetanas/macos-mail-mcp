@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via AppleScript. Provides 18 tools across 4 domains for full email management: reading, searching, composing, flagging, moving, deleting, and attachment handling.
+MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via AppleScript. Provides 20 tools across 4 domains for full email management: reading, searching, composing, flagging, moving, deleting, and attachment handling.
 
 Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed when adding new accounts; just configure them in Mail.app.
 
@@ -12,7 +12,7 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (56 unit tests, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest (62 unit tests, mocked bridge — no real Mail.app needed)
 
 ## Architecture
 
@@ -36,8 +36,8 @@ src/
     escape-for-json.applescript — Shared JSON escaping handler (auto-prepended to every script)
   domains/
     accounts/   — 2 tools: list_accounts, get_account_detail
-    mailboxes/  — 2 tools: list_mailboxes, get_mailbox_info
-    messages/   — 7 message tools + 4 attachment tools (11 total in this domain)
+    mailboxes/  — 3 tools: list_mailboxes, get_mailbox_info, create_mailbox
+    messages/   — 8 message tools + 4 attachment tools (12 total in this domain)
     compose/    — 3 tools: send_message, reply_to_message, forward_message
 tests/
   utils.test.ts                — Tests for sanitize, expandTilde
@@ -78,7 +78,11 @@ All string parameters injected into AppleScript string literals (account names, 
 ### Timeouts
 
 - `DEFAULT_TIMEOUT` (30s) — most operations
-- `EXTENDED_TIMEOUT` (120s) — attachment operations + search_messages (content search on IMAP can be slow)
+- `EXTENDED_TIMEOUT` (120s) — attachment operations, search_messages, move_messages, get_message without mailboxName, date-filtered list_messages
+
+### Date Filtering Pattern
+
+ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFromNow()`), passed as `{{afterSeconds}}`/`{{beforeSeconds}}` to AppleScript, then reconstructed: `set afterDate to (current date) - {{afterSeconds}}`. This avoids locale-dependent date parsing in AppleScript. Post-filtering is applied inside the repeat loop, not in the `whose` clause (which can't dynamically combine text and date criteria).
 
 ## How to Add a New Tool
 

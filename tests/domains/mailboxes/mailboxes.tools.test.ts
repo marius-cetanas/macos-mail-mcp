@@ -26,6 +26,20 @@ describe("mailboxes tools", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/list-mailboxes.applescript", { accountName: "__ALL__" });
   });
 
+  it("create_mailbox passes accountName and mailboxName", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true, mailboxName: "Archive", accountName: "Gmail" });
+    const { handleCreateMailbox } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");
+    await handleCreateMailbox("Gmail", "Archive");
+    expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/create-mailbox.applescript", { accountName: "Gmail", mailboxName: "Archive", parentMailboxName: "__NONE__" });
+  });
+
+  it("create_mailbox passes parentMailboxName when provided", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true, mailboxName: "Q2", accountName: "Gmail" });
+    const { handleCreateMailbox } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");
+    await handleCreateMailbox("Gmail", "Q2", "Projects");
+    expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/create-mailbox.applescript", { accountName: "Gmail", mailboxName: "Q2", parentMailboxName: "Projects" });
+  });
+
   it("get_mailbox_info passes accountName and mailboxName", async () => {
     mockRunAppleScript.mockResolvedValue({ name: "INBOX", unreadCount: 5, accountName: "Gmail", messageCount: 120, container: null });
     const { handleGetMailboxInfo } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");

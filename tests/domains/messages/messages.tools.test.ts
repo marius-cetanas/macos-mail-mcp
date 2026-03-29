@@ -30,17 +30,40 @@ describe("messages tools - reading", () => {
     await handleListMessages("Gmail", "INBOX", 10, 5);
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/list-messages.applescript",
-      { accountName: "Gmail", mailboxName: "INBOX", limit: "10", offset: "5" }
+      { accountName: "Gmail", mailboxName: "INBOX", limit: "10", offset: "5", hasDateFilter: "false", afterSeconds: "0", beforeSeconds: "0" },
+      undefined
     );
   });
 
-  it("get_message passes messageId as string", async () => {
+  it("list_messages passes date filter params when provided", async () => {
+    mockRunAppleScript.mockResolvedValue([]);
+    const { handleListMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleListMessages("Gmail", "INBOX", 10, 0, "2024-01-01T00:00:00Z", "2024-12-31T23:59:59Z");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/list-messages.applescript",
+      expect.objectContaining({ hasDateFilter: "true", accountName: "Gmail", mailboxName: "INBOX" }),
+      { timeout: 120_000 }
+    );
+  });
+
+  it("get_message passes messageId as string with mailboxName", async () => {
     mockRunAppleScript.mockResolvedValue({ id: 12345, subject: "Test" });
     const { handleGetMessage } = await import("../../../src/domains/messages/messages.tools.js");
-    await handleGetMessage(12345, "INBOX", "Gmail");
+    await handleGetMessage(12345, "Gmail", "INBOX");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/get-message.applescript",
       { messageId: "12345", mailboxName: "INBOX", accountName: "Gmail" }
+    );
+  });
+
+  it("get_message without mailboxName uses get-message-by-id script", async () => {
+    mockRunAppleScript.mockResolvedValue({ id: 12345, subject: "Test", mailboxName: "INBOX" });
+    const { handleGetMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleGetMessage(12345, "Gmail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/get-message-by-id.applescript",
+      { messageId: "12345", accountName: "Gmail" },
+      { timeout: 120_000 }
     );
   });
 
@@ -50,7 +73,18 @@ describe("messages tools - reading", () => {
     await handleSearchMessages("subject", "invoice", undefined, undefined, 50);
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/search-messages.applescript",
-      { field: "subject", query: "invoice", mailboxName: "__ALL__", accountName: "__ALL__", limit: "50" },
+      { field: "subject", query: "invoice", mailboxName: "__ALL__", accountName: "__ALL__", limit: "50", hasDateFilter: "false", afterSeconds: "0", beforeSeconds: "0" },
+      { timeout: 120_000 }
+    );
+  });
+
+  it("search_messages passes date filter params when provided", async () => {
+    mockRunAppleScript.mockResolvedValue([]);
+    const { handleSearchMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleSearchMessages("subject", "invoice", "INBOX", "Gmail", 25, "2024-06-01T00:00:00Z", "2024-12-31T23:59:59Z");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/search-messages.applescript",
+      expect.objectContaining({ hasDateFilter: "true", field: "subject", query: "invoice", mailboxName: "INBOX", accountName: "Gmail" }),
       { timeout: 120_000 }
     );
   });
@@ -66,6 +100,17 @@ describe("messages tools - managing", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/move-message.applescript",
       { messageId: "123", mailboxName: "INBOX", toMailbox: "Archive", accountName: "Gmail" }
+    );
+  });
+
+  it("move_messages passes comma-separated IDs and uses extended timeout", async () => {
+    mockRunAppleScript.mockResolvedValue({ moved: 3, failed: 0, errors: [] });
+    const { handleMoveMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleMoveMessages("Gmail", "INBOX", [101, 102, 103], "Archive");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/move-messages.applescript",
+      { accountName: "Gmail", mailboxName: "INBOX", toMailbox: "Archive", messageIds: "101,102,103" },
+      { timeout: 120_000 }
     );
   });
 

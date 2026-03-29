@@ -11,6 +11,19 @@ export async function handleListMailboxes(
   });
 }
 
+export async function handleCreateMailbox(
+  accountName: string,
+  mailboxName: string,
+  parentMailboxName?: string
+): Promise<unknown> {
+  return runAppleScript("mailboxes/scripts/create-mailbox.applescript", {
+    accountName: sanitize(accountName),
+    mailboxName: sanitize(mailboxName),
+    parentMailboxName:
+      parentMailboxName !== undefined ? sanitize(parentMailboxName) : "__NONE__",
+  });
+}
+
 export async function handleGetMailboxInfo(
   accountName: string,
   mailboxName: string
@@ -34,6 +47,31 @@ export function registerMailboxesTools(server: McpServer): void {
     async ({ accountName }) => {
       try {
         const result = await handleListMailboxes(accountName);
+        return {
+          content: [
+            { type: "text", text: JSON.stringify(result, null, 2) },
+          ],
+        };
+      } catch (error: unknown) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.tool(
+    "create_mailbox",
+    "Create a new mailbox (folder) in a Mail.app account. Can create top-level or nested mailboxes.",
+    {
+      accountName: z.string().describe("The name of the account to create the mailbox in"),
+      mailboxName: z.string().describe("The name of the new mailbox to create"),
+      parentMailboxName: z
+        .string()
+        .optional()
+        .describe("The name of the parent mailbox for nesting; omit for top-level"),
+    },
+    async ({ accountName, mailboxName, parentMailboxName }) => {
+      try {
+        const result = await handleCreateMailbox(accountName, mailboxName, parentMailboxName);
         return {
           content: [
             { type: "text", text: JSON.stringify(result, null, 2) },

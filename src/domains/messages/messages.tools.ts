@@ -10,26 +10,52 @@ export async function handleListMessages(
   accountName: string,
   mailboxName: string,
   limit: number,
-  offset: number
+  offset: number,
+  after?: string,
+  before?: string
 ): Promise<unknown> {
-  return runAppleScript("messages/scripts/list-messages.applescript", {
-    accountName: sanitize(String(accountName)),
-    mailboxName: sanitize(String(mailboxName)),
-    limit: String(limit),
-    offset: String(offset),
-  });
+  const hasDateFilter = after !== undefined || before !== undefined;
+  return runAppleScript(
+    "messages/scripts/list-messages.applescript",
+    {
+      accountName: sanitize(String(accountName)),
+      mailboxName: sanitize(String(mailboxName)),
+      limit: String(limit),
+      offset: String(offset),
+      hasDateFilter: hasDateFilter ? "true" : "false",
+      afterSeconds: after !== undefined ? String(dateToSecondsFromNow(after)) : "0",
+      beforeSeconds: before !== undefined ? String(dateToSecondsFromNow(before)) : "0",
+    },
+    hasDateFilter ? { timeout: EXTENDED_TIMEOUT } : undefined
+  );
 }
 
 export async function handleGetMessage(
   messageId: number,
-  mailboxName: string,
-  accountName: string
+  accountName: string,
+  mailboxName?: string
 ): Promise<unknown> {
-  return runAppleScript("messages/scripts/get-message.applescript", {
-    messageId: String(messageId),
-    mailboxName: sanitize(String(mailboxName)),
-    accountName: sanitize(String(accountName)),
-  });
+  if (mailboxName !== undefined) {
+    return runAppleScript("messages/scripts/get-message.applescript", {
+      messageId: String(messageId),
+      mailboxName: sanitize(String(mailboxName)),
+      accountName: sanitize(String(accountName)),
+    });
+  }
+  return runAppleScript(
+    "messages/scripts/get-message-by-id.applescript",
+    {
+      messageId: String(messageId),
+      accountName: sanitize(String(accountName)),
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
+}
+
+function dateToSecondsFromNow(isoDate: string): number {
+  const d = new Date(isoDate);
+  if (isNaN(d.getTime())) throw new Error(`Invalid date: ${isoDate}`);
+  return Math.floor((Date.now() - d.getTime()) / 1000);
 }
 
 export async function handleSearchMessages(
@@ -37,8 +63,11 @@ export async function handleSearchMessages(
   query: string,
   mailboxName?: string,
   accountName?: string,
-  limit?: number
+  limit?: number,
+  after?: string,
+  before?: string
 ): Promise<unknown> {
+  const hasDateFilter = after !== undefined || before !== undefined;
   return runAppleScript(
     "messages/scripts/search-messages.applescript",
     {
@@ -47,6 +76,9 @@ export async function handleSearchMessages(
       mailboxName: mailboxName !== undefined ? sanitize(String(mailboxName)) : "__ALL__",
       accountName: accountName !== undefined ? sanitize(String(accountName)) : "__ALL__",
       limit: limit !== undefined ? String(limit) : "50",
+      hasDateFilter: hasDateFilter ? "true" : "false",
+      afterSeconds: after !== undefined ? String(dateToSecondsFromNow(after)) : "0",
+      beforeSeconds: before !== undefined ? String(dateToSecondsFromNow(before)) : "0",
     },
     { timeout: EXTENDED_TIMEOUT }
   );
@@ -64,6 +96,24 @@ export async function handleMoveMessage(
     toMailbox: sanitize(String(toMailbox)),
     accountName: sanitize(String(accountName)),
   });
+}
+
+export async function handleMoveMessages(
+  accountName: string,
+  mailboxName: string,
+  messageIds: number[],
+  toMailbox: string
+): Promise<unknown> {
+  return runAppleScript(
+    "messages/scripts/move-messages.applescript",
+    {
+      accountName: sanitize(String(accountName)),
+      mailboxName: sanitize(String(mailboxName)),
+      toMailbox: sanitize(String(toMailbox)),
+      messageIds: messageIds.join(","),
+    },
+    { timeout: EXTENDED_TIMEOUT }
+  );
 }
 
 export async function handleDeleteMessage(
@@ -210,10 +260,12 @@ export function registerMessagesTools(server: McpServer): void {
       mailboxName: z.string().describe("The name of the mailbox to list messages from"),
       limit: z.number().int().positive().default(25).describe("Maximum number of messages to return (default 25)"),
       offset: z.number().int().min(0).default(0).describe("Number of messages to skip for pagination (default 0)"),
+      after: z.string().optional().describe("Only return messages received after this ISO 8601 date (e.g. 2024-01-15T00:00:00Z)"),
+      before: z.string().optional().describe("Only return messages received before this ISO 8601 date (e.g. 2024-12-31T23:59:59Z)"),
     },
-    async ({ accountName, mailboxName, limit, offset }) => {
+    async ({ accountName, mailboxName, limit, offset, after, before }) => {
       try {
-        const result = await handleListMessages(accountName, mailboxName, limit, offset);
+        const result = await handleListMessages(accountName, mailboxName, limit, offset, after, before);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -225,15 +277,15 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "get_message",
-    "Get the full details of a single message by its ID, including body, headers, recipients, and attachments.",
+    "Get the full details of a single message by its ID, including body, headers, recipients, and attachments. If mailboxName is omitted, searches all mailboxes in the account (slower but useful when you don't know which mailbox the message is in).",
     {
       messageId: z.number().int().describe("The numeric ID of the message"),
-      mailboxName: z.string().describe("The name of the mailbox containing the message"),
-      accountName: z.string().describe("The name of the account containing the mailbox"),
+      accountName: z.string().describe("The name of the account containing the message"),
+      mailboxName: z.string().optional().describe("The name of the mailbox containing the message (omit to search all mailboxes in the account)"),
     },
-    async ({ messageId, mailboxName, accountName }) => {
+    async ({ messageId, accountName, mailboxName }) => {
       try {
-        const result = await handleGetMessage(messageId, mailboxName, accountName);
+        const result = await handleGetMessage(messageId, accountName, mailboxName);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -248,14 +300,16 @@ export function registerMessagesTools(server: McpServer): void {
     "Search messages by subject, sender, or content. Prefer 'subject' or 'sender' fields which are fast metadata lookups. The 'content' field searches message bodies and is significantly slower and less reliable — it may trigger full message downloads on IMAP accounts and can time out. WARNING: Mail.app loads all matching messages into memory before applying the limit, so searches on large mailboxes can be very slow. Always narrow results with mailboxName and accountName when possible.",
     {
       field: z.enum(["subject", "sender", "content"]).describe("The field to search in"),
-      query: z.string().describe("The search query string"),
+      query: z.string().default("").describe("The search query string (optional when using date filters)"),
       mailboxName: z.string().optional().describe("Limit search to a specific mailbox (omit to search all mailboxes)"),
       accountName: z.string().optional().describe("Limit search to a specific account (omit to search all accounts)"),
       limit: z.number().int().positive().default(50).describe("Maximum number of results to return (default 50)"),
+      after: z.string().optional().describe("Only return messages received after this ISO 8601 date (e.g. 2024-01-15T00:00:00Z)"),
+      before: z.string().optional().describe("Only return messages received before this ISO 8601 date (e.g. 2024-12-31T23:59:59Z)"),
     },
-    async ({ field, query, mailboxName, accountName, limit }) => {
+    async ({ field, query, mailboxName, accountName, limit, after, before }) => {
       try {
-        const result = await handleSearchMessages(field, query, mailboxName, accountName, limit);
+        const result = await handleSearchMessages(field, query, mailboxName, accountName, limit, after, before);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -277,6 +331,27 @@ export function registerMessagesTools(server: McpServer): void {
     async ({ messageId, mailboxName, toMailbox, accountName }) => {
       try {
         const result = await handleMoveMessage(messageId, mailboxName, toMailbox, accountName);
+        return {
+          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+        };
+      } catch (error: unknown) {
+        return toolError(error);
+      }
+    }
+  );
+
+  server.tool(
+    "move_messages",
+    "Move multiple messages to a different mailbox in a single operation. More efficient than calling move_message multiple times.",
+    {
+      accountName: z.string().describe("The name of the account containing the mailboxes"),
+      mailboxName: z.string().describe("The name of the mailbox currently containing the messages"),
+      messageIds: z.array(z.number().int()).min(1).describe("Array of numeric message IDs to move"),
+      toMailbox: z.string().describe("The name of the destination mailbox"),
+    },
+    async ({ accountName, mailboxName, messageIds, toMailbox }) => {
+      try {
+        const result = await handleMoveMessages(accountName, mailboxName, messageIds, toMailbox);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

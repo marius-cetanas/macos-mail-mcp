@@ -35,7 +35,12 @@ export interface MessageSummary {
   hasAttachments: boolean;
 }
 
+export interface SearchResult extends MessageSummary {
+  mailboxName: string;
+}
+
 export interface MessageDetail extends MessageSummary {
+  mailboxName?: string;
   toRecipients: Recipient[];
   ccRecipients: Recipient[];
   bccRecipients: Recipient[];
