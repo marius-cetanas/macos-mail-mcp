@@ -21,15 +21,19 @@ Works with **any email account configured in macOS Mail.app** — iCloud, Gmail,
 
 ### Quick Install (npm)
 
-The easiest way — no cloning or building required:
+The easiest way — no cloning or building required.
+
+> **Claude Code and Claude Desktop use separate MCP configs.** The `claude mcp add` command below configures **Claude Code only** — it writes to `~/.claude.json`. **Claude Desktop and Cowork** read a different file (`claude_desktop_config.json`) and must be configured separately. Set up whichever you use, or both.
 
 **Claude Code (CLI):**
 
 ```bash
-claude mcp add macos-mail-mcp -- npx macos-mail-mcp
+claude mcp add --scope user macos-mail-mcp -- npx -y macos-mail-mcp
 ```
 
-**Claude Desktop:**
+`--scope user` makes the server available in every project — the default `local` scope only registers it for the directory you run the command in. `-y` lets `npx` install the package on first run without an interactive prompt.
+
+**Claude Desktop (and Cowork):**
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
@@ -37,14 +41,21 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "command": "npx",
-      "args": ["macos-mail-mcp"]
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "macos-mail-mcp"],
+      "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
     }
   }
 }
 ```
 
-Restart the Claude desktop app after adding the config.
+Use the **absolute path** to `npx` — GUI apps don't inherit your shell's `PATH`, so a bare `"npx"` usually fails to launch. Find yours with `which npx`:
+
+- Apple Silicon Homebrew: `/opt/homebrew/bin/npx`
+- Intel Homebrew: `/usr/local/bin/npx`
+- nvm: `~/.nvm/versions/node/<version>/bin/npx`
+
+The `env.PATH` entry lets `npx` locate `node` for the same reason. Then **fully quit** Claude (Cmd+Q — closing the window isn't enough) and reopen; the config is only read at startup. If the server doesn't appear, check `~/Library/Logs/Claude/mcp*.log` for spawn errors.
 
 ### Install from Source
 
@@ -69,12 +80,14 @@ Or add to Claude Desktop config (`~/Library/Application Support/Claude/claude_de
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "command": "node",
+      "command": "/opt/homebrew/bin/node",
       "args": ["/path/to/macos-mail-mcp/build/index.js"]
     }
   }
 }
 ```
+
+Use the absolute path to `node` here too (find yours with `which node`) — same `PATH` reason as above. Then fully quit and reopen Claude.
 
 ### macOS Permissions
 
