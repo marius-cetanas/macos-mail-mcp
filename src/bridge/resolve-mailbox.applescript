@@ -42,14 +42,23 @@ on resolveMailbox(acctName, mboxName)
             get name of mb
             return mb
         end try
-        -- 2. Fallback: match on leaf OR full path, return the full-path reference.
+        -- 2. Fallback: collect mailboxes matching by leaf OR full path, then return
+        -- the full-path reference. A full-path input matches at most one mailbox; a
+        -- bare leaf name may match several under different containers, in which case
+        -- we fail loudly rather than silently operate on the wrong mailbox.
+        set matchPaths to {}
         repeat with candidate in (every mailbox of acct)
             set leafName to (name of candidate as text)
             set fullName to my mailboxFullName(candidate)
             if (mboxName is leafName) or (mboxName is fullName) then
-                return mailbox fullName of acct
+                set end of matchPaths to fullName
             end if
         end repeat
+        if (count of matchPaths) is 1 then
+            return mailbox (item 1 of matchPaths) of acct
+        else if (count of matchPaths) > 1 then
+            error "Mailbox name \"" & mboxName & "\" is ambiguous in account \"" & acctName & "\" -- use the full path (see list_mailboxes)" number -1728
+        end if
         error "Can't find mailbox \"" & mboxName & "\" in account \"" & acctName & "\"" number -1728
     end tell
 end resolveMailbox

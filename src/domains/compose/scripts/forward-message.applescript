@@ -5,7 +5,7 @@ end if
 
 tell application "Mail"
     try
-        set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
         set msg to (first message of theMailbox whose id is {{messageId}})
         set fwdMsg to forward msg without opening window
         tell fwdMsg
