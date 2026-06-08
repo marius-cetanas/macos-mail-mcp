@@ -7,7 +7,7 @@ tell application "Mail"
                 set acctName to my escapeForJson(name of acct)
                 set allMailboxes to every mailbox of acct
                 repeat with mbox in allMailboxes
-                    set mboxName to my escapeForJson(name of mbox)
+                    set mboxName to my escapeForJson(my mailboxFullName(mbox))
                     set mboxUnread to unread count of mbox
                     if mailboxList is not "" then set mailboxList to mailboxList & ", "
                     set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & mboxUnread & ", \"accountName\": \"" & acctName & "\"}"
@@ -18,7 +18,7 @@ tell application "Mail"
             set acctName to my escapeForJson(name of acct)
             set allMailboxes to every mailbox of acct
             repeat with mbox in allMailboxes
-                set mboxName to my escapeForJson(name of mbox)
+                set mboxName to my escapeForJson(my mailboxFullName(mbox))
                 set mboxUnread to unread count of mbox
                 if mailboxList is not "" then set mailboxList to mailboxList & ", "
                 set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & mboxUnread & ", \"accountName\": \"" & acctName & "\"}"

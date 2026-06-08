@@ -90,4 +90,22 @@ describe("compose tools", () => {
       expect.objectContaining({ to: "alice@test.com", bodyFile: "__NONE__" })
     );
   });
+
+  it("reply_to_message forwards a [Gmail]/* mailbox path unchanged", async () => {
+    const { handleReplyToMessage } = await import("../../../src/domains/compose/compose.tools.js");
+    await handleReplyToMessage(123, "[Gmail]/All Mail", "Gmail", "Thanks!", false);
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "compose/scripts/reply-to-message.applescript",
+      expect.objectContaining({ messageId: "123", mailboxName: "[Gmail]/All Mail", accountName: "Gmail" })
+    );
+  });
+
+  it("forward_message forwards a [Gmail]/* mailbox path unchanged", async () => {
+    const { handleForwardMessage } = await import("../../../src/domains/compose/compose.tools.js");
+    await handleForwardMessage(123, "[Gmail]/Sent Mail", "Gmail", "alice@test.com");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "compose/scripts/forward-message.applescript",
+      expect.objectContaining({ mailboxName: "[Gmail]/Sent Mail", accountName: "Gmail", to: "alice@test.com" })
+    );
+  });
 });

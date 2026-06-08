@@ -5,7 +5,7 @@ end if
 
 tell application "Mail"
     try
-        set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
         set msg to (first message of theMailbox whose id is {{messageId}})
         if "{{replyAll}}" is "true" then
             set replyMsg to reply msg reply to all yes without opening window

@@ -98,7 +98,7 @@ tell application "Mail"
                     end repeat
                 else
                     try
-                        set mb to mailbox theMailboxName of acct
+                        set mb to my resolveMailbox((name of acct), theMailboxName)
                         set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum - totalFound, seenIds, afterDate, beforeDate)
                         if partial is not "" then
                             if resultList is not "" then set resultList to resultList & ", "
@@ -121,7 +121,7 @@ tell application "Mail"
                     set totalFound to totalFound + partialCount
                 end repeat
             else
-                set mb to mailbox theMailboxName of theAccount
+                set mb to my resolveMailbox(theAccountName, theMailboxName)
                 set {partial, partialCount, seenIds} to my searchInMailbox(mb, theField, theQuery, limitNum, seenIds, afterDate, beforeDate)
                 if partial is not "" then set resultList to partial
             end if

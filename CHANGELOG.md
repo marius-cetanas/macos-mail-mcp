@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Gmail special folders — `All Mail`, `Sent Mail`, and the other `[Gmail]/*` mailboxes (Drafts, Spam, Trash, Important, Starred) — are now reachable by `list_messages`, `get_message`, `move_message`/`move_messages`, `get_mailbox_info`, and the attachment tools. These live under Mail.app's `[Gmail]` container and could not be resolved by their leaf name (`mailbox "All Mail" of account` fails with `-1728`); only top-level labels worked. A new shared `resolveMailbox` handler resolves a mailbox by either its leaf name or full path, and `list_mailboxes` now returns the full, addressable path (e.g. `[Gmail]/All Mail`) so names round-trip into every other tool.
+
 ## [1.1.0] - 2026-03-29
 
 ### Added

@@ -1,6 +1,6 @@
 // tests/bridge/applescript-runner.test.ts
 import { describe, it, expect } from "vitest";
-import { escapeForAppleScript, substituteParams, parseAppleScriptOutput } from "../../src/bridge/applescript-runner.js";
+import { escapeForAppleScript, substituteParams, parseAppleScriptOutput, composeScript, SHARED_HANDLER_FILES } from "../../src/bridge/applescript-runner.js";
 
 describe("escapeForAppleScript", () => {
   it("escapes double quotes", () => {
@@ -70,5 +70,27 @@ describe("parseAppleScriptOutput", () => {
     expect(() => parseAppleScriptOutput(input)).toThrow(
       'Can\'t get mailbox "INBOX" of account "Gmail"'
     );
+  });
+});
+
+describe("composeScript", () => {
+  it("prepends shared handlers in order, then the template, newline-separated", () => {
+    expect(composeScript(["HANDLER_A", "HANDLER_B"], "TEMPLATE")).toBe(
+      "HANDLER_A\nHANDLER_B\nTEMPLATE"
+    );
+  });
+  it("handles a single handler", () => {
+    expect(composeScript(["ONLY"], "TPL")).toBe("ONLY\nTPL");
+  });
+});
+
+describe("SHARED_HANDLER_FILES", () => {
+  it("includes the escapeForJson and resolveMailbox handlers, in that order", () => {
+    // resolve-mailbox must be present so every script can call `my resolveMailbox(...)`;
+    // order matters because mailboxFullName/resolveMailbox are defined here and used elsewhere.
+    expect(SHARED_HANDLER_FILES).toEqual([
+      "escape-for-json.applescript",
+      "resolve-mailbox.applescript",
+    ]);
   });
 });

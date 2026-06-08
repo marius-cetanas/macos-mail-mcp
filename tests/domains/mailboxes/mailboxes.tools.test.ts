@@ -46,4 +46,14 @@ describe("mailboxes tools", () => {
     await handleGetMailboxInfo("Gmail", "INBOX");
     expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/get-mailbox-info.applescript", { accountName: "Gmail", mailboxName: "INBOX" });
   });
+
+  it("get_mailbox_info forwards a full [Gmail]/* path unchanged", async () => {
+    mockRunAppleScript.mockResolvedValue({ name: "Sent Mail", container: "[Gmail]" });
+    const { handleGetMailboxInfo } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");
+    await handleGetMailboxInfo("Gmail", "[Gmail]/Sent Mail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "mailboxes/scripts/get-mailbox-info.applescript",
+      { accountName: "Gmail", mailboxName: "[Gmail]/Sent Mail" }
+    );
+  });
 });

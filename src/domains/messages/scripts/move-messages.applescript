@@ -1,8 +1,7 @@
 tell application "Mail"
     try
-        set theAccount to account "{{accountName}}"
-        set srcMailbox to mailbox "{{mailboxName}}" of theAccount
-        set destMailbox to mailbox "{{toMailbox}}" of theAccount
+        set srcMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
+        set destMailbox to my resolveMailbox("{{accountName}}", "{{toMailbox}}")
 
         set idString to "{{messageIds}}"
         set AppleScript's text item delimiters to ","

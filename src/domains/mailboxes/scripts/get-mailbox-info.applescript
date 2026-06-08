@@ -1,7 +1,7 @@
 tell application "Mail"
     try
         set acct to account "{{accountName}}"
-        set mbox to mailbox "{{mailboxName}}" of acct
+        set mbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
         set mboxName to my escapeForJson(name of mbox)
         set acctName to my escapeForJson(name of acct)
         set mboxUnread to unread count of mbox
