@@ -5,11 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-06-08
 
 ### Fixed
 
-- Gmail special folders — `All Mail`, `Sent Mail`, and the other `[Gmail]/*` mailboxes (Drafts, Spam, Trash, Important, Starred) — are now reachable by `list_messages`, `get_message`, `move_message`/`move_messages`, `get_mailbox_info`, and the attachment tools. These live under Mail.app's `[Gmail]` container and could not be resolved by their leaf name (`mailbox "All Mail" of account` fails with `-1728`); only top-level labels worked. A new shared `resolveMailbox` handler resolves a mailbox by either its leaf name or full path, and `list_mailboxes` now returns the full, addressable path (e.g. `[Gmail]/All Mail`) so names round-trip into every other tool.
+- Gmail special folders — `All Mail`, `Sent Mail`, and the other `[Gmail]/*` mailboxes (Drafts, Spam, Trash, Important, Starred) — are now reachable by every by-name tool (`list_messages`, `get_message`, `move_message`/`move_messages`, `delete_message`, `flag_message`, `mark_read`, `reply_to_message`, `forward_message`, the attachment tools, and `get_mailbox_info`). These live under Mail.app's `[Gmail]` container and could not be resolved by their leaf name (`mailbox "All Mail" of account` fails with `-1728`); only top-level labels worked. A new shared `resolveMailbox` handler resolves a mailbox by either its leaf name or full path, `list_mailboxes` now returns the full addressable path (e.g. `[Gmail]/All Mail`) so names round-trip into every other tool, and an ambiguous leaf name raises a clear error instead of silently resolving to the wrong mailbox.
+- The server version reported over the MCP `initialize` handshake is now read from `package.json` instead of a hardcoded string, so it always matches the published package.
+
+### Changed
+
+- Dev tooling bumped: TypeScript 5.7 → 6, Vitest 3 → 4, `@types/node` 22 → 25 (`tsconfig` now declares `"types": ["node"]`).
+- Documentation: clarified install instructions — `--scope user` and `npx -y` for Claude Code, absolute `npx`/`node` paths for Claude Desktop (GUI apps don't inherit the shell `PATH`), and that Claude Code and Claude Desktop/Cowork use separate MCP configs.
+
+### Security
+
+- Resolved 7 transitive dependency advisories (2 high) in the MCP SDK's HTTP-stack dependencies; `npm audit` now reports 0 vulnerabilities. (This stdio-only server never exercised those code paths.)
 
 ## [1.1.0] - 2026-03-29
 

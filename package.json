@@ -1,6 +1,6 @@
 {
   "name": "macos-mail-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "MCP server connecting Claude to macOS Mail.app via AppleScript",
   "type": "module",
   "author": "Marius Cetanas",
