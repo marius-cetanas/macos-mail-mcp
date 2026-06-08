@@ -6,7 +6,7 @@ set targetAttName to do shell script "cat " & quoted form of "{{attNameFile}}"
 
 tell application "Mail"
     try
-        set theMailbox to mailbox "{{mailboxName}}" of account "{{accountName}}"
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
         set msg to (first message of theMailbox whose id is {{messageId}})
 
         set targetAttachment to missing value

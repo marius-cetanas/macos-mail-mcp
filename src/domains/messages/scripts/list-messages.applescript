@@ -1,7 +1,6 @@
 tell application "Mail"
     try
-        set theAccount to account "{{accountName}}"
-        set theMailbox to mailbox "{{mailboxName}}" of theAccount
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
         set allMessages to messages of theMailbox
         set totalCount to count of allMessages
         set limitNum to {{limit}} as integer

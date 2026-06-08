@@ -6,7 +6,7 @@ tell application "Mail"
         if theParent is "__NONE__" then
             set newMbox to make new mailbox with properties {name:"{{mailboxName}}"} at theAccount
         else
-            set parentMbox to mailbox theParent of theAccount
+            set parentMbox to my resolveMailbox("{{accountName}}", theParent)
             set newMbox to make new mailbox with properties {name:"{{mailboxName}}"} at parentMbox
         end if
 

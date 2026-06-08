@@ -65,6 +65,30 @@ export function parseAppleScriptOutput(output: string): unknown {
 }
 
 /**
+ * Shared AppleScript handler files in this bridge directory, prepended (in order)
+ * to every domain script so scripts can call `my <handler>(...)`.
+ * - escape-for-json: JSON-string escaping (`my escapeForJson`)
+ * - resolve-mailbox: addressable mailbox lookup (`my resolveMailbox` / `my mailboxFullName`),
+ *   which handles Gmail's `[Gmail]/*` namespaced folders that a plain
+ *   `mailbox "<leaf>" of account` lookup cannot resolve.
+ */
+export const SHARED_HANDLER_FILES = [
+  "escape-for-json.applescript",
+  "resolve-mailbox.applescript",
+];
+
+/**
+ * Compose the final script: shared handler sources first (in order), then the
+ * interpolated domain template, each separated by a newline.
+ */
+export function composeScript(
+  sharedHandlerSources: string[],
+  interpolatedTemplate: string
+): string {
+  return [...sharedHandlerSources, interpolatedTemplate].join("\n");
+}
+
+/**
  * Run an AppleScript file (relative to the domains directory) with optional parameter substitution.
  *
  * Script path is resolved from build/bridge/ → build/domains/<scriptPath>.
@@ -82,16 +106,17 @@ export async function runAppleScript(
   const thisDir = dirname(fileURLToPath(import.meta.url));
   const resolvedScriptPath = join(thisDir, "..", "domains", scriptPath);
 
-  // Read shared escapeForJson handler and domain script template
-  const sharedHandlerPath = join(thisDir, "escape-for-json.applescript");
-  const [sharedHandler, template] = await Promise.all([
-    readFile(sharedHandlerPath, "utf8"),
+  // Read all shared handlers (escapeForJson, resolveMailbox, …) and the domain template
+  const [sharedHandlers, template] = await Promise.all([
+    Promise.all(
+      SHARED_HANDLER_FILES.map((file) => readFile(join(thisDir, file), "utf8"))
+    ),
     readFile(resolvedScriptPath, "utf8"),
   ]);
 
-  // Substitute params if provided, then prepend shared handler
+  // Substitute params if provided, then prepend the shared handlers
   const interpolated = params ? substituteParams(template, params) : template;
-  const script = sharedHandler + "\n" + interpolated;
+  const script = composeScript(sharedHandlers, interpolated);
 
   // Write to temp file
   const tempDir = await mkdtemp(join(tmpdir(), "macos-mail-mcp-"));

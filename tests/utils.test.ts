@@ -45,6 +45,17 @@ describe("sanitize", () => {
   it("handles multiple separate newline groups", () => {
     expect(sanitize("a\nb\nc\nd")).toBe("a b c d");
   });
+
+  it("preserves brackets and slashes (Gmail [Gmail]/* mailbox paths)", () => {
+    // The fix for Gmail special folders depends on these characters surviving
+    // sanitize so "[Gmail]/All Mail" reaches AppleScript intact.
+    expect(sanitize("[Gmail]/All Mail")).toBe("[Gmail]/All Mail");
+    expect(sanitize("[Gmail]/Sent Mail")).toBe("[Gmail]/Sent Mail");
+  });
+
+  it("preserves a nested label path unchanged", () => {
+    expect(sanitize("Projects/2024/Q3")).toBe("Projects/2024/Q3");
+  });
 });
 
 describe("expandTilde", () => {

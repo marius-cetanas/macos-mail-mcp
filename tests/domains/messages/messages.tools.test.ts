@@ -231,3 +231,51 @@ describe("messages tools - attachments", () => {
       .rejects.toThrow("Binary file type");
   });
 });
+
+describe("messages tools - Gmail namespaced mailbox paths", () => {
+  // Regression guard for the [Gmail]/* fix: the tools layer must forward the full
+  // addressable path to AppleScript verbatim (sanitize/escaping must not mangle it).
+  beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
+
+  it("list_messages forwards a [Gmail]/* path unchanged", async () => {
+    mockRunAppleScript.mockResolvedValue([]);
+    const { handleListMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleListMessages("Gmail", "[Gmail]/All Mail", 25, 0);
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/list-messages.applescript",
+      expect.objectContaining({ accountName: "Gmail", mailboxName: "[Gmail]/All Mail" }),
+      undefined
+    );
+  });
+
+  it("get_message forwards a [Gmail]/* path unchanged", async () => {
+    mockRunAppleScript.mockResolvedValue({ id: 123 });
+    const { handleGetMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleGetMessage(123, "Gmail", "[Gmail]/All Mail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/get-message.applescript",
+      { messageId: "123", mailboxName: "[Gmail]/All Mail", accountName: "Gmail" }
+    );
+  });
+
+  it("move_message forwards a [Gmail]/* source and label destination unchanged", async () => {
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    const { handleMoveMessage } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleMoveMessage(123, "[Gmail]/All Mail", "Archive", "Gmail");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/move-message.applescript",
+      { messageId: "123", mailboxName: "[Gmail]/All Mail", toMailbox: "Archive", accountName: "Gmail" }
+    );
+  });
+
+  it("move_messages forwards a [Gmail]/* source unchanged", async () => {
+    mockRunAppleScript.mockResolvedValue({ moved: 1, failed: 0, errors: [] });
+    const { handleMoveMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await handleMoveMessages("Gmail", "[Gmail]/Sent Mail", [123], "Archive");
+    expect(mockRunAppleScript).toHaveBeenCalledWith(
+      "messages/scripts/move-messages.applescript",
+      { accountName: "Gmail", mailboxName: "[Gmail]/Sent Mail", toMailbox: "Archive", messageIds: "123" },
+      { timeout: 120_000 }
+    );
+  });
+});
