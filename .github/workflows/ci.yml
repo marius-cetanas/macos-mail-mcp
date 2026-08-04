@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: nothing here needs write access to the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["20", "22", "24"]
+    steps:
+      # Actions are pinned to a commit SHA: a mutable tag like @v5 can be
+      # repointed at arbitrary code by anyone who can push to that repo.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - name: npm audit (fail on high or critical)
+        run: npm audit --audit-level=high
+
+  # Single stable context for branch protection to require. Matrix job names
+  # change whenever the matrix changes; this one does not.
+  ci-ok:
+    name: ci-ok
+    runs-on: ubuntu-latest
+    needs: [test, audit]
+    if: always()
+    steps:
+      - name: Fail if any dependency job did not succeed
+        run: |
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
+            echo "One or more CI jobs failed."
+            exit 1
+          fi
+          echo "All CI jobs succeeded."

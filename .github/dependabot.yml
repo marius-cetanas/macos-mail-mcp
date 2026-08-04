@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Runtime and dev dependencies. This package is published to npm, so a
+  # compromised or vulnerable transitive dependency reaches every install.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+
+  # Workflow actions are pinned to commit SHAs; without this they would never
+  # be updated, and a pinned SHA does not receive security fixes on its own.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
