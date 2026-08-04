@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message only. It never controlled which account sends, and the name invited the opposite
   assumption; `fromAccount` is the sender selector.
 
+### Internal
+
+- Test suite raised from 74 to 280 tests, reaching 100% statement, branch, function and line
+  coverage of `src/`. The MCP registration layer — the tool handlers themselves, as opposed to the
+  `handleXxx` functions beneath them — had never been exercised, nor had the `osascript` execution
+  path in the bridge or the entry point. Coverage thresholds are set to 100% and CI runs
+  `test:coverage`, so untested new code fails the build instead of quietly lowering the number.
+
 ### Notes
 
 - Whether an unqualified reply or forward inherits the account that received the original message
