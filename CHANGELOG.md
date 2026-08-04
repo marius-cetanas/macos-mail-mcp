@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Sender account selection — `send_message`, `reply_to_message` and `forward_message` accept an
+  optional `fromAccount`, given as either a Mail account name (`"Google"`) or any address that
+  account owns (`"you@gmail.com"`), matched case-insensitively against the enabled accounts.
+  Previously there was no way to choose the sending account: Mail silently used whatever is set
+  under Settings → Composing, so a message meant to go out from a work address could be sent from
+  a personal one with the tool still reporting `{"success": true}`. An unrecognised value is now
+  an error naming the valid accounts rather than a silent fallback to the default.
+- All three compose tools now return the account they actually sent from, e.g.
+  `{"success": true, "sender": "Your Name <you@work.com>"}`. This is reported whether or not
+  `fromAccount` was passed, so Mail's own choice of account is visible in the result instead of
+  only being discoverable afterwards by finding the message in a Sent mailbox.
+- `list_accounts` and `get_account_detail` now report each account's `fullName` — the display name
+  Mail sends as, which is what the `"Name <address>"` sender string is built from.
+
+### Changed
+
+- `accountName` on `reply_to_message` / `forward_message` is documented as locating the source
+  message only. It never controlled which account sends, and the name invited the opposite
+  assumption; `fromAccount` is the sender selector.
+
+### Notes
+
+- Whether an unqualified reply or forward inherits the account that received the original message
+  or falls back to Mail's global default is still unconfirmed, so the default behaviour is
+  deliberately unchanged. The `sender` now returned in the result makes it directly observable.
+
 ## [1.2.0] - 2026-06-08
 
 ### Fixed

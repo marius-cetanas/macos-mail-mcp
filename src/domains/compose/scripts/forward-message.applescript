@@ -9,13 +9,24 @@ tell application "Mail"
         set msg to (first message of theMailbox whose id is {{messageId}})
         set fwdMsg to forward msg without opening window
         tell fwdMsg
+            if "{{sender}}" is not "__NONE__" then
+                set sender to "{{sender}}"
+            end if
             make new to recipient with properties {address:"{{to}}"}
             if bodyContent is not "" then
                 set content to bodyContent & (ASCII character 10) & (ASCII character 10) & content
             end if
-            send
         end tell
-        return "{\"success\": true}"
+        -- Read back before sending. With no explicit sender this reveals whether
+        -- Mail inherited the account that received the original or fell back to
+        -- the global default.
+        set actualSender to ""
+        try
+            set rawSender to sender of fwdMsg
+            if rawSender is not missing value then set actualSender to (rawSender as text)
+        end try
+        send fwdMsg
+        return "{\"success\": true, \"sender\": \"" & my escapeForJson(actualSender) & "\"}"
     on error errMsg number errNum
         return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
     end try
