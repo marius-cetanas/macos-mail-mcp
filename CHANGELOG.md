@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-08-04
 
 ### Added
 
@@ -40,6 +40,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `handleXxx` functions beneath them — had never been exercised, nor had the `osascript` execution
   path in the bridge or the entry point. Coverage thresholds are set to 100% and CI runs
   `test:coverage`, so untested new code fails the build instead of quietly lowering the number.
+- CI, CodeQL and Dependabot added; `main` is branch-protected behind a required check. Actions are
+  pinned to commit SHAs and workflows run with a read-only token. Releases publish from a tag via
+  npm Trusted Publishing (OIDC), so no npm token is stored in the repository.
+- Dependency updates: zod 3 → 4, TypeScript 6 → 7, `@types/node` 25 → 26, plus transitive fixes
+  clearing several high-severity advisories in the MCP SDK's HTTP stack. `npm audit` reports 0
+  vulnerabilities, and `audit` is part of the required CI gate.
 
 ### Notes
 
