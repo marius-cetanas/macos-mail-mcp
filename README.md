@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/macos-mail-mcp.svg)](https://www.npmjs.com/package/macos-mail-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js 18+](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org/)
+[![Node.js 20+](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
 [![macOS](https://img.shields.io/badge/platform-macOS-blue.svg)](https://www.apple.com/macos/)
 
 An MCP server for Apple Mail (macOS Mail.app) that connects Claude to your email via AppleScript. Provides 20 tools for reading, searching, managing, and composing emails.
@@ -14,7 +14,7 @@ Works with **any email account configured in macOS Mail.app** — iCloud, Gmail,
 ## Requirements
 
 - macOS with Mail.app configured (with at least one email account)
-- Node.js 18+
+- Node.js 20+
 - Claude Code or Claude Desktop app
 
 ## Installation
@@ -197,9 +197,11 @@ src/
       sender.ts                     # Resolves fromAccount to a "Name <address>" sender
       scripts/*.applescript
 tests/
+  index.test.ts                     # Entry point: wiring, version, stdio
   utils.test.ts                     # Shared utility tests
-  bridge/applescript-runner.test.ts  # Bridge unit tests
-  domains/*/                         # Domain handler tests
+  helpers/capture-tools.ts          # Stub server for exercising registered tools
+  bridge/                           # Escaping/parsing + runAppleScript execution
+  domains/*/                        # Handler and registration-layer tests
 ```
 
 **Domain-driven layered architecture:**
@@ -240,11 +242,16 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 ## Development
 
 ```bash
-npm run dev          # Watch mode (TypeScript compiler)
-npm test             # Run tests
-npm run test:watch   # Watch mode tests
-npm run build        # Build for production
+npm run dev           # Watch mode (TypeScript compiler)
+npm test              # Run tests
+npm run test:coverage # Tests + coverage report
+npm run test:watch    # Watch mode tests
+npm run build         # Build for production
 ```
+
+The suite covers `src/` fully, and `vitest.config.ts` enforces 100% statement,
+branch, function and line thresholds. CI runs `test:coverage`, so new code
+without tests fails the build.
 
 ## License
 

@@ -8,6 +8,7 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 
 ## Tech Stack
 
+- **Runtime:** Node.js 20+ (`engines` floor; CI builds and tests on 20, 22 and 24)
 - **Language:** TypeScript (ES2022, Node16 module resolution)
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
