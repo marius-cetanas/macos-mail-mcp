@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Minimum Node.js raised from 18 to 20.** Node 18 reached end of life and was never actually
+  verified — CI builds and tests on 20, 22 and 24, so the `>=18` floor was an untested claim, and
+  the current toolchain (TypeScript 7) is unlikely to support it. Installing on Node 18 now warns
+  via `EBADENGINE` instead of appearing supported.
 - `accountName` on `reply_to_message` / `forward_message` is documented as locating the source
   message only. It never controlled which account sends, and the name invited the opposite
   assumption; `fromAccount` is the sender selector.

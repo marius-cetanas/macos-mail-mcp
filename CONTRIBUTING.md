@@ -12,7 +12,7 @@ npm run build
 npm test
 ```
 
-**Requirements:** macOS with Mail.app, Node.js 18+.
+**Requirements:** macOS with Mail.app, Node.js 20+.
 
 ## Project Structure
 
@@ -45,8 +45,8 @@ tests/                               # Vitest unit tests (mocked bridge)
    - Call `sanitize()` on all string params before passing to `runAppleScript`
    - Use `EXTENDED_TIMEOUT` for potentially slow operations
 4. **Register the tool** with `server.tool(name, description, zodSchema, handler)`
-5. **Add tests** in `tests/domains/<domain>/`
-6. **Verify:** `npm run build && npm test`
+5. **Add tests** in `tests/domains/<domain>/` — cover the registered tool handler, not just the handler function
+6. **Verify:** `npm run build && npm run test:coverage`
 
 ## How to Add a New Domain
 
@@ -66,17 +66,29 @@ tests/                               # Vitest unit tests (mocked bridge)
 
 ```bash
 npm test              # Run all tests
+npm run test:coverage # Tests + coverage, enforcing the thresholds CI uses
 npm run test:watch    # Watch mode
 ```
 
 Tests mock the AppleScript bridge, so they don't require Mail.app or real email accounts.
+
+**Coverage is gated at 100%** — statements, branches, functions and lines — in
+`vitest.config.ts`, and CI runs `test:coverage` rather than `test`. Adding code
+without covering it fails the build, so run `npm run test:coverage` before
+opening a PR rather than finding out in CI.
+
+Cover the tool handler, not only the `handleXxx` function beneath it. Registering
+a tool adds a `catch` block that turns a thrown error into an MCP `isError`
+result; that path is only reached by invoking the registered handler. Use
+`captureTools()` from `tests/helpers/capture-tools.ts`, which runs the real
+`registerXxxTools()` against a stub server.
 
 ## Submitting Changes
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/my-new-tool`)
 3. Make your changes
-4. Run `npm run build && npm test` to verify
+4. Run `npm run build && npm run test:coverage` to verify
 5. Commit with a descriptive message
 6. Open a Pull Request
 
