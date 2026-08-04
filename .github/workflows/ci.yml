@@ -35,7 +35,9 @@ jobs:
 
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      # Coverage rather than plain test: the config sets 100% thresholds, so
+      # this is what actually enforces them.
+      - run: npm run test:coverage
 
   audit:
     name: audit

@@ -12,7 +12,7 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (189 unit tests, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest (280 unit tests at 100% coverage, mocked bridge — no real Mail.app needed)
 
 ## Architecture
 
@@ -140,8 +140,8 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 
 ```bash
 npm run build        # tsc + copy .applescript files to build/
-npm test             # Run 189 unit tests
-npm run test:coverage # Run tests with a v8 coverage report
+npm test             # Run 280 unit tests
+npm run test:coverage # Tests + coverage; fails below the 100% thresholds
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
 ```
