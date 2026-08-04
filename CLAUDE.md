@@ -12,7 +12,7 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (62 unit tests, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest (189 unit tests, mocked bridge — no real Mail.app needed)
 
 ## Architecture
 
@@ -39,6 +39,7 @@ src/
     mailboxes/  — 3 tools: list_mailboxes, get_mailbox_info, create_mailbox
     messages/   — 8 message tools + 4 attachment tools (12 total in this domain)
     compose/    — 3 tools: send_message, reply_to_message, forward_message
+                  sender.ts resolves the optional fromAccount to a sender string
 tests/
   utils.test.ts                — Tests for sanitize, expandTilde
   bridge/applescript-runner.test.ts — Tests for escaping, param substitution, JSON parsing
@@ -59,6 +60,22 @@ AppleScript string literals cannot span multiple lines. Any content that may con
 - **Attachment names** — save/read_attachment write to `attname.txt`
 
 Always clean up temp files in a `finally` block.
+
+### Sender Resolution
+
+Compose tools take an optional `fromAccount` (account name or any address it owns).
+`resolveSender()` in `src/domains/compose/sender.ts` reads the account list, matches
+case-insensitively against **enabled** accounts only, and returns the `"Name <address>"`
+string Mail expects in an outgoing message's `sender` property. It throws on no match or
+on an ambiguous match — never falling back to the default account, since a silent fallback
+sending mail from the wrong address is the bug this guards against.
+
+Resolution runs *before* any temp-file setup so a bad value fails without leaving a
+directory behind. Omitting `fromAccount` passes the `__NONE__` sentinel and the script
+leaves `sender` alone, preserving Mail's own choice.
+
+Every compose script reads `sender` back off the message **before** `send` and returns it,
+so the result reports the account used even when the caller specified none.
 
 ### sanitize() Function
 
@@ -115,12 +132,16 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 - **MIME type** often returns `missing value` from Mail.app. Scripts use `mimeFromExtension()` as fallback.
 - **Attachment names with quotes/backslashes** — handled via temp file matching to avoid escaping mismatches.
 - **`whose` clause performance** — Mail.app loads ALL matching messages into memory before applying limits. Warn users to scope searches by account/mailbox.
+- **`full name` of an account** can be `missing value`; scripts wrap it in `try` and fall back to an empty string, which makes `resolveSender()` emit a bare address instead of `"Name <address>"`. Mail accepts both.
+- **`accountName` on reply/forward is a lookup param**, not a sender selector — it feeds `resolveMailbox()` to find the source message. `fromAccount` controls who sends.
+- **Reply/forward sender inheritance is unverified.** Whether Mail uses the receiving account or the global default when `sender` is unset has not been confirmed, so neither script sets a default. The `sender` returned in the result makes the actual behaviour observable.
 
 ## Build & Test
 
 ```bash
 npm run build        # tsc + copy .applescript files to build/
-npm test             # Run 56 unit tests
+npm test             # Run 189 unit tests
+npm run test:coverage # Run tests with a v8 coverage report
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
 ```

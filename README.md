@@ -99,7 +99,7 @@ On first use, macOS will prompt to grant automation permission for controlling M
 
 | Tool | Description |
 |---|---|
-| `list_accounts` | List all mail accounts (name, type, enabled, emails) |
+| `list_accounts` | List all mail accounts (name, type, enabled, full name, emails) |
 | `get_account_detail` | Get full account details (server, port, SSL, mailbox count) |
 
 ### Mailboxes (3)
@@ -140,6 +140,38 @@ On first use, macOS will prompt to grant automation permission for controlling M
 | `reply_to_message` | Reply or reply-all to a message |
 | `forward_message` | Forward a message to a new recipient |
 
+All three accept an optional `fromAccount` to choose which account sends, and report
+the account actually used — see [Choosing the sending account](#choosing-the-sending-account).
+
+### Choosing the sending account
+
+By default Mail sends from whichever account is set under **Settings → Composing →
+"Send new messages from"**. Pass `fromAccount` to override it, using either the account
+name or any address that account owns (matching is case-insensitive):
+
+```jsonc
+{ "to": "client@example.com", "subject": "Invoice", "body": "…",
+  "fromAccount": "you@work.com" }
+```
+
+An unrecognised value is an error listing the accounts you can choose from — it never
+silently falls back to the default. Only enabled accounts can be selected.
+
+Every compose tool returns the account it actually sent from, whether or not you passed
+`fromAccount`:
+
+```json
+{ "success": true, "sender": "Your Name <you@work.com>" }
+```
+
+Omitting `fromAccount` is still the way to accept Mail's own choice; the `sender` in the
+result tells you what that choice was, so a wrong sending account is visible immediately
+rather than only discoverable later in the Sent mailbox.
+
+On `reply_to_message` and `forward_message`, note that `accountName` is not a sender
+selector — it identifies where the *source* message lives. Use `fromAccount` to control
+who the reply or forward comes from.
+
 ## Architecture
 
 ```
@@ -162,6 +194,7 @@ src/
       scripts/*.applescript
     compose/
       compose.tools.ts
+      sender.ts                     # Resolves fromAccount to a "Name <address>" sender
       scripts/*.applescript
 tests/
   utils.test.ts                     # Shared utility tests

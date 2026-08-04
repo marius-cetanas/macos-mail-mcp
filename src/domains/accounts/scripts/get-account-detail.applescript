@@ -39,8 +39,13 @@ tell application "Mail"
             set rawUser to user name of acct
             if rawUser is not missing value then set acctUser to my escapeForJson(rawUser as text)
         end try
+        set acctFullName to ""
+        try
+            set rawFullName to full name of acct
+            if rawFullName is not missing value then set acctFullName to my escapeForJson(rawFullName as text)
+        end try
         set acctMailboxCount to count of mailboxes of acct
-        return "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"emails\": [" & emailsJson & "], \"serverName\": \"" & acctServer & "\", \"port\": " & acctPort & ", \"usesSsl\": " & acctSsl & ", \"userName\": \"" & acctUser & "\", \"mailboxCount\": " & acctMailboxCount & "}"
+        return "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"fullName\": \"" & acctFullName & "\", \"emails\": [" & emailsJson & "], \"serverName\": \"" & acctServer & "\", \"port\": " & acctPort & ", \"usesSsl\": " & acctSsl & ", \"userName\": \"" & acctUser & "\", \"mailboxCount\": " & acctMailboxCount & "}"
     on error errMsg number errNum
         return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
     end try

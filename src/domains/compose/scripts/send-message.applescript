@@ -6,6 +6,9 @@ tell application "Mail"
     try
         set newMsg to make new outgoing message with properties {content:bodyContent, subject:subjectText, visible:false}
         tell newMsg
+            if "{{sender}}" is not "__NONE__" then
+                set sender to "{{sender}}"
+            end if
             make new to recipient with properties {address:"{{to}}"}
             if "{{cc}}" is not "__NONE__" then
                 make new cc recipient with properties {address:"{{cc}}"}
@@ -23,9 +26,17 @@ tell application "Mail"
                     delay 1
                 end repeat
             end if
-            send
         end tell
-        return "{\"success\": true}"
+        -- Read the sender back before sending: when the caller passed no sender
+        -- this reports the account Mail chose on its own, which is otherwise
+        -- only discoverable by finding the message in Sent afterwards.
+        set actualSender to ""
+        try
+            set rawSender to sender of newMsg
+            if rawSender is not missing value then set actualSender to (rawSender as text)
+        end try
+        send newMsg
+        return "{\"success\": true, \"sender\": \"" & my escapeForJson(actualSender) & "\"}"
     on error errMsg number errNum
         return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
     end try

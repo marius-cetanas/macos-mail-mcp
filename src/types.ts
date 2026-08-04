@@ -2,6 +2,8 @@ export interface Account {
   name: string;
   type: "imap" | "pop" | "iCloud" | "unknown";
   enabled: boolean;
+  /** Display name Mail sends as, e.g. "Marius Cetanas". Empty when Mail reports `missing value`. */
+  fullName: string;
   emails: string[];
 }
 

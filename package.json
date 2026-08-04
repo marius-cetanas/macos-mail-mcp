@@ -33,6 +33,7 @@
     "build": "tsc && chmod 755 build/index.js && npm run copy-scripts",
     "copy-scripts": "cp src/bridge/*.applescript build/bridge/ && cd src && find domains -name '*.applescript' -exec sh -c 'mkdir -p \"../build/$(dirname \"$1\")\" && cp \"$1\" \"../build/$1\"' _ {} \\;",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build && npm test"
@@ -46,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "typescript": "^6.0.0",
     "vitest": "^4.0.0"
   }
