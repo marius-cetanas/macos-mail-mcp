@@ -1,5 +1,58 @@
-import { describe, it, expect } from "vitest";
-import { findAuthTokenAssignments } from "../../scripts/check-npmrc.mjs";
+import { describe, it, expect, beforeAll } from "vitest";
+import { mkdtempSync, writeFileSync, symlinkSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { findAuthTokenAssignments, checkFiles } from "../../scripts/check-npmrc.mjs";
+
+describe("checkFiles", () => {
+  let dir: string;
+  let bad: string;
+  let good: string;
+  let link: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "npmrc-"));
+    bad = join(dir, "bad.npmrc");
+    good = join(dir, "good.npmrc");
+    link = join(dir, "link.npmrc");
+    writeFileSync(bad, "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}\n");
+    writeFileSync(good, "# _authToken is not set here\nregistry=https://registry.npmjs.org\n");
+    symlinkSync(bad, link);
+  });
+
+  it("reports an offending file", () => {
+    expect(checkFiles([bad])).toHaveLength(1);
+  });
+
+  it("ignores a clean file", () => {
+    expect(checkFiles([good])).toEqual([]);
+  });
+
+  it("ignores paths that do not exist", () => {
+    expect(checkFiles([join(dir, "absent.npmrc")])).toEqual([]);
+  });
+
+  // Raised in review of #24: release.yml passes both the defaulted
+  // NPM_CONFIG_USERCONFIG and $HOME/.npmrc, usually the same file — one problem
+  // annotated twice reads as two problems.
+  it("reports a repeated path once", () => {
+    expect(checkFiles([bad, bad])).toHaveLength(1);
+  });
+
+  it("collapses a symlink onto its target", () => {
+    expect(checkFiles([bad, link])).toHaveLength(1);
+  });
+
+  it("still reports genuinely distinct offending files", () => {
+    const other = join(dir, "other.npmrc");
+    writeFileSync(other, "_authToken=abc\n");
+    expect(checkFiles([bad, other])).toHaveLength(2);
+  });
+
+  it("keeps the path the caller gave it, not the resolved one", () => {
+    expect(checkFiles([link])[0]!.path).toBe(link);
+  });
+});
 
 describe("findAuthTokenAssignments", () => {
   // A1 — Copilot's finding on #23: a substring grep fails a release on a comment.

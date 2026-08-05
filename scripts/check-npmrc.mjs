@@ -39,11 +39,28 @@ export function findAuthTokenAssignments(content) {
   return found;
 }
 
-/** Check each path that exists; returns every offending file. */
+/**
+ * Check each path that exists; returns every offending file.
+ *
+ * Paths are de-duplicated by resolved real path. The workflow passes both
+ * `${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}` and `$HOME/.npmrc`, which are usually
+ * the same file, and annotating one problem twice reads like two problems.
+ * Resolving rather than string-comparing also collapses symlinks.
+ */
 export function checkFiles(paths) {
   const problems = [];
+  const seen = new Set();
   for (const path of paths) {
     if (!existsSync(path)) continue;
+    let key = path;
+    try {
+      key = realpathSync(path);
+    } catch {
+      // Unresolvable: fall back to the literal path rather than skipping it.
+    }
+    if (seen.has(key)) continue;
+    seen.add(key);
+
     const hits = findAuthTokenAssignments(readFileSync(path, "utf8"));
     if (hits.length > 0) {
       problems.push({ path, hits });
