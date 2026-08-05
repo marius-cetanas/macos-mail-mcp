@@ -91,6 +91,10 @@ export function commitsSince(since) {
   const range = since === null || since === undefined || since === "" ? "HEAD" : `${since}..HEAD`;
   const raw = execFileSync("git", ["log", range, `--pretty=format:%s${FIELD}%b${RECORD}`], {
     encoding: "utf8",
+    // execFileSync defaults to a 1 MB buffer and throws past it. A long range
+    // with verbose commit bodies can exceed that, and failing to read the log
+    // is not a failure anyone would expect at release time.
+    maxBuffer: 64 * 1024 * 1024,
   });
   return raw
     .split(RECORD)

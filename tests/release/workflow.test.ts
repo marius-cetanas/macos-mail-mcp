@@ -138,19 +138,29 @@ describe("release.yml — the whole release in one workflow", () => {
   describe("ordering", () => {
     const order = (fragment: string) => stepIndex(steps(wf()), fragment);
 
+    // Target the step NAME, not "npm publish" — that substring also appears in
+    // the dry-run step (`npm publish --dry-run`), which sits earlier, so these
+    // assertions were measuring against the wrong step and would not have
+    // caught the real publish being moved.
+    const publishAt = () => order("Publish to npm");
+
+    it("targets the real publish step, not the dry run", () => {
+      const list = steps(wf());
+      expect(list[publishAt()]!.name).toBe("Publish to npm");
+      expect(publishAt()).toBeGreaterThan(order("Dry run"));
+    });
+
     it("verifies the version is releasable before publishing", () => {
-      expect(order("npm publish")).toBeGreaterThan(order("version is releasable"));
+      expect(publishAt()).toBeGreaterThan(order("version is releasable"));
     });
 
     it("runs the OIDC preflight before publishing", () => {
-      expect(order("npm publish")).toBeGreaterThan(order("check-npmrc"));
+      expect(publishAt()).toBeGreaterThan(order("check-npmrc"));
     });
 
     it("builds, tests and audits before publishing", () => {
       for (const check of ["npm run build", "npm run test:coverage", "npm audit"]) {
-        expect(order("npm publish"), `${check} must precede publish`).toBeGreaterThan(
-          order(check)
-        );
+        expect(publishAt(), `${check} must precede publish`).toBeGreaterThan(order(check));
       }
     });
 
@@ -195,6 +205,15 @@ describe("release.yml — the whole release in one workflow", () => {
       const dry = steps(wf()).find((s) => String(s.name ?? "").includes("Dry run"));
       expect(String(dry!.run)).toMatch(/npm publish --dry-run/);
       expect(String(dry!.run)).not.toMatch(/git push/);
+    });
+
+    // prepublishOnly is `npm run build && npm test`, already run against this
+    // exact tree — repeating it inside the one unretryable step adds minutes and
+    // a fresh chance of failure. The build assertion replaces what it guarded.
+    it("skips lifecycle scripts and asserts the build instead", () => {
+      const publish = steps(wf()).find((s) => s.name === "Publish to npm");
+      expect(String(publish!.run)).toMatch(/npm publish --ignore-scripts/);
+      expect(String(publish!.run)).toMatch(/build\/index\.js/);
     });
   });
 

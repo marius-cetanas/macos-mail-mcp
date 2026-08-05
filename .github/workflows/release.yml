@@ -204,9 +204,24 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # The irreversible step. Everything above has already passed.
+      #
+      # --ignore-scripts skips prepublishOnly, which is `npm run build && npm
+      # test` — already run above, against this exact tree. Re-running it here
+      # would repeat several minutes of work and, worse, put a fresh chance of
+      # failure inside the one step that cannot be retried cleanly. The check it
+      # provides is replaced by the assertion below, which is what prepublishOnly
+      # was really protecting against: publishing without a build.
+      #
+      # prepublishOnly still guards a manual `npm publish` from a laptop, which
+      # is where it earns its keep.
       - name: Publish to npm
         if: ${{ inputs.mode == 'publish' }}
-        run: npm publish
+        run: |
+          if [ ! -f build/index.js ]; then
+            echo "::error::build/index.js is missing — refusing to publish an unbuilt package."
+            exit 1
+          fi
+          npm publish --ignore-scripts
 
       - name: Confirm the registry has it
         if: ${{ inputs.mode == 'publish' }}
