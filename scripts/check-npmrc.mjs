@@ -11,9 +11,14 @@
 import { existsSync, readFileSync } from "node:fs";
 
 // Matches an assignment, not a mention: the key must be at the start of the
-// line or after a registry prefix (`//registry.npmjs.org/:`), and be followed
-// by `=`. A grep for the bare substring fails a release on a comment.
-const ASSIGNMENT = /(^|[:/])_authtoken\s*=/i;
+// line or immediately after the `:` of a registry-scoped key
+// (`//registry.npmjs.org/:_authToken=`), and be followed by `=`. A grep for the
+// bare substring fails a release on a comment.
+//
+// Deliberately does not accept a preceding `/`: that would make the pattern
+// broader than the rule it documents and would fire on a path value containing
+// `/_authToken=`.
+const ASSIGNMENT = /(^|:)_authtoken\s*=/i;
 
 /**
  * Lines in an .npmrc that actually assign an auth token.

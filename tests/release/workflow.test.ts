@@ -74,6 +74,23 @@ describe("release.yml", () => {
     expect(push.branches).toContain("main");
   });
 
+  // Raised in review of #24: merging the release PR with a merge commit makes
+  // head_commit the "Merge pull request …" message, so a head_commit gate would
+  // silently skip the job and publish nothing.
+  describe("the release-commit gate", () => {
+    it("does not depend on head_commit alone", () => {
+      expect(String(wf().jobs.publish.if)).not.toMatch(/head_commit/);
+    });
+
+    it("scans every commit in the push", () => {
+      expect(String(wf().jobs.publish.if)).toMatch(/commits/);
+    });
+
+    it("still keys on a release commit rather than any package.json change", () => {
+      expect(String(wf().jobs.publish.if)).toMatch(/chore\(release\):/);
+    });
+  });
+
   it("grants id-token so OIDC can be used", () => {
     expect(wf().jobs.publish.permissions["id-token"]).toBe("write");
   });

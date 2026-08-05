@@ -30,7 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     # Only a release commit publishes. An ordinary change touching package.json
     # (a dependency bump, a script) must not reach the registry.
-    if: startsWith(github.event.head_commit.message, 'chore(release):')
+    #
+    # Scans every commit in the push rather than head_commit: merging the release
+    # PR with a merge commit makes head_commit the "Merge pull request …" message,
+    # which would silently skip the job and publish nothing while the documented
+    # process appeared to have been followed.
+    if: ${{ contains(toJSON(github.event.commits.*.message), 'chore(release):') }}
     permissions:
       contents: write # create the tag and the GitHub release
       id-token: write # required for Trusted Publishing and provenance

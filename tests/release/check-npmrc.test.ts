@@ -70,5 +70,15 @@ describe("findAuthTokenAssignments", () => {
     it("does not match a differently named key containing the word", () => {
       expect(findAuthTokenAssignments("my_authTokenPath=/tmp/x\n")).toEqual([]);
     });
+
+    // Raised in review of #24: accepting a preceding `/` made the pattern
+    // broader than the rule it documents.
+    it("does not match a path value that happens to contain the key", () => {
+      expect(findAuthTokenAssignments("cafile=/etc/ssl/_authToken=oops\n")).toEqual([]);
+    });
+
+    it("does not match a key ending in the word", () => {
+      expect(findAuthTokenAssignments("legacy_authToken_backup=x\n")).toEqual([]);
+    });
   });
 });

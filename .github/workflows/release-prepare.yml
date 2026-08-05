@@ -100,8 +100,14 @@ jobs:
             const { execFileSync } = require("node:child_process");
             const next = process.env.NEXT;
             const date = new Date().toISOString().slice(0, 10);
-            const since = execFileSync("git", ["describe","--tags","--abbrev=0","--match","v*"], {encoding:"utf8"}).trim();
-            const log = execFileSync("git", ["log", `${since}..HEAD`, "--pretty=format:- %s"], {encoding:"utf8"}).trim();
+            // No tag yet on a first-ever release; log from the start of history
+            // instead of letting git describe throw and block the initial cut.
+            let range = "HEAD";
+            try {
+              const since = execFileSync("git", ["describe","--tags","--abbrev=0","--match","v*"], {encoding:"utf8", stdio:["ignore","pipe","ignore"]}).trim();
+              if (since !== "") range = `${since}..HEAD`;
+            } catch {}
+            const log = execFileSync("git", ["log", range, "--pretty=format:- %s"], {encoding:"utf8"}).trim();
             const path = "CHANGELOG.md";
             const body = readFileSync(path, "utf8");
             const marker = body.indexOf("\n## ");
