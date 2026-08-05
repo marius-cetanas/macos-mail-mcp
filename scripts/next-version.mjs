@@ -102,11 +102,16 @@ export function commitsSince(since) {
     });
 }
 
-/** Most recent v* tag, or null when the repo has never been released. */
+/**
+ * Most recent v* tag, or null when the repo has never been released — which is
+ * also what a shallow CI checkout looks like. stderr is discarded because
+ * `git describe` writes "fatal: No names found" on a case this handles.
+ */
 export function lastReleaseTag() {
   try {
     return execFileSync("git", ["describe", "--tags", "--abbrev=0", "--match", "v*"], {
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return null;

@@ -28,12 +28,26 @@ describe("next-version CLI", () => {
     expect(JSON.parse(out)).toMatchObject({ version: "1.3.1", bump: "patch" });
   });
 
-  it("derives a version from real repository history", () => {
+  // Reads real git history, so it must not assume what that history contains.
+  // CI checks out at fetch-depth 1 with no tags, where "nothing releasable"
+  // (exit 2) is the correct answer — an earlier version of this test asserted
+  // exit 0 and failed in CI while passing locally.
+  it("reads real repository history and reports a well-formed result", () => {
     const { code, out } = run("next-version.mjs", ["--current", "1.3.0", "--force", "auto"]);
+    expect([0, 2]).toContain(code);
+
     const result = JSON.parse(out);
-    expect(code).toBe(0);
-    expect(result.releasable).toBe(true);
-    expect(result.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(result).toMatchObject({
+      releasable: expect.any(Boolean),
+      considered: expect.any(Number),
+    });
+    if (result.releasable) {
+      expect(code).toBe(0);
+      expect(result.version).toMatch(/^\d+\.\d+\.\d+$/);
+    } else {
+      expect(code).toBe(2);
+      expect(result.version).toBeNull();
+    }
   });
 
   it("exits non-zero when nothing is releasable", () => {

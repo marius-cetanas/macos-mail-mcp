@@ -59,11 +59,16 @@ jobs:
             exit 1
           fi
           cat version.json
-          {
-            echo "next=$(node -p "require('./version.json').version")"
-            echo "bump=$(node -p "require('./version.json').bump")"
-            echo "current=$CURRENT"
-          } >> "$GITHUB_OUTPUT"
+          # One node invocation emitting the key=value lines directly. The
+          # nested-quote form this replaces was valid bash — command
+          # substitution opens a fresh quoting context — but it read as broken
+          # to two reviewers, and shell nobody trusts gets "fixed" wrongly later.
+          node -e '
+            const v = require("./version.json");
+            console.log(`next=${v.version}`);
+            console.log(`bump=${v.bump}`);
+          ' >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
 
       - run: npm run build
       - run: npm run test:coverage
