@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse } from "yaml";
@@ -296,13 +296,30 @@ describe("release.yml — the whole release in one workflow", () => {
       expect(lock.packages[""].version).toBe(pkg.version);
     });
 
-    // The failure this pair caused was invisible until a release ran, because
-    // nothing else mutates the tree. Pin the property directly.
-    it("is unaffected by the working tree being rewritten", () => {
-      const before = committed("package.json").version;
-      expect(before).toBe("0.0.0-development");
-      expect(JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version)
-        .toBeTypeOf("string");
+    // Proves committed() reads git rather than the working tree, by making the
+    // two disagree — the earlier version of this test asserted nothing, since
+    // it never rewrote anything and would have passed either way.
+    //
+    // It mutates package-lock.json, not package.json: both go through the same
+    // committed() helper, but tests/index.test.ts reads package.json and vitest
+    // runs test files in parallel, so mutating that one would intermittently
+    // break an unrelated suite.
+    it("reads git even when the working tree disagrees", () => {
+      const path = join(process.cwd(), "package-lock.json");
+      const original = readFileSync(path, "utf8");
+      try {
+        writeFileSync(
+          path,
+          JSON.stringify({ ...JSON.parse(original), version: "9.9.9-tree-only" }, null, 2)
+        );
+
+        // The working tree now disagrees with HEAD…
+        expect(JSON.parse(readFileSync(path, "utf8")).version).toBe("9.9.9-tree-only");
+        // …and the assertion still reports what git holds.
+        expect(committed("package-lock.json").version).toBe("0.0.0-development");
+      } finally {
+        writeFileSync(path, original);
+      }
     });
   });
 });
