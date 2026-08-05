@@ -9,23 +9,34 @@
 import { readFileSync, writeFileSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const FIRST_SECTION = "\n## ";
+const HEADING = "## ";
 
 /**
  * Insert a section for `version` above the newest existing one.
  *
- * A changelog with no release headings yet — a first release against nothing
- * but a Keep a Changelog preamble — appends instead. `indexOf` returning -1
- * would otherwise be used as a slice index, which silently drops the last
- * character and puts the entry in the wrong place.
+ * Finds the first line that *is* a heading, rather than searching for "\n## ".
+ * A substring search cannot see a heading on the very first line — a changelog
+ * with no preamble — and would append there instead of inserting at the top.
+ * Working line-wise also ignores "## [x]" appearing inside prose.
+ *
+ * A changelog with no release headings at all appends, which is correct for a
+ * first release against a bare Keep a Changelog preamble.
  *
  * @returns {string} the updated changelog
  */
 export function insertEntry(changelog, version, date, body) {
-  const entry = `\n## [${version}] - ${date}\n\n### Changed\n\n${body}\n`;
-  const marker = changelog.indexOf(FIRST_SECTION);
-  const at = marker === -1 ? changelog.length : marker;
-  return changelog.slice(0, at) + entry + changelog.slice(at);
+  const entry = `## [${version}] - ${date}\n\n### Changed\n\n${body}\n`;
+  const lines = changelog.split("\n");
+  const at = lines.findIndex((line) => line.startsWith(HEADING));
+
+  if (at === -1) {
+    const separator = changelog.endsWith("\n") ? "" : "\n";
+    return `${changelog}${separator}\n${entry}`;
+  }
+
+  const before = lines.slice(0, at).join("\n");
+  const after = lines.slice(at).join("\n");
+  return `${before}${before === "" ? "" : "\n"}${entry}\n${after}`;
 }
 
 function isMain() {

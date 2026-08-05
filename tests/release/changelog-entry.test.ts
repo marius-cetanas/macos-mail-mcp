@@ -47,6 +47,27 @@ describe("insertEntry", () => {
     });
   });
 
+  // Raised in review of #24: searching for "\n## " cannot see a heading on the
+  // very first line, so a changelog with no preamble appended instead of
+  // inserting at the top — contradicting the documented behaviour.
+  describe("a changelog with no preamble", () => {
+    const NO_PREAMBLE = ["## [1.2.0] - 2026-06-08", "", "- the old thing", ""].join("\n");
+
+    it("inserts above the existing release, not at the end", () => {
+      const out = insertEntry(NO_PREAMBLE, "1.3.0", "2026-08-05", "- the new thing");
+      expect(out.indexOf("## [1.3.0]")).toBeLessThan(out.indexOf("## [1.2.0]"));
+    });
+
+    it("starts the file with the new entry", () => {
+      const out = insertEntry(NO_PREAMBLE, "1.3.0", "2026-08-05", "- x");
+      expect(out.startsWith("## [1.3.0] - 2026-08-05")).toBe(true);
+    });
+
+    it("keeps the previous release intact", () => {
+      expect(insertEntry(NO_PREAMBLE, "1.3.0", "2026-08-05", "- x")).toContain("- the old thing");
+    });
+  });
+
   it("does not match a heading that is not at the start of a line", () => {
     const inline = "# Changelog\n\nSee `## [1.0.0]` for the format.\n";
     const out = insertEntry(inline, "1.1.0", "2026-08-05", "- x");
