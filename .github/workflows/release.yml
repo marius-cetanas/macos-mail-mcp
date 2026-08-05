@@ -15,6 +15,15 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # Lets the publish path be validated without minting a tag. A tag is a
+  # permanent, public artifact; discovering a broken pipeline by pushing one and
+  # watching it fail is how v1.3.0 ended up tagged but unpublished.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every check and stop before publishing"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -33,11 +42,19 @@ jobs:
         with:
           persist-credentials: false
 
+      # Deliberately no `registry-url` and no `cache`.
+      #
+      # registry-url makes setup-node write `_authToken=${NODE_AUTH_TOKEN}` into
+      # a generated .npmrc. With no NODE_AUTH_TOKEN the placeholder expands to
+      # empty — but an empty token is still a token, so npm treats auth as
+      # already configured, never starts the OIDC exchange, and publishes
+      # anonymously (E404). See actions/setup-node#1551. The default registry is
+      # registry.npmjs.org anyway, so the setting bought nothing.
+      #
+      # npm's own guidance is not to cache in release builds.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
-          registry-url: "https://registry.npmjs.org"
-          cache: npm
 
       # Trusted Publishing needs npm >= 11.5.1. Node 24 ships a recent npm, but
       # pinning the floor here keeps the job honest if the runner image changes.
@@ -46,23 +63,96 @@ jobs:
           npm install -g npm@latest
           npm --version
 
+      # Fails loudly on the misconfigurations that otherwise surface as a bare
+      # E404 from an anonymous publish, which reads like "package not found"
+      # and sends you looking in the wrong place entirely.
+      - name: Preflight — OIDC can actually be used
+        run: |
+          fail=0
+
+          # id-token: write is what makes this variable exist. No variable, no
+          # OIDC, regardless of what the permissions block claims.
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token endpoint. The job is missing 'id-token: write'."
+            fail=1
+          else
+            echo "OIDC token endpoint present."
+          fi
+
+          # Any _authToken npm can see — even an empty one — stops it starting
+          # the OIDC exchange. This is what broke the v1.3.0 release.
+          for f in "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" ./.npmrc; do
+            if [ -f "$f" ] && grep -q "_authToken" "$f"; then
+              echo "::error::$f sets _authToken; npm will skip OIDC and publish anonymously."
+              echo "Remove registry-url from actions/setup-node. See actions/setup-node#1551."
+              fail=1
+            fi
+          done
+          if [ "$fail" -eq 0 ]; then echo "No conflicting _authToken found."; fi
+
+          node -e '
+            const [maj, min, pat] = process.versions.node.split(".").map(Number);
+            const ok = maj > 22 || (maj === 22 && (min > 14 || (min === 14 && pat >= 0)));
+            if (!ok) { console.error(`::error::Node ${process.versions.node} < 22.14.0, required for trusted publishing.`); process.exit(1); }
+            console.log(`Node ${process.versions.node} meets the 22.14.0 floor.`);
+          ' || fail=1
+
+          exit $fail
+
       - run: npm ci
 
       - name: Verify the tag matches package.json
+        if: github.ref_type == 'tag'
         run: |
           TAG="${GITHUB_REF_NAME#v}"
           PKG="$(node -p "require('./package.json').version")"
           if [ "$TAG" != "$PKG" ]; then
-            echo "Tag $GITHUB_REF_NAME implies version $TAG but package.json says $PKG."
-            echo "Refusing to publish a mismatched version."
+            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG but package.json says $PKG."
             exit 1
           fi
           echo "Publishing version $PKG."
+
+      # A tag naming a version that is already on the registry cannot publish —
+      # npm rejects republishing. Better to say so than to fail at the last step.
+      - name: Verify the version is not already published
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          if npm view "macos-mail-mcp@$PKG" version >/dev/null 2>&1; then
+            echo "::error::macos-mail-mcp@$PKG is already on the registry. Bump the version."
+            exit 1
+          fi
+          echo "$PKG is not yet published."
 
       # Re-verify rather than trusting that the tagged commit passed CI on a PR.
       - run: npm run build
       - run: npm run test:coverage
       - run: npm audit --audit-level=high
 
+      - name: Publish (dry run)
+        if: inputs.dry_run
+        run: |
+          npm publish --dry-run
+          echo "Dry run only — nothing was published."
+          echo "Everything up to the registry handshake is verified; the handshake"
+          echo "itself is only exercised by a real publish."
+
       - name: Publish
+        if: ${{ !inputs.dry_run }}
         run: npm publish
+
+      - name: Confirm it landed
+        if: ${{ !inputs.dry_run }}
+        run: |
+          PKG="$(node -p "require('./package.json').version")"
+          for i in $(seq 1 10); do
+            sleep 6
+            if npm view "macos-mail-mcp@$PKG" version >/dev/null 2>&1; then
+              echo "Published: macos-mail-mcp@$PKG"
+              npm view "macos-mail-mcp@$PKG" dist.attestations >/dev/null 2>&1 \
+                && echo "Provenance attestation present." \
+                || echo "::warning::No provenance attestation — publish did not go through OIDC."
+              exit 0
+            fi
+          done
+          echo "::error::$PKG is not on the registry after publishing appeared to succeed."
+          exit 1
