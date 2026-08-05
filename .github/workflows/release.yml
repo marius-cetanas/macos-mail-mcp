@@ -107,7 +107,12 @@ jobs:
             exit 1
           fi
           if git rev-parse "v$PKG" >/dev/null 2>&1; then
-            echo "::error::Tag v$PKG already exists but $PKG is not published. Resolve by hand."
+            # States only what is known. "Not published" would be inferred from
+            # the npm view above, which also fails on a network or registry
+            # error — and a confident wrong diagnosis is worse than none.
+            echo "::error::Tag v$PKG already exists, and the registry did not report $PKG as published."
+            echo "::error::Either the tag is left over from a failed publish, or the registry lookup itself failed."
+            echo "::error::Check with 'npm view macos-mail-mcp versions' and resolve before retrying."
             exit 1
           fi
           echo "version=$PKG" >> "$GITHUB_OUTPUT"

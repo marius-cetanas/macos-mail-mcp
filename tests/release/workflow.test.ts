@@ -198,6 +198,17 @@ describe("release.yml", () => {
     });
   });
 
+  // Raised in review of #24: "not published" was inferred from an npm view that
+  // also fails on a network error, so the guard stated a conclusion it had not
+  // established.
+  it("does not claim a version is unpublished when it only failed to look it up", () => {
+    const guard = String(
+      steps(wf(), "publish").find((s) => String(s.name ?? "").includes("version"))?.run
+    );
+    expect(guard).not.toMatch(/is not published/);
+    expect(guard).toMatch(/registry lookup itself failed|did not report/);
+  });
+
   it("verifies the publish actually landed", () => {
     expect(stepIndex(steps(wf(), "publish"), "Confirm")).toBeGreaterThanOrEqual(0);
   });

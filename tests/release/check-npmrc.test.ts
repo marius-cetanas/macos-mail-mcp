@@ -2,7 +2,38 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { mkdtempSync, writeFileSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { findAuthTokenAssignments, checkFiles } from "../../scripts/check-npmrc.mjs";
+import {
+  findAuthTokenAssignments,
+  checkFiles,
+  describeProblem,
+} from "../../scripts/check-npmrc.mjs";
+
+// Raised in review of #24: the message named actions/setup-node as the cause,
+// but the assignment can equally come from a user or project .npmrc — sending
+// the reader to edit a workflow that is not the problem.
+describe("describeProblem", () => {
+  const message = () => describeProblem("/home/runner/.npmrc", { line: 3, text: "_authToken=x" });
+
+  it("names the file and line", () => {
+    expect(message()).toContain("/home/runner/.npmrc:3");
+  });
+
+  it("explains the consequence, not just the fact", () => {
+    expect(message()).toMatch(/publishes anonymously/);
+  });
+
+  it("does not assert setup-node as the only cause", () => {
+    expect(message()).toMatch(/user or project \.npmrc/);
+  });
+
+  it("still names registry-url as the likely cause when generated", () => {
+    expect(message()).toMatch(/registry-url/);
+  });
+
+  it("tells the reader what to do", () => {
+    expect(message()).toMatch(/Remove the assignment/);
+  });
+});
 
 describe("checkFiles", () => {
   let dir: string;
