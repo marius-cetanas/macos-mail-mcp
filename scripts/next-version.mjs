@@ -138,16 +138,24 @@ function isMain() {
 }
 
 // CLI: prints JSON for the workflow to consume.
+//
+// Exit codes are load-bearing — the workflow distinguishes them. 0 releasable,
+// 2 nothing releasable (a normal answer), anything else a genuine failure.
 if (isMain()) {
-  const since = arg("since") ?? lastReleaseTag();
   const current = arg("current");
-  const force = arg("force");
-  const commits = commitsSince(since);
-  const result = nextVersion(current, commits, { force: force === "auto" ? undefined : force });
-  console.log(
-    JSON.stringify({ ...result, since, considered: commits.length }, null, 2)
-  );
-  if (!result.releasable) {
-    process.exitCode = 2;
+  if (current === undefined) {
+    console.error(
+      "usage: next-version.mjs --current <version> [--since <ref>] [--force patch|minor|major|auto]"
+    );
+    process.exitCode = 1;
+  } else {
+    const since = arg("since") ?? lastReleaseTag();
+    const force = arg("force");
+    const commits = commitsSince(since);
+    const result = nextVersion(current, commits, { force: force === "auto" ? undefined : force });
+    console.log(JSON.stringify({ ...result, since, considered: commits.length }, null, 2));
+    if (!result.releasable) {
+      process.exitCode = 2;
+    }
   }
 }

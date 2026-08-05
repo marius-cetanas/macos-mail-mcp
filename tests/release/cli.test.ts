@@ -9,19 +9,23 @@ import { tmpdir } from "node:os";
  * The entrypoint guard is only meaningful if invoking the file actually runs it,
  * which no amount of importing the module proves.
  */
-function run(script: string, args: string[]): { code: number; out: string } {
+function run(script: string, args: string[]): { code: number; out: string; err: string } {
   try {
     const out = execFileSync("node", [join("scripts", script), ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
-    return { code: 0, out };
+    return { code: 0, out, err: "" };
   } catch (error) {
     // `status` is null when the child died from a signal rather than exiting.
     // Returning that would break the `code: number` contract and make
     // assertions like toContain(code) behave strangely.
-    const e = error as { status: number | null; stdout?: string };
-    return { code: typeof e.status === "number" ? e.status : 1, out: e.stdout ?? "" };
+    const e = error as { status: number | null; stdout?: string; stderr?: string };
+    return {
+      code: typeof e.status === "number" ? e.status : 1,
+      out: e.stdout ?? "",
+      err: e.stderr ?? "",
+    };
   }
 }
 
@@ -51,6 +55,20 @@ describe("next-version CLI", () => {
       expect(code).toBe(2);
       expect(result.version).toBeNull();
     }
+  });
+
+  // Raised in review of #24: a missing --current threw a stack trace, while the
+  // other two script CLIs print usage.
+  describe("missing --current", () => {
+    it("prints usage rather than a stack trace", () => {
+      const { err } = run("next-version.mjs", ["--force", "patch"]);
+      expect(err).toMatch(/usage: next-version\.mjs --current/);
+      expect(err).not.toMatch(/at .*next-version\.mjs:\d+/);
+    });
+
+    it("exits 1, distinct from the 2 that means nothing releasable", () => {
+      expect(run("next-version.mjs", ["--force", "patch"]).code).toBe(1);
+    });
   });
 
   it("exits non-zero when nothing is releasable", () => {
