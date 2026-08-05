@@ -209,9 +209,13 @@ published outside OIDC has none, permanently; 1.3.0 is such a version.
 
 ## Registration
 
+Register via `npx`, not a local build path. `npx` re-resolves the published version
+at every server start, so an installed copy picks up each release on its own; a path
+into `build/` is frozen at whatever was last compiled there.
+
 **Claude Code CLI:**
 ```bash
-claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/macos-mail-mcp/build/index.js
+claude mcp add --transport stdio --scope user macos-mail-mcp -- npx -y macos-mail-mcp@latest
 ```
 
 **Claude Desktop:** Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -219,9 +223,40 @@ claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/ma
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "command": "node",
-      "args": ["/path/to/macos-mail-mcp/build/index.js"]
+      "command": "/opt/homebrew/bin/npx",
+      "args": ["-y", "macos-mail-mcp@latest"],
+      "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
     }
   }
 }
 ```
+
+Use the absolute path to `npx` for Claude Desktop — GUI apps do not inherit the shell
+`PATH`, so a bare `"npx"` usually fails to launch.
+
+`@latest` is belt and braces rather than a fix. A bare package name already re-resolves
+from the registry today: for a name with no version, npm skips the range-satisfies
+shortcut and fetches the manifest with `preferOnline`, so the `"^1.3.0"` written into the
+npx cache records the last install rather than pinning it. `@latest` takes the tag branch
+instead, which re-resolves independently of that heuristic — so if npm ever changes it,
+the bare form would freeze on an old version silently, with no signal. The cost is one
+extra download, since the two forms hash to different cache keys.
+
+Two consequences of resolving at start-up, both real:
+
+- **An update only lands when the server process starts.** A long-running Claude Desktop
+  keeps serving the version it launched with, however new the one on disk is. Restarting
+  the app is what puts a new release live.
+- **The check is a registry round-trip**, so with the registry unreachable the server
+  fails to start at all rather than falling back to the cached copy. That is the trade-off
+  of always-current; do not "fix" it by pinning a version.
+
+**For development on this server**, register the local build instead — that is the point
+of it, since you want the code in your working tree rather than the published release:
+
+```bash
+claude mcp add --transport stdio --scope user macos-mail-mcp-dev -- node /path/to/macos-mail-mcp/build/index.js
+```
+
+Register it under a different name so it does not shadow the published copy, and
+remember it serves whatever `npm run build` last produced.

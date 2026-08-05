@@ -28,10 +28,10 @@ The easiest way — no cloning or building required.
 **Claude Code (CLI):**
 
 ```bash
-claude mcp add --scope user macos-mail-mcp -- npx -y macos-mail-mcp
+claude mcp add --scope user macos-mail-mcp -- npx -y macos-mail-mcp@latest
 ```
 
-`--scope user` makes the server available in every project — the default `local` scope only registers it for the directory you run the command in. `-y` lets `npx` install the package on first run without an interactive prompt.
+`--scope user` makes the server available in every project — the default `local` scope only registers it for the directory you run the command in. `-y` lets `npx` install the package on first run without an interactive prompt. `@latest` makes the auto-update behaviour explicit — see [Staying up to date](#staying-up-to-date).
 
 **Claude Desktop (and Cowork):**
 
@@ -42,7 +42,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "macos-mail-mcp": {
       "command": "/opt/homebrew/bin/npx",
-      "args": ["-y", "macos-mail-mcp"],
+      "args": ["-y", "macos-mail-mcp@latest"],
       "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
     }
   }
@@ -57,9 +57,32 @@ Use the **absolute path** to `npx` — GUI apps don't inherit your shell's `PATH
 
 The `env.PATH` entry lets `npx` locate `node` for the same reason. Then **fully quit** Claude (Cmd+Q — closing the window isn't enough) and reopen; the config is only read at startup. If the server doesn't appear, check `~/Library/Logs/Claude/mcp*.log` for spawn errors.
 
+### Staying up to date
+
+Installed copies update themselves. `npx` re-resolves the published version every time
+the server starts, so a new release is picked up without you touching the config.
+
+`@latest` in the commands above makes that explicit rather than changing it. A bare
+package name already re-resolves today: npm skips the range-satisfies shortcut for a name
+with no version and fetches the manifest with `preferOnline`, so the `"^1.3.0"` that
+appears in the npx cache records the last install rather than pinning it. `@latest` takes
+the tag branch instead, which does not depend on that heuristic — so if npm ever changes
+it, the bare form would freeze on an old version silently. The cost is one extra download,
+because the two forms hash to different cache keys.
+
+Two consequences worth knowing:
+
+- **Updates land at server start, not while it is running.** A long-running Claude Desktop
+  keeps serving the version it launched with. Quit and reopen it to pick up a release.
+- **The check is a registry round-trip.** With the registry unreachable the server fails to
+  start rather than falling back to the cached copy. That is the price of always-current;
+  pinning a version to avoid it gives up the updates.
+
 ### Install from Source
 
-If you prefer to build locally or want to contribute:
+For working on the server itself. This path does **not** auto-update — it runs whatever
+`npm run build` last produced in your working tree, which is exactly what you want while
+developing and not what you want otherwise.
 
 ```bash
 git clone https://github.com/marius-cetanas/macos-mail-mcp.git
@@ -68,10 +91,11 @@ npm install
 npm run build
 ```
 
-Then register with Claude Code:
+Then register with Claude Code. Use a distinct name so the local build does not shadow a
+published copy you may also have registered:
 
 ```bash
-claude mcp add --transport stdio --scope user macos-mail-mcp -- node /path/to/macos-mail-mcp/build/index.js
+claude mcp add --transport stdio --scope user macos-mail-mcp-dev -- node /path/to/macos-mail-mcp/build/index.js
 ```
 
 Or add to Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
@@ -79,7 +103,7 @@ Or add to Claude Desktop config (`~/Library/Application Support/Claude/claude_de
 ```json
 {
   "mcpServers": {
-    "macos-mail-mcp": {
+    "macos-mail-mcp-dev": {
       "command": "/opt/homebrew/bin/node",
       "args": ["/path/to/macos-mail-mcp/build/index.js"]
     }
