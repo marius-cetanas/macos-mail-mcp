@@ -159,5 +159,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$VERSION" -m "$VERSION"
           git push origin "v$VERSION"
-          awk "/^## \[$VERSION\]/{f=1;next} /^## \[/{f=0} f" CHANGELOG.md > notes.md
+          node scripts/release-notes.mjs "$VERSION" CHANGELOG.md > notes.md
           gh release create "v$VERSION" --title "v$VERSION" --latest --notes-file notes.md

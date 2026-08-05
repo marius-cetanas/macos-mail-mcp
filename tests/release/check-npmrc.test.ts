@@ -130,6 +130,16 @@ describe("findAuthTokenAssignments", () => {
       expect(findAuthTokenAssignments("cafile=/etc/ssl/_authToken=oops\n")).toEqual([]);
     });
 
+    // Raised again in review: a bare `:` was equally too broad.
+    it("does not match a value containing a colon before the key", () => {
+      expect(findAuthTokenAssignments("cafile=C:_authToken=oops\n")).toEqual([]);
+    });
+
+    it("requires the registry-scoped '/:' rather than any separator", () => {
+      expect(findAuthTokenAssignments("some:_authToken=x\n")).toEqual([]);
+      expect(findAuthTokenAssignments("//registry.npmjs.org/:_authToken=x\n")).toHaveLength(1);
+    });
+
     it("does not match a key ending in the word", () => {
       expect(findAuthTokenAssignments("legacy_authToken_backup=x\n")).toEqual([]);
     });

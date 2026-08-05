@@ -16,10 +16,10 @@ import { fileURLToPath } from "node:url";
 // (`//registry.npmjs.org/:_authToken=`), and be followed by `=`. A grep for the
 // bare substring fails a release on a comment.
 //
-// Deliberately does not accept a preceding `/`: that would make the pattern
-// broader than the rule it documents and would fire on a path value containing
-// `/_authToken=`.
-const ASSIGNMENT = /(^|:)_authtoken\s*=/i;
+// The prefix is exactly `/:` — the separator in a registry-scoped key — and not
+// a bare `/` or a bare `:`. Both of those are broader than the rule stated
+// above and would fire on ordinary values (`/_authToken=`, `C:_authToken=`).
+const ASSIGNMENT = /(^|\/:)_authtoken\s*=/i;
 
 /**
  * Lines in an .npmrc that actually assign an auth token.
