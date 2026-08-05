@@ -274,9 +274,20 @@ describe("release.yml — the whole release in one workflow", () => {
   });
 
   describe("package.json version is a placeholder", () => {
+    const pkg = () => JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    const lock = () =>
+      JSON.parse(readFileSync(join(process.cwd(), "package-lock.json"), "utf8"));
+
     it("is not a release version", () => {
-      const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-      expect(pkg.version).toBe("0.0.0-development");
+      expect(pkg().version).toBe("0.0.0-development");
+    });
+
+    // Raised in review of #27: the lockfile kept 1.3.0 after the manifest moved
+    // to the placeholder. npm ci tolerates the drift, but npm install silently
+    // rewrites the lockfile, so it comes back as noise in an unrelated diff.
+    it("matches the lockfile", () => {
+      expect(lock().version).toBe(pkg().version);
+      expect(lock().packages[""].version).toBe(pkg().version);
     });
   });
 });
