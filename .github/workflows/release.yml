@@ -3,9 +3,9 @@ name: Release
 # Step 2 of 2. Publishes the version currently on main. Run it deliberately,
 # when you decide to ship.
 #
-# Nothing about merging publishes. Any number of pull requests can land on main
-# between releases; this workflow ships whatever version is there when you run
-# it, so merge volume never drives the version number.
+# Merging a pull request never ships anything. Any number of them can land on
+# main between releases; this workflow ships whatever version is there when you
+# run it, so merge volume never drives the version number.
 #
 # There is deliberately no tag trigger and no push trigger. A tag is permanent
 # and public, so a tag that fails to publish leaves a tag pointing at a version

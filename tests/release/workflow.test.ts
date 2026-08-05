@@ -181,6 +181,33 @@ describe("release.yml", () => {
   });
 });
 
+// Raised in review of #24: the prepare workflow's own comment and its job
+// summary still told the maintainer that merging publishes, after the trigger
+// had moved to workflow_dispatch. The job summary is the instruction a
+// maintainer actually reads mid-release, so a stale one strands the release.
+describe("nothing claims that merging publishes", () => {
+  const FORBIDDEN = [/merging publishes/i, /is what publishes/i];
+  const FILES = [
+    ".github/workflows/release-prepare.yml",
+    ".github/workflows/release.yml",
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "README.md",
+  ];
+
+  it.each(FILES)("%s", (file) => {
+    const text = readFileSync(join(process.cwd(), file), "utf8");
+    for (const pattern of FORBIDDEN) {
+      expect(text, `${file} still claims merging publishes`).not.toMatch(pattern);
+    }
+  });
+
+  it("release-prepare points at the Release workflow instead", () => {
+    const text = readFileSync(join(DIR, "release-prepare.yml"), "utf8");
+    expect(text).toMatch(/run the .?Release.? workflow/i);
+  });
+});
+
 describe("ci.yml", () => {
   it("still gates on the aggregate ci-ok job", () => {
     expect(workflow("ci.yml").jobs["ci-ok"]).toBeDefined();

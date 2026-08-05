@@ -12,7 +12,8 @@ name: Release prepare
 # branch protection would leave it permanently unmergeable. The job prints a
 # one-click link.
 #
-# Merging that PR is what publishes — see release.yml.
+# Merging that PR lands the version bump on main. It publishes nothing. Shipping
+# is a separate, deliberate step: run the "Release" workflow — see release.yml.
 
 on:
   workflow_dispatch:
@@ -130,5 +131,8 @@ jobs:
             echo "Open it yourself rather than letting the workflow do it — a PR created by"
             echo "GITHUB_TOKEN does not trigger CI, and \`ci-ok\` is a required check."
             echo
-            echo "Edit the changelog in the PR, then merge. **Merging publishes $NEXT to npm.**"
+            echo "Edit the changelog in the PR, then merge. Merging lands the bump on main"
+            echo "and publishes nothing."
+            echo
+            echo "**To ship $NEXT, run the \`Release\` workflow after merging.**"
           } >> "$GITHUB_STEP_SUMMARY"
