@@ -13,7 +13,7 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (280 unit tests at 100% coverage, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest (330 unit tests; 100% coverage of `src/`, mocked bridge — no real Mail.app needed)
 
 ## Architecture
 
@@ -41,11 +41,20 @@ src/
     messages/   — 8 message tools + 4 attachment tools (12 total in this domain)
     compose/    — 3 tools: send_message, reply_to_message, forward_message
                   sender.ts resolves the optional fromAccount to a sender string
+scripts/                — release tooling, not shipped in the package
+  next-version.mjs      — conventional commits → next semver
+  check-npmrc.mjs       — fails a release if anything would disable OIDC
 tests/
+  index.test.ts                — Entry point: wiring, version, stdio, fatal path
   utils.test.ts                — Tests for sanitize, expandTilde
-  bridge/applescript-runner.test.ts — Tests for escaping, param substitution, JSON parsing
-  domains/*/                   — Handler tests with mocked bridge
+  helpers/capture-tools.ts     — Stub server for driving registered MCP tools
+  bridge/                      — Escaping/parsing, and runAppleScript execution
+  domains/*/                   — Handler and registration-layer tests
+  release/                     — Version resolver, npmrc guard, workflow structure
 ```
+
+Coverage thresholds apply to `src/` only, so `scripts/` does not count toward the 100%
+gate — its tests are real tests and run in the same suite.
 
 ## Critical Patterns
 
@@ -141,7 +150,7 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 
 ```bash
 npm run build        # tsc + copy .applescript files to build/
-npm test             # Run 280 unit tests
+npm test             # Run 330 unit tests
 npm run test:coverage # Tests + coverage; fails below the 100% thresholds
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
@@ -149,31 +158,43 @@ npm run dev          # TypeScript watch mode
 
 ## Releasing
 
-Pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes to npm via
-Trusted Publishing (OIDC). There is no `NPM_TOKEN` in the repo.
+Two steps, both requiring a human. Publishing to npm is a Gated action.
 
-Before the first tag-triggered publish can work, npmjs.com → the package → Settings →
-Trusted Publisher must name the org/user, the repo, the workflow **filename**
-(`release.yml`) and allow the `npm publish` action. Renaming that file breaks publishing
-until the entry is updated.
+1. **Run "Release prepare"** from the Actions tab. It derives the next version from the
+   conventional commits since the last release tag, runs build, coverage and audit, and
+   with `dry_run` (the default) reports the version and stops. Re-run with `dry_run`
+   unchecked to push a `release/vX.Y.Z` branch carrying the bump and a changelog entry.
+2. **Open the PR yourself** from the link the job prints, edit the changelog, and merge.
+   **Merging is what publishes** — `release.yml` fires on a `chore(release):` commit
+   landing on `main`, publishes via OIDC, then tags and cuts the GitHub release.
 
-Validate the pipeline without minting a tag by running the workflow manually with
-`dry_run` (the default). A tag is permanent and public; a failed tag-triggered publish
-leaves a tag pointing at an unpublished version.
+The version is computed at release time, not per push, so three merges followed by one
+release consume one version rather than three. `scripts/next-version.mjs` is the resolver
+(`feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE` → major, highest wins);
+`tests/release/next-version.test.ts` is its spec.
 
-Order for a release: land the version bump and changelog on `main`, run a dry run, then
-tag. Never tag first.
+**The workflow does not open the PR** and must not be "improved" to do so: a pull request
+created with `GITHUB_TOKEN` does not trigger workflow runs, so `ci-ok` would never report
+and branch protection would leave it unmergeable.
 
-**Do not add `registry-url` to `actions/setup-node` in this workflow.** It writes
-`_authToken=${NODE_AUTH_TOKEN}` into a generated `.npmrc`; with no token set that expands
-to empty, and an empty token still reads as configured auth, so npm skips the OIDC
-exchange and publishes anonymously. The symptom is a bare `E404` from `PUT`, which looks
-like a missing package rather than an auth failure. This cost the v1.3.0 release
-(actions/setup-node#1551). A preflight step now fails the job if any `_authToken` is
-visible, so the mistake cannot silently recur.
+**There is no tag trigger.** The tag is an output of a successful publish, never its
+cause — so a failed publish cannot leave a tag pointing at a version that does not exist
+on the registry. That happened to v1.3.0.
 
-Provenance attestations are attached at publish time and cannot be added afterwards. A
-version published outside OIDC has none, permanently.
+Before the first OIDC publish can work, npmjs.com → the package → Settings → Trusted
+Publisher must name the org/user, the repo, the workflow **filename** (`release.yml`) and
+allow `npm publish`. Renaming that file breaks publishing until the entry is updated.
+
+**Do not add `registry-url` or `cache` to `actions/setup-node` in `release.yml`.**
+`registry-url` writes `_authToken=${NODE_AUTH_TOKEN}` into a generated `.npmrc`; with no
+token set that expands to empty, and an empty token still reads as configured auth, so npm
+skips the OIDC exchange and publishes anonymously. The symptom is a bare `E404` on `PUT`,
+which reads as a missing package rather than an auth failure. This cost the v1.3.0 release
+(actions/setup-node#1551). `scripts/check-npmrc.mjs` fails the job on any real assignment —
+matching assignments, not mentions, so a comment does not block a release.
+
+Provenance attestations attach at publish time and cannot be added afterwards. A version
+published outside OIDC has none, permanently; 1.3.0 is such a version.
 
 ## Registration
 
