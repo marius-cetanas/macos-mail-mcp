@@ -17,8 +17,11 @@ function run(script: string, args: string[]): { code: number; out: string } {
     });
     return { code: 0, out };
   } catch (error) {
-    const e = error as { status: number; stdout: string };
-    return { code: e.status, out: e.stdout ?? "" };
+    // `status` is null when the child died from a signal rather than exiting.
+    // Returning that would break the `code: number` contract and make
+    // assertions like toContain(code) behave strangely.
+    const e = error as { status: number | null; stdout?: string };
+    return { code: typeof e.status === "number" ? e.status : 1, out: e.stdout ?? "" };
   }
 }
 

@@ -16,10 +16,15 @@ import { fileURLToPath } from "node:url";
 // (`//registry.npmjs.org/:_authToken=`), and be followed by `=`. A grep for the
 // bare substring fails a release on a comment.
 //
-// The prefix is exactly `/:` — the separator in a registry-scoped key — and not
-// a bare `/` or a bare `:`. Both of those are broader than the rule stated
-// above and would fire on ordinary values (`/_authToken=`, `C:_authToken=`).
-const ASSIGNMENT = /(^|\/:)_authtoken\s*=/i;
+// Anchored at the start of the line, because that is what an .npmrc key is.
+// Either a bare `_authToken=`, or a registry-scoped `//host/path/:_authToken=`
+// where the whole thing is still the key and still begins the line.
+//
+// Anchoring is the rule; constraining the prefix is not. Three review rounds
+// narrowed this from `(^|[:/])` to `(^|:)` to `(^|/:)`, and each still matched
+// mid-line — `cafile=/tmp/:_authToken=x` defeated the last one. Anything to the
+// right of a `=` is a value and cannot be a key, whatever it contains.
+const ASSIGNMENT = /^(\/\/.*\/:)?_authtoken\s*=/i;
 
 /**
  * Lines in an .npmrc that actually assign an auth token.

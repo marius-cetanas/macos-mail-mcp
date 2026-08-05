@@ -171,6 +171,28 @@ describe("findAuthTokenAssignments", () => {
       expect(findAuthTokenAssignments("//registry.npmjs.org/:_authToken=x\n")).toHaveLength(1);
     });
 
+    // Raised in review of #24, third occurrence: the key is anchored at the
+    // start of the line, so anything right of a `=` is a value and cannot be
+    // an assignment however it is punctuated.
+    it.each([
+      "cafile=/tmp/:_authToken=oops",
+      "cafile=C:_authToken=oops",
+      "cafile=/etc/ssl/_authToken=oops",
+      "prefix=//host/:_authToken=oops",
+      "//host/:_authToken_backup=x",
+    ])("does not match %s", (line) => {
+      expect(findAuthTokenAssignments(`${line}\n`)).toEqual([]);
+    });
+
+    it.each([
+      "_authToken=x",
+      "//registry.npmjs.org/:_authToken=x",
+      "//npm.pkg.github.com/:_authToken=x",
+      "//registry.npmjs.org/some/path/:_authToken=",
+    ])("still matches the real assignment %s", (line) => {
+      expect(findAuthTokenAssignments(`${line}\n`)).toHaveLength(1);
+    });
+
     it("does not match a key ending in the word", () => {
       expect(findAuthTokenAssignments("legacy_authToken_backup=x\n")).toEqual([]);
     });
