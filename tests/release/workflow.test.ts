@@ -38,9 +38,26 @@ describe("release-prepare.yml", () => {
     expect(triggers(wf())).toHaveProperty("workflow_dispatch");
   });
 
-  it("defaults to a dry run so a mis-click cannot open a release", () => {
-    const inputs = triggers(wf()).workflow_dispatch.inputs;
-    expect(inputs.dry_run.default).toBe(true);
+  // Preparing is one click. Every check runs before the branch is pushed either
+  // way, so a dry run bought no safety here — and pushing a branch is
+  // reversible. The irreversible step is publishing, guarded in release.yml.
+  it("takes only a bump input, so preparing is one click", () => {
+    expect(Object.keys(triggers(wf()).workflow_dispatch.inputs)).toEqual(["bump"]);
+  });
+
+  it("offers an explicit bump override alongside auto", () => {
+    expect(triggers(wf()).workflow_dispatch.inputs.bump.options).toEqual([
+      "auto",
+      "patch",
+      "minor",
+      "major",
+    ]);
+  });
+
+  it("pushes the branch unconditionally", () => {
+    const push = steps(wf(), "prepare").find((s) => String(s.name ?? "").includes("Push"));
+    expect(push).toBeDefined();
+    expect(push!.if).toBeUndefined();
   });
 
   // Pushing the branch is all it needs. It deliberately does not open the PR:
@@ -101,11 +118,26 @@ describe("release.yml", () => {
     expect(triggers(wf()).push).toBeUndefined();
   });
 
-  // Raised in review of #24: with dry_run defaulting to false, clicking "Run
-  // workflow" without reading the form publishes for real — and npm will not
-  // let a version be reissued.
+  // Clicking "Run workflow" without reading the form must not ship, since npm
+  // will not let a version be reissued.
   it("defaults to a dry run so a careless click cannot ship", () => {
-    expect(triggers(wf()).workflow_dispatch.inputs.dry_run.default).toBe(true);
+    expect(triggers(wf()).workflow_dispatch.inputs.mode.default).toBe("dry-run");
+  });
+
+  // A boolean renders as a checkbox that can be impossible to toggle in some
+  // clients — and a safe-by-default checkbox you cannot untick makes publishing
+  // unreachable, a worse failure than the one it guards against.
+  it("uses a selectable choice rather than a checkbox", () => {
+    const mode = triggers(wf()).workflow_dispatch.inputs.mode;
+    expect(mode.type).toBe("choice");
+    expect(mode.options).toEqual(["dry-run", "publish"]);
+  });
+
+  it("has no boolean inputs at all", () => {
+    const inputs = triggers(wf()).workflow_dispatch.inputs;
+    for (const [name, spec] of Object.entries<any>(inputs)) {
+      expect(spec.type, `input "${name}" is a boolean`).not.toBe("boolean");
+    }
   });
 
   it("refuses to publish from anywhere but main", () => {
@@ -132,13 +164,28 @@ describe("release.yml", () => {
 
   describe("dry run", () => {
     it.each(["Publish", "Confirm it landed", "Tag and cut the GitHub release"])(
-      "skips %s",
+      "skips %s unless mode is publish",
       (name) => {
         const step = steps(wf(), "publish").find((s) => s.name === name);
         expect(step, `no step named exactly "${name}"`).toBeDefined();
-        expect(String(step!.if ?? "")).toMatch(/!\s*inputs\.dry_run/);
+        expect(String(step!.if ?? "")).toMatch(/inputs\.mode == 'publish'/);
       }
     );
+
+    it("runs the checks in both modes", () => {
+      for (const name of ["npm run build", "npm run test:coverage", "npm audit"]) {
+        const step = steps(wf(), "publish").find((s) => String(s.run ?? "").startsWith(name));
+        expect(step, `no unconditional step running "${name}"`).toBeDefined();
+        expect(step!.if).toBeUndefined();
+      }
+    });
+
+    it("the version guard runs in both modes too", () => {
+      const guard = steps(wf(), "publish").find((s) =>
+        String(s.name ?? "").includes("version is releasable")
+      );
+      expect(guard!.if).toBeUndefined();
+    });
   });
 
   // The head_commit gate raised in review of #24 is gone entirely: with no push

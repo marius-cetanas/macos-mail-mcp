@@ -161,15 +161,15 @@ npm run dev          # TypeScript watch mode
 Three steps, each requiring a human. Publishing to npm is a Gated action, and **nothing
 publishes as a side effect of merging.**
 
-1. **Run "Release prepare"** from the Actions tab. It derives the next version from the
-   conventional commits since the last release tag, runs build, coverage and audit, and
-   with `dry_run` (the default) reports the version and stops. Re-run with `dry_run`
-   unchecked to push a `release/vX.Y.Z` branch carrying the bump and a changelog entry.
+1. **Run "Release prepare"** from the Actions tab — one click. It derives the next version
+   from the conventional commits since the last release tag, runs build, coverage and audit,
+   then pushes a `release/vX.Y.Z` branch carrying the bump and a changelog entry. `bump`
+   defaults to `auto`; override it when the derived level is not what you want.
 2. **Open the PR yourself** from the link the job prints, edit the changelog, and merge.
    This lands the version bump on `main`. It publishes nothing.
-3. **Run "Release"** when you actually want to ship. It publishes whatever version is on
-   `main` via OIDC, confirms the registry has it, then tags and cuts the GitHub release.
-   It also takes a `dry_run` input that stops short of publishing.
+3. **Run "Release"** when you actually want to ship, choosing `mode: publish`. It publishes
+   whatever version is on `main` via OIDC, confirms the registry has it, then tags and cuts
+   the GitHub release. `mode` defaults to `dry-run`, which runs every check and stops.
 
 Any number of pull requests may land on `main` between releases; merge volume never drives
 the version number. The version is derived once, at prepare time, from everything

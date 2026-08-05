@@ -21,13 +21,19 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        # Defaults to a dry run because publishing is irreversible: npm will not
-        # let a version be reissued. "Run workflow" clicked without reading the
-        # form must not ship. Unchecking this is the deliberate act.
-        description: "Run every check and stop before publishing (uncheck to actually ship)"
-        type: boolean
-        default: true
+      mode:
+        # A choice, not a boolean. A `type: boolean` renders as a checkbox that
+        # can be awkward or impossible to toggle depending on the client — and a
+        # checkbox defaulting to "safe" that you cannot untick makes publishing
+        # unreachable, which is a worse failure than the one it guards against.
+        # A dropdown states both options in words and is always selectable.
+        #
+        # Defaults to dry-run because publishing is irreversible: npm will not
+        # let a version be reissued. Choosing "publish" is the deliberate act.
+        description: "dry-run checks everything and stops; publish ships it"
+        type: choice
+        options: [dry-run, publish]
+        default: dry-run
 
 permissions:
   contents: read
@@ -126,17 +132,17 @@ jobs:
       - run: npm audit --audit-level=high
 
       - name: Publish (dry run)
-        if: inputs.dry_run
+        if: inputs.mode == 'dry-run'
         run: |
           npm publish --dry-run
           echo "Dry run — nothing was published, tagged or released."
 
       - name: Publish
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'publish' }}
         run: npm publish
 
       - name: Confirm it landed
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'publish' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -158,7 +164,7 @@ jobs:
       # Tag and release only after the registry has confirmed the version, so a
       # failed publish never leaves a dangling tag.
       - name: Tag and cut the GitHub release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'publish' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}

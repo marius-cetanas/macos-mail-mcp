@@ -1,11 +1,18 @@
 name: Release prepare
 
-# Step 1 of 2. Run this manually when you want to cut a release.
+# Step 1 of 2. Run this manually when you want to cut a release. One click.
 #
 # Derives the next version from the conventional commits accumulated since the
 # last release tag, runs every check, and pushes a release branch carrying the
 # version bump and changelog entry. It does NOT publish and does NOT open the
 # pull request.
+#
+# There is deliberately no dry-run option here. Every check — build, coverage,
+# audit — runs before the branch is pushed either way, so a dry run bought no
+# safety; it only showed the version number one click earlier. Pushing a branch
+# is reversible: if the version is wrong, delete it and re-run with an explicit
+# `bump`. The irreversible step is publishing, which is a separate workflow with
+# its own guard.
 #
 # Opening the PR is left to you on purpose: a pull request created with
 # GITHUB_TOKEN does not trigger workflow runs, so `ci-ok` would never report and
@@ -23,10 +30,6 @@ on:
         type: choice
         options: [auto, patch, minor, major]
         default: auto
-      dry_run:
-        description: "Report the computed version and stop"
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -88,23 +91,7 @@ jobs:
       - run: npm run test:coverage
       - run: npm audit --audit-level=high
 
-      - name: Report (dry run)
-        if: inputs.dry_run
-        run: |
-          {
-            echo "### Dry run — nothing was pushed"
-            echo
-            echo "| | |"
-            echo "|---|---|"
-            echo "| Current | ${{ steps.version.outputs.current }} |"
-            echo "| Next | **${{ steps.version.outputs.next }}** |"
-            echo "| Bump | ${{ steps.version.outputs.bump }} |"
-            echo
-            echo "All checks passed. Re-run with \`dry_run\` unchecked to push the release branch."
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Push the release branch
-        if: ${{ !inputs.dry_run }}
         env:
           NEXT: ${{ steps.version.outputs.next }}
         run: |

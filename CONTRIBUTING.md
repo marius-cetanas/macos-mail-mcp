@@ -88,13 +88,13 @@ result; that path is only reached by invoking the registered handler. Use
 Maintainers only, and it is three deliberate steps — publishing to npm is irreversible.
 
 1. Run **Release prepare** from the Actions tab. It derives the next version from the
-   conventional commits since the last release, runs every check, and by default reports
-   the version without pushing anything. Re-run with `dry_run` unchecked to push a
+   conventional commits since the last release, runs every check, and pushes a
    `release/vX.Y.Z` branch with the bump and changelog entry.
 2. Open the PR from the printed link, tidy the changelog, and merge. This lands the
    version bump on `main` and publishes nothing.
-3. Run **Release** when you want to ship. It publishes the version on `main`, then tags
-   and cuts the GitHub release.
+3. Run **Release** when you want to ship, choosing `mode: publish`. It publishes the
+   version on `main`, then tags and cuts the GitHub release. The default `mode: dry-run`
+   runs every check and stops.
 
 **Merging never publishes.** Pull requests can accumulate on `main` for as long as you
 like; shipping is always an explicit action.
