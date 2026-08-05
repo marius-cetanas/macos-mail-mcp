@@ -53,9 +53,23 @@ jobs:
         id: version
         run: |
           CURRENT="$(node -p "require('./package.json').version")"
-          if ! node scripts/next-version.mjs --current "$CURRENT" --force "${{ inputs.bump }}" > version.json; then
+
+          # Exit 2 means "nothing releasable" and is a normal answer; anything
+          # else non-zero is a genuine failure. Collapsing the two would report
+          # a malformed version or a git error as "nothing to release", sending
+          # the reader looking in the wrong place.
+          set +e
+          node scripts/next-version.mjs --current "$CURRENT" --force "${{ inputs.bump }}" > version.json
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 2 ]; then
             echo "::error::No releasable commits since the last release. Nothing to publish."
             cat version.json
+            exit 1
+          elif [ "$STATUS" -ne 0 ]; then
+            echo "::error::next-version.mjs failed with exit $STATUS — this is not 'nothing to release'. See the step log above for the underlying error."
+            cat version.json 2>/dev/null || true
             exit 1
           fi
           cat version.json

@@ -57,6 +57,28 @@ describe("release-prepare.yml", () => {
   it("never publishes — preparing and publishing are separate concerns", () => {
     expect(JSON.stringify(wf())).not.toMatch(/npm publish/);
   });
+
+  // Raised in review of #24: reporting every non-zero exit as "nothing to
+  // release" would misdiagnose a malformed version or a git failure — the same
+  // misleading-error shape that made the v1.3.0 E404 look like a missing package.
+  describe("the derive-version step", () => {
+    const deriveStep = () =>
+      String(steps(wf(), "prepare").find((s) => String(s.name ?? "").includes("Derive"))?.run);
+
+    it("treats exit 2 as the 'nothing releasable' answer specifically", () => {
+      expect(deriveStep()).toMatch(/STATUS.*-eq 2|-eq 2/);
+    });
+
+    it("reports other non-zero exits differently", () => {
+      const run = deriveStep();
+      expect(run).toMatch(/-ne 0/);
+      expect(run).toMatch(/not 'nothing to release'/);
+    });
+
+    it("captures the exit code rather than relying on `if !`", () => {
+      expect(deriveStep()).toMatch(/STATUS=\$\?/);
+    });
+  });
 });
 
 describe("release.yml", () => {
