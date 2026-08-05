@@ -41,15 +41,15 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "command": "/opt/homebrew/bin/npx",
+      "command": "/absolute/path/to/npx",
       "args": ["-y", "macos-mail-mcp@latest"],
-      "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
+      "env": { "PATH": "/absolute/path/to/node/bin:/usr/bin:/bin" }
     }
   }
 }
 ```
 
-Use the **absolute path** to `npx` — GUI apps don't inherit your shell's `PATH`, so a bare `"npx"` usually fails to launch. Find yours with `which npx`:
+Both paths above are placeholders. Use the **absolute path** to `npx` — GUI apps don't inherit your shell's `PATH`, so a bare `"npx"` usually fails to launch, and the correct path differs per install. Find yours with `which npx`:
 
 - Apple Silicon Homebrew: `/opt/homebrew/bin/npx`
 - Intel Homebrew: `/usr/local/bin/npx`
@@ -104,7 +104,7 @@ Or add to Claude Desktop config (`~/Library/Application Support/Claude/claude_de
 {
   "mcpServers": {
     "macos-mail-mcp-dev": {
-      "command": "/opt/homebrew/bin/node",
+      "command": "/absolute/path/to/node",
       "args": ["/path/to/macos-mail-mcp/build/index.js"]
     }
   }
