@@ -69,26 +69,58 @@ describe("release.yml", () => {
     expect(push.tags).toBeUndefined();
   });
 
-  it("triggers on the release commit landing on main", () => {
-    const push = triggers(wf()).push;
-    expect(push.branches).toContain("main");
+  // Publishing is a deliberate act, not a consequence of merging. Any number of
+  // PRs may land between releases without driving the version number.
+  it("publishes only when triggered by hand", () => {
+    expect(triggers(wf())).toHaveProperty("workflow_dispatch");
   });
 
-  // Raised in review of #24: merging the release PR with a merge commit makes
-  // head_commit the "Merge pull request …" message, so a head_commit gate would
-  // silently skip the job and publish nothing.
-  describe("the release-commit gate", () => {
-    it("does not depend on head_commit alone", () => {
-      expect(String(wf().jobs.publish.if)).not.toMatch(/head_commit/);
-    });
+  it("is not triggered by any push", () => {
+    expect(triggers(wf()).push).toBeUndefined();
+  });
 
-    it("scans every commit in the push", () => {
-      expect(String(wf().jobs.publish.if)).toMatch(/commits/);
-    });
+  it("offers a dry run", () => {
+    expect(triggers(wf()).workflow_dispatch.inputs.dry_run).toBeDefined();
+  });
 
-    it("still keys on a release commit rather than any package.json change", () => {
-      expect(String(wf().jobs.publish.if)).toMatch(/chore\(release\):/);
-    });
+  it("refuses to publish from anywhere but main", () => {
+    const guard = steps(wf(), "publish").find((s) =>
+      String(s.name ?? "").includes("default branch")
+    );
+    expect(guard).toBeDefined();
+    expect(String(guard!.run)).toMatch(/GITHUB_REF_NAME/);
+  });
+
+  // Raised in review: upgrading npm mid-release makes the pipeline
+  // non-deterministic — a new npm major could change publish behaviour on a run
+  // nobody changed. Assert the floor instead of installing over it.
+  it("does not mutate the toolchain during a release", () => {
+    expect(JSON.stringify(wf())).not.toMatch(/npm install -g/);
+  });
+
+  it("still asserts the npm floor trusted publishing needs", () => {
+    const step = steps(wf(), "publish").find((s) =>
+      String(s.name ?? "").includes("trusted publishing")
+    );
+    expect(String(step?.run)).toMatch(/11\.5\.1/);
+  });
+
+  describe("dry run", () => {
+    it.each(["Publish", "Confirm it landed", "Tag and cut the GitHub release"])(
+      "skips %s",
+      (name) => {
+        const step = steps(wf(), "publish").find((s) => s.name === name);
+        expect(step, `no step named exactly "${name}"`).toBeDefined();
+        expect(String(step!.if ?? "")).toMatch(/!\s*inputs\.dry_run/);
+      }
+    );
+  });
+
+  // The head_commit gate raised in review of #24 is gone entirely: with no push
+  // trigger there is no push payload to inspect, and a merge commit can no
+  // longer cause a silent skip.
+  it("does not gate the job on commit messages at all", () => {
+    expect(String(wf().jobs.publish.if ?? "")).not.toMatch(/head_commit|commits/);
   });
 
   it("grants id-token so OIDC can be used", () => {

@@ -7,6 +7,8 @@
 // never existing.
 
 import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
 const FORCEABLE = ["patch", "minor", "major"];
@@ -116,8 +118,22 @@ function arg(name) {
   return i === -1 ? undefined : process.argv[i + 1];
 }
 
+/**
+ * True when this file was executed directly rather than imported.
+ * Compares resolved real paths: matching on the basename would fire for any
+ * same-named script, and splitting on "/" alone misses Windows separators.
+ */
+function isMain() {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
 // CLI: prints JSON for the workflow to consume.
-if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split("/").pop())) {
+if (isMain()) {
   const since = arg("since") ?? lastReleaseTag();
   const current = arg("current");
   const force = arg("force");

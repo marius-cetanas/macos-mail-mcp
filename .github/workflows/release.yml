@@ -1,14 +1,16 @@
 name: Release
 
-# Step 2 of 2. Publishes when a release commit lands on main — that is, when you
-# merge the pull request produced by release-prepare.yml.
+# Step 2 of 2. Publishes the version currently on main. Run it deliberately,
+# when you decide to ship.
 #
-# Merging that PR IS the approval to publish. Nothing else triggers this.
+# Nothing about merging publishes. Any number of pull requests can land on main
+# between releases; this workflow ships whatever version is there when you run
+# it, so merge volume never drives the version number.
 #
-# There is deliberately no tag trigger. A tag is permanent and public, so a tag
-# that fails to publish leaves a tag pointing at a version that does not exist
-# on the registry — which is exactly what happened to v1.3.0. Here the tag is an
-# output of a successful publish, never its trigger.
+# There is deliberately no tag trigger and no push trigger. A tag is permanent
+# and public, so a tag that fails to publish leaves a tag pointing at a version
+# that does not exist on the registry — which is exactly what happened to
+# v1.3.0. Here the tag is an output of a successful publish, never its trigger.
 #
 # Authentication is npm Trusted Publishing (OIDC); there is no NPM_TOKEN.
 # One-time setup on npmjs.com → the package → Settings → Trusted Publisher:
@@ -17,9 +19,12 @@ name: Release
 # Renaming this file breaks publishing until that entry is updated.
 
 on:
-  push:
-    branches: [main]
-    paths: ["package.json"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Run every check and stop before publishing"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,14 +33,6 @@ jobs:
   publish:
     name: publish to npm
     runs-on: ubuntu-latest
-    # Only a release commit publishes. An ordinary change touching package.json
-    # (a dependency bump, a script) must not reach the registry.
-    #
-    # Scans every commit in the push rather than head_commit: merging the release
-    # PR with a merge commit makes head_commit the "Merge pull request …" message,
-    # which would silently skip the job and publish nothing while the documented
-    # process appeared to have been followed.
-    if: ${{ contains(toJSON(github.event.commits.*.message), 'chore(release):') }}
     permissions:
       contents: write # create the tag and the GitHub release
       id-token: write # required for Trusted Publishing and provenance
@@ -53,10 +50,29 @@ jobs:
         with:
           node-version: "24"
 
+      # Asserts the floor rather than installing npm@latest. Upgrading the
+      # toolchain mid-release makes the pipeline non-deterministic: a new npm
+      # major could change publish behaviour on a run nobody changed.
       - name: Ensure npm supports trusted publishing
         run: |
-          npm install -g npm@latest
-          npm --version
+          node -e '
+            const version = process.argv[1];
+            const [maj, min, pat] = version.split(".").map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && pat >= 1)));
+            if (!ok) {
+              console.error(`::error::npm ${version} is below the 11.5.1 floor for trusted publishing. Raise the Node version this workflow pins.`);
+              process.exit(1);
+            }
+            console.log(`npm ${version} meets the 11.5.1 floor.`);
+          ' "$(npm --version)"
+
+      - name: Publish only from the default branch
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Releases publish from main only (got $GITHUB_REF_NAME)."
+            exit 1
+          fi
+          echo "On main."
 
       - name: Preflight — nothing is disabling OIDC
         run: |
@@ -101,10 +117,18 @@ jobs:
       - run: npm run test:coverage
       - run: npm audit --audit-level=high
 
+      - name: Publish (dry run)
+        if: inputs.dry_run
+        run: |
+          npm publish --dry-run
+          echo "Dry run — nothing was published, tagged or released."
+
       - name: Publish
+        if: ${{ !inputs.dry_run }}
         run: npm publish
 
       - name: Confirm it landed
+        if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -126,6 +150,7 @@ jobs:
       # Tag and release only after the registry has confirmed the version, so a
       # failed publish never leaves a dangling tag.
       - name: Tag and cut the GitHub release
+        if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}

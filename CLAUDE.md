@@ -158,28 +158,39 @@ npm run dev          # TypeScript watch mode
 
 ## Releasing
 
-Two steps, both requiring a human. Publishing to npm is a Gated action.
+Three steps, each requiring a human. Publishing to npm is a Gated action, and **nothing
+publishes as a side effect of merging.**
 
 1. **Run "Release prepare"** from the Actions tab. It derives the next version from the
    conventional commits since the last release tag, runs build, coverage and audit, and
    with `dry_run` (the default) reports the version and stops. Re-run with `dry_run`
    unchecked to push a `release/vX.Y.Z` branch carrying the bump and a changelog entry.
 2. **Open the PR yourself** from the link the job prints, edit the changelog, and merge.
-   **Merging is what publishes** — `release.yml` fires on a `chore(release):` commit
-   landing on `main`, publishes via OIDC, then tags and cuts the GitHub release.
+   This lands the version bump on `main`. It publishes nothing.
+3. **Run "Release"** when you actually want to ship. It publishes whatever version is on
+   `main` via OIDC, confirms the registry has it, then tags and cuts the GitHub release.
+   It also takes a `dry_run` input that stops short of publishing.
 
-The version is computed at release time, not per push, so three merges followed by one
-release consume one version rather than three. `scripts/next-version.mjs` is the resolver
-(`feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE` → major, highest wins);
-`tests/release/next-version.test.ts` is its spec.
+Any number of pull requests may land on `main` between releases; merge volume never drives
+the version number. The version is derived once, at prepare time, from everything
+accumulated since the last release — so five merged PRs take 1.0.0 to 1.0.1, not 1.0.5.
+`scripts/next-version.mjs` is the resolver (`feat` → minor, `fix`/`perf` → patch, `!` or
+`BREAKING CHANGE` → major, highest bump wins, applied once);
+`tests/release/next-version.test.ts` is its spec. The `bump` input overrides it when the
+derived level is not what you want.
 
 **The workflow does not open the PR** and must not be "improved" to do so: a pull request
 created with `GITHUB_TOKEN` does not trigger workflow runs, so `ci-ok` would never report
 and branch protection would leave it unmergeable.
 
-**There is no tag trigger.** The tag is an output of a successful publish, never its
-cause — so a failed publish cannot leave a tag pointing at a version that does not exist
-on the registry. That happened to v1.3.0.
+**There is no tag trigger and no push trigger.** The tag is an output of a successful
+publish, never its cause — so a failed publish cannot leave a tag pointing at a version
+that does not exist on the registry. That happened to v1.3.0.
+
+**Do not reintroduce `npm install -g npm@latest` into `release.yml`.** Upgrading the
+toolchain mid-release makes the pipeline non-deterministic: a new npm major could change
+publish behaviour on a run nobody touched. The workflow asserts the 11.5.1 floor instead
+and fails if the pinned Node ships something older.
 
 Before the first OIDC publish can work, npmjs.com → the package → Settings → Trusted
 Publisher must name the org/user, the repo, the workflow **filename** (`release.yml`) and
