@@ -28,7 +28,7 @@ The easiest way — no cloning or building required.
 **Claude Code (CLI):**
 
 ```bash
-claude mcp add --scope user macos-mail-mcp -- npx -y macos-mail-mcp@latest
+claude mcp add --transport stdio --scope user macos-mail-mcp -- npx -y macos-mail-mcp@latest
 ```
 
 `--scope user` makes the server available in every project — the default `local` scope only registers it for the directory you run the command in. `-y` lets `npx` install the package on first run without an interactive prompt. `@latest` makes the auto-update behaviour explicit — see [Staying up to date](#staying-up-to-date).

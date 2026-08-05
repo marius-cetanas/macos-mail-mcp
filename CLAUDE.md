@@ -223,16 +223,20 @@ claude mcp add --transport stdio --scope user macos-mail-mcp -- npx -y macos-mai
 {
   "mcpServers": {
     "macos-mail-mcp": {
-      "command": "/opt/homebrew/bin/npx",
+      "command": "/absolute/path/to/npx",
       "args": ["-y", "macos-mail-mcp@latest"],
-      "env": { "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin" }
+      "env": { "PATH": "/absolute/path/to/node/bin:/usr/bin:/bin" }
     }
   }
 }
 ```
 
-Use the absolute path to `npx` for Claude Desktop — GUI apps do not inherit the shell
-`PATH`, so a bare `"npx"` usually fails to launch.
+Both paths are placeholders on purpose. Claude Desktop needs the **absolute** path to
+`npx` because GUI apps do not inherit the shell `PATH`, so a bare `"npx"` usually fails
+to launch — and the right absolute path differs per install: `/opt/homebrew/bin/npx` on
+Apple Silicon Homebrew, `/usr/local/bin/npx` on Intel, somewhere under `~/.nvm/versions`
+with nvm. Find yours with `which npx`. The `env.PATH` entry exists so `npx` can then
+locate `node`, for the same reason.
 
 `@latest` is belt and braces rather than a fix. A bare package name already re-resolves
 from the registry today: for a name with no version, npm skips the range-satisfies
