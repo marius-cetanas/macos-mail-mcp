@@ -87,7 +87,9 @@ describe("release.yml — the whole release in one workflow", () => {
       expect(wf().jobs.release.permissions["id-token"]).toBe("write");
     });
 
-    it("grants contents write to push the commit and tag", () => {
+    // contents:write is for the tag and the GitHub release only — the workflow
+    // makes no commit and writes to no branch. See "never writes to main".
+    it("grants contents write to push the tag and cut the release", () => {
       expect(wf().jobs.release.permissions.contents).toBe("write");
     });
 
@@ -131,8 +133,8 @@ describe("release.yml — the whole release in one workflow", () => {
     });
   });
 
-  // The ordering is the whole safety argument: npm is irreversible, the commit
-  // and tag are not, so the reversible things happen last and only on success.
+  // The ordering is the whole safety argument: npm is irreversible, a tag is
+  // not, so the reversible thing happens last and only on success.
   describe("ordering", () => {
     const order = (fragment: string) => stepIndex(steps(wf()), fragment);
 
