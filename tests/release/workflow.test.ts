@@ -101,8 +101,11 @@ describe("release.yml", () => {
     expect(triggers(wf()).push).toBeUndefined();
   });
 
-  it("offers a dry run", () => {
-    expect(triggers(wf()).workflow_dispatch.inputs.dry_run).toBeDefined();
+  // Raised in review of #24: with dry_run defaulting to false, clicking "Run
+  // workflow" without reading the form publishes for real — and npm will not
+  // let a version be reissued.
+  it("defaults to a dry run so a careless click cannot ship", () => {
+    expect(triggers(wf()).workflow_dispatch.inputs.dry_run.default).toBe(true);
   });
 
   it("refuses to publish from anywhere but main", () => {

@@ -22,9 +22,12 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Run every check and stop before publishing"
+        # Defaults to a dry run because publishing is irreversible: npm will not
+        # let a version be reissued. "Run workflow" clicked without reading the
+        # form must not ship. Unchecking this is the deliberate act.
+        description: "Run every check and stop before publishing (uncheck to actually ship)"
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
