@@ -1,0 +1,144 @@
+name: Release prepare
+
+# Step 1 of 2. Run this manually when you want to cut a release.
+#
+# Derives the next version from the conventional commits accumulated since the
+# last release tag, runs every check, and pushes a release branch carrying the
+# version bump and changelog entry. It does NOT publish and does NOT open the
+# pull request.
+#
+# Opening the PR is left to you on purpose: a pull request created with
+# GITHUB_TOKEN does not trigger workflow runs, so `ci-ok` would never report and
+# branch protection would leave it permanently unmergeable. The job prints a
+# one-click link.
+#
+# Merging that PR lands the version bump on main. It publishes nothing. Shipping
+# is a separate, deliberate step: run the "Release" workflow — see release.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump — auto derives it from the commits"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      dry_run:
+        description: "Report the computed version and stop"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: prepare release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release branch
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # need history and tags to derive the version
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+
+      - run: npm ci
+
+      - name: Derive the next version
+        id: version
+        run: |
+          CURRENT="$(node -p "require('./package.json').version")"
+
+          # Exit 2 means "nothing releasable" and is a normal answer; anything
+          # else non-zero is a genuine failure. Collapsing the two would report
+          # a malformed version or a git error as "nothing to release", sending
+          # the reader looking in the wrong place.
+          set +e
+          node scripts/next-version.mjs --current "$CURRENT" --force "${{ inputs.bump }}" > version.json
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 2 ]; then
+            echo "::error::No releasable commits since the last release. Nothing to publish."
+            cat version.json
+            exit 1
+          elif [ "$STATUS" -ne 0 ]; then
+            echo "::error::next-version.mjs failed with exit $STATUS — this is not 'nothing to release'. See the step log above for the underlying error."
+            cat version.json 2>/dev/null || true
+            exit 1
+          fi
+          cat version.json
+          # One node invocation emitting the key=value lines directly. The
+          # nested-quote form this replaces was valid bash — command
+          # substitution opens a fresh quoting context — but it read as broken
+          # to two reviewers, and shell nobody trusts gets "fixed" wrongly later.
+          node -e '
+            const v = require("./version.json");
+            console.log(`next=${v.version}`);
+            console.log(`bump=${v.bump}`);
+          ' >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - run: npm run build
+      - run: npm run test:coverage
+      - run: npm audit --audit-level=high
+
+      - name: Report (dry run)
+        if: inputs.dry_run
+        run: |
+          {
+            echo "### Dry run — nothing was pushed"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Current | ${{ steps.version.outputs.current }} |"
+            echo "| Next | **${{ steps.version.outputs.next }}** |"
+            echo "| Bump | ${{ steps.version.outputs.bump }} |"
+            echo
+            echo "All checks passed. Re-run with \`dry_run\` unchecked to push the release branch."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the release branch
+        if: ${{ !inputs.dry_run }}
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          npm version --no-git-tag-version "$NEXT"
+
+          # Prepend a dated section. Deliberately terse — the PR is where it
+          # gets edited into prose before anyone merges it.
+          SINCE_RANGE="HEAD"
+          if TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)"; then
+            SINCE_RANGE="$TAG..HEAD"
+          fi
+          LOG="$(git log "$SINCE_RANGE" --pretty=format:'- %s')"
+          node scripts/changelog-entry.mjs "$NEXT" "$(date -u +%Y-%m-%d)" "$LOG" CHANGELOG.md
+
+          git checkout -b "release/v$NEXT"
+          git add package.json package-lock.json CHANGELOG.md
+          git commit -m "chore(release): $NEXT"
+          git push origin "release/v$NEXT"
+
+          {
+            echo "### Release branch pushed"
+            echo
+            echo "**${{ steps.version.outputs.current }} → $NEXT** (${{ steps.version.outputs.bump }})"
+            echo
+            echo "[Open the pull request](https://github.com/${{ github.repository }}/compare/main...release/v$NEXT?expand=1)"
+            echo
+            echo "Open it yourself rather than letting the workflow do it — a PR created by"
+            echo "GITHUB_TOKEN does not trigger CI, and \`ci-ok\` is a required check."
+            echo
+            echo "Edit the changelog in the PR, then merge. Merging lands the bump on main"
+            echo "and publishes nothing."
+            echo
+            echo "**To ship $NEXT, run the \`Release\` workflow after merging.**"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,27 +1,31 @@
 name: Release
 
-# Publishes to npm when a v* tag is pushed.
+# Step 2 of 2. Publishes the version currently on main. Run it deliberately,
+# when you decide to ship.
 #
-# Authentication uses npm Trusted Publishing (OIDC) — there is no NPM_TOKEN in
-# this repository, and no long-lived credential to leak. npm verifies the
-# workflow identity directly, which also produces a provenance attestation.
+# Merging a pull request never ships anything. Any number of them can land on
+# main between releases; this workflow ships whatever version is there when you
+# run it, so merge volume never drives the version number.
 #
+# There is deliberately no tag trigger and no push trigger. A tag is permanent
+# and public, so a tag that fails to publish leaves a tag pointing at a version
+# that does not exist on the registry — which is exactly what happened to
+# v1.3.0. Here the tag is an output of a successful publish, never its trigger.
+#
+# Authentication is npm Trusted Publishing (OIDC); there is no NPM_TOKEN.
 # One-time setup on npmjs.com → the package → Settings → Trusted Publisher:
-#   Provider:   GitHub Actions
-#   Repository: marius-cetanas/macos-mail-mcp
-#   Workflow:   release.yml
-# Renaming or moving this file breaks publishing until that entry is updated.
+#   Provider: GitHub Actions · Repository: marius-cetanas/macos-mail-mcp
+#   Workflow: release.yml · Action: npm publish
+# Renaming this file breaks publishing until that entry is updated.
 
 on:
-  push:
-    tags: ["v*"]
-  # Lets the publish path be validated without minting a tag. A tag is a
-  # permanent, public artifact; discovering a broken pipeline by pushing one and
-  # watching it fail is how v1.3.0 ended up tagged but unpublished.
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Run every check and stop before publishing"
+        # Defaults to a dry run because publishing is irreversible: npm will not
+        # let a version be reissued. "Run workflow" clicked without reading the
+        # form must not ship. Unchecking this is the deliberate act.
+        description: "Run every check and stop before publishing (uncheck to actually ship)"
         type: boolean
         default: true
 
@@ -33,97 +37,90 @@ jobs:
     name: publish to npm
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      # Required for Trusted Publishing and provenance. Nothing else needs write.
-      id-token: write
+      contents: write # create the tag and the GitHub release
+      id-token: write # required for Trusted Publishing and provenance
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 0
 
-      # Deliberately no `registry-url` and no `cache`.
-      #
-      # registry-url makes setup-node write `_authToken=${NODE_AUTH_TOKEN}` into
-      # a generated .npmrc. With no NODE_AUTH_TOKEN the placeholder expands to
-      # empty — but an empty token is still a token, so npm treats auth as
-      # already configured, never starts the OIDC exchange, and publishes
-      # anonymously (E404). See actions/setup-node#1551. The default registry is
-      # registry.npmjs.org anyway, so the setting bought nothing.
-      #
-      # npm's own guidance is not to cache in release builds.
+      # No `registry-url`: it makes setup-node write `_authToken=${NODE_AUTH_TOKEN}`
+      # into a generated .npmrc, and an empty token still reads as configured
+      # auth, so npm skips OIDC and publishes anonymously (actions/setup-node#1551).
+      # No `cache`: npm advises against caching in release builds.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
 
-      # Trusted Publishing needs npm >= 11.5.1. Node 24 ships a recent npm, but
-      # pinning the floor here keeps the job honest if the runner image changes.
+      # Asserts the floor rather than installing npm@latest. Upgrading the
+      # toolchain mid-release makes the pipeline non-deterministic: a new npm
+      # major could change publish behaviour on a run nobody changed.
       - name: Ensure npm supports trusted publishing
         run: |
-          npm install -g npm@latest
-          npm --version
-
-      # Fails loudly on the misconfigurations that otherwise surface as a bare
-      # E404 from an anonymous publish, which reads like "package not found"
-      # and sends you looking in the wrong place entirely.
-      - name: Preflight — OIDC can actually be used
-        run: |
-          fail=0
-
-          # id-token: write is what makes this variable exist. No variable, no
-          # OIDC, regardless of what the permissions block claims.
-          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
-            echo "::error::No OIDC token endpoint. The job is missing 'id-token: write'."
-            fail=1
-          else
-            echo "OIDC token endpoint present."
-          fi
-
-          # Any _authToken npm can see — even an empty one — stops it starting
-          # the OIDC exchange. This is what broke the v1.3.0 release.
-          for f in "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" ./.npmrc; do
-            if [ -f "$f" ] && grep -q "_authToken" "$f"; then
-              echo "::error::$f sets _authToken; npm will skip OIDC and publish anonymously."
-              echo "Remove registry-url from actions/setup-node. See actions/setup-node#1551."
-              fail=1
-            fi
-          done
-          if [ "$fail" -eq 0 ]; then echo "No conflicting _authToken found."; fi
-
           node -e '
-            const [maj, min, pat] = process.versions.node.split(".").map(Number);
-            const ok = maj > 22 || (maj === 22 && (min > 14 || (min === 14 && pat >= 0)));
-            if (!ok) { console.error(`::error::Node ${process.versions.node} < 22.14.0, required for trusted publishing.`); process.exit(1); }
-            console.log(`Node ${process.versions.node} meets the 22.14.0 floor.`);
-          ' || fail=1
+            const version = process.argv[1];
+            const [maj, min, pat] = version.split(".").map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && pat >= 1)));
+            if (!ok) {
+              console.error(`::error::npm ${version} is below the 11.5.1 floor for trusted publishing. Raise the Node version this workflow pins.`);
+              process.exit(1);
+            }
+            console.log(`npm ${version} meets the 11.5.1 floor.`);
+          ' "$(npm --version)"
 
-          exit $fail
+      - name: Publish only from the default branch
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Releases publish from main only (got $GITHUB_REF_NAME)."
+            exit 1
+          fi
+          echo "On main."
+
+      - name: Preflight — nothing is disabling OIDC
+        run: |
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC token endpoint — the job lacks 'id-token: write'."
+            exit 1
+          fi
+          echo "OIDC token endpoint present."
+          node scripts/check-npmrc.mjs \
+            "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}" \
+            "$HOME/.npmrc" \
+            ./.npmrc
+          node -e '
+            const [maj, min] = process.versions.node.split(".").map(Number);
+            if (maj < 22 || (maj === 22 && min < 14)) {
+              console.error(`::error::Node ${process.versions.node} is below the 22.14.0 floor for trusted publishing.`);
+              process.exit(1);
+            }
+            console.log(`Node ${process.versions.node} meets the floor.`);
+          '
 
       - run: npm ci
 
-      - name: Verify the tag matches package.json
-        if: github.ref_type == 'tag'
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG="$(node -p "require('./package.json').version")"
-          if [ "$TAG" != "$PKG" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG but package.json says $PKG."
-            exit 1
-          fi
-          echo "Publishing version $PKG."
-
-      # A tag naming a version that is already on the registry cannot publish —
-      # npm rejects republishing. Better to say so than to fail at the last step.
-      - name: Verify the version is not already published
+      # Unconditional on purpose. On the previous revision this was gated to tag
+      # runs, so a dispatch publish skipped it entirely — caught in review of #23.
+      - name: Verify the version is releasable
+        id: version
         run: |
           PKG="$(node -p "require('./package.json').version")"
           if npm view "macos-mail-mcp@$PKG" version >/dev/null 2>&1; then
-            echo "::error::macos-mail-mcp@$PKG is already on the registry. Bump the version."
+            echo "::error::macos-mail-mcp@$PKG is already on the registry. npm will not republish a version."
             exit 1
           fi
-          echo "$PKG is not yet published."
+          if git rev-parse "v$PKG" >/dev/null 2>&1; then
+            # States only what is known. "Not published" would be inferred from
+            # the npm view above, which also fails on a network or registry
+            # error — and a confident wrong diagnosis is worse than none.
+            echo "::error::Tag v$PKG already exists, and the registry did not report $PKG as published."
+            echo "::error::Either the tag is left over from a failed publish, or the registry lookup itself failed."
+            echo "::error::Check with 'npm view macos-mail-mcp versions' and resolve before retrying."
+            exit 1
+          fi
+          echo "version=$PKG" >> "$GITHUB_OUTPUT"
+          echo "Publishing $PKG."
 
-      # Re-verify rather than trusting that the tagged commit passed CI on a PR.
       - run: npm run build
       - run: npm run test:coverage
       - run: npm audit --audit-level=high
@@ -132,9 +129,7 @@ jobs:
         if: inputs.dry_run
         run: |
           npm publish --dry-run
-          echo "Dry run only — nothing was published."
-          echo "Everything up to the registry handshake is verified; the handshake"
-          echo "itself is only exercised by a real publish."
+          echo "Dry run — nothing was published, tagged or released."
 
       - name: Publish
         if: ${{ !inputs.dry_run }}
@@ -142,17 +137,35 @@ jobs:
 
       - name: Confirm it landed
         if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          PKG="$(node -p "require('./package.json').version")"
-          for i in $(seq 1 10); do
+          for _ in $(seq 1 10); do
             sleep 6
-            if npm view "macos-mail-mcp@$PKG" version >/dev/null 2>&1; then
-              echo "Published: macos-mail-mcp@$PKG"
-              npm view "macos-mail-mcp@$PKG" dist.attestations >/dev/null 2>&1 \
-                && echo "Provenance attestation present." \
-                || echo "::warning::No provenance attestation — publish did not go through OIDC."
+            if npm view "macos-mail-mcp@$VERSION" version >/dev/null 2>&1; then
+              echo "Published macos-mail-mcp@$VERSION."
+              if npm view "macos-mail-mcp@$VERSION" dist.attestations >/dev/null 2>&1; then
+                echo "Provenance attestation present."
+              else
+                echo "::warning::No provenance attestation — the publish did not go through OIDC."
+              fi
               exit 0
             fi
           done
-          echo "::error::$PKG is not on the registry after publishing appeared to succeed."
+          echo "::error::$VERSION is not on the registry although publishing reported success."
           exit 1
+
+      # Tag and release only after the registry has confirmed the version, so a
+      # failed publish never leaves a dangling tag.
+      - name: Tag and cut the GitHub release
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "$VERSION"
+          git push origin "v$VERSION"
+          node scripts/release-notes.mjs "$VERSION" CHANGELOG.md > notes.md
+          gh release create "v$VERSION" --title "v$VERSION" --latest --notes-file notes.md
