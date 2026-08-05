@@ -85,26 +85,27 @@ result; that path is only reached by invoking the registered handler. Use
 
 ## Releasing
 
-Maintainers only, and it is three deliberate steps — publishing to npm is irreversible.
+Maintainers only, and it is **one run**: Actions tab → **Release** → Run workflow, with
+`mode: publish`. It derives the version from the conventional commits since the last tag,
+verifies everything, publishes to npm, pushes the tag and cuts the GitHub release.
 
-1. Run **Release prepare** from the Actions tab. It derives the next version from the
-   conventional commits since the last release, runs every check, and by default reports
-   the version without pushing anything. Re-run with `dry_run` unchecked to push a
-   `release/vX.Y.Z` branch with the bump and changelog entry.
-2. Open the PR from the printed link, tidy the changelog, and merge. This lands the
-   version bump on `main` and publishes nothing.
-3. Run **Release** when you want to ship. It publishes the version on `main`, then tags
-   and cuts the GitHub release.
+`mode` defaults to `dry-run`, which does all of the above except the irreversible parts —
+same derivation, same guards, same build, coverage and audit, plus `npm publish --dry-run`.
 
-**Merging never publishes.** Pull requests can accumulate on `main` for as long as you
-like; shipping is always an explicit action.
+**`package.json` holds `0.0.0-development` on purpose.** The tag is the source of truth for
+what shipped; the real version is written during the release and never committed. Do not
+"fix" the placeholder, and do not read it to find the current version — use the tag, the
+GitHub release, or npm.
 
-Write conventional commit subjects (`feat:`, `fix:`, `perf:`, `feat!:`), because the
-version is derived from them. `chore:`/`docs:`/`test:` alone are not releasable — a
-release consisting only of those is refused rather than re-publishing the current version.
+**Add your changelog entry in your pull request.** The release workflow cannot commit to
+`main`, so `CHANGELOG.md` is maintained by hand. GitHub release notes are generated
+separately from your commit subjects, which is the other reason to write them conventionally
+(`feat:`, `fix:`, `perf:`, `feat!:`) — the version is derived from them too.
+`chore:`/`docs:`/`test:` alone are not releasable.
 
-The bump is computed once from everything since the last release, so five merged pull
-requests move 1.0.0 to 1.0.1, not to 1.0.5.
+**Merging never publishes.** Pull requests can accumulate for as long as you like; shipping
+is always an explicit, separate action. The bump is computed once from everything since the
+last release, so five merged pull requests move 1.0.0 to 1.0.1, not to 1.0.5.
 
 ## Submitting Changes
 

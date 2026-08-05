@@ -1,37 +1,87 @@
 // macos-mail-mcp — MIT License — https://github.com/marius-cetanas/macos-mail-mcp
 //
-// Extracts one version's section from CHANGELOG.md for the GitHub release body.
+// Builds the body of a GitHub release from the commits since the last release.
 //
-// Matching is fixed-string, never a regular expression. The awk form this
-// replaces interpolated the version into a pattern, where the dots in a semver
-// are wildcards — so `1.3.0` would also match a `## [1x3x0]` heading. Unlikely
-// to bite, but the release body is the thing a reader trusts to say what
-// changed, so silently emitting the wrong section is a bad failure.
+// Generated from git rather than read from CHANGELOG.md, because the release
+// workflow never commits to main — the tag is the source of truth for what
+// shipped, so there is no committed changelog entry for the version being cut.
+// CHANGELOG.md is maintained by hand in ordinary pull requests.
 
-import { readFileSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const HEADING = /^## /;
+const SECTIONS = [
+  { heading: "Added", types: ["feat"] },
+  { heading: "Fixed", types: ["fix", "perf"] },
+  { heading: "Changed", types: ["refactor", "build", "revert"] },
+  { heading: "Documentation", types: ["docs"] },
+  { heading: "Internal", types: ["chore", "test", "ci", "style"] },
+];
+
+/** Strip the conventional-commit prefix and any trailing PR reference. */
+export function describe(subject) {
+  return subject
+    .replace(/^\w+(\([^)]*\))?!?:\s*/, "")
+    .replace(/\s*\(#\d+\)$/, "")
+    .trim();
+}
+
+function typeOf(subject) {
+  const m = /^(\w+)(\([^)]*\))?!?:/.exec(subject.trim());
+  return m === null ? null : m[1];
+}
+
+function isBreaking({ subject, body = "" }) {
+  return /^\w+(\([^)]*\))?!:/.test(subject.trim()) || /^BREAKING[ -]CHANGE:/m.test(body);
+}
 
 /**
- * The body of the `## [version]` section, without its heading.
- * @returns {string} trimmed section text, empty when the version is absent
+ * Group commits into a Keep a Changelog-shaped release body.
+ * @returns {string} markdown, empty when there is nothing to say
  */
-export function extractReleaseNotes(changelog, version) {
-  const prefix = `## [${version}]`;
-  const lines = changelog.split(/\r?\n/);
+export function buildNotes(commits) {
+  const lines = [];
 
-  const start = lines.findIndex((line) => line.startsWith(prefix));
-  if (start === -1) {
-    return "";
+  const breaking = commits.filter(isBreaking);
+  if (breaking.length > 0) {
+    lines.push("### Breaking", "");
+    for (const c of breaking) lines.push(`- ${describe(c.subject)}`);
+    lines.push("");
   }
 
-  const body = [];
-  for (const line of lines.slice(start + 1)) {
-    if (HEADING.test(line)) break;
-    body.push(line);
+  for (const { heading, types } of SECTIONS) {
+    const matched = commits.filter(
+      (c) => types.includes(typeOf(c.subject)) && !isBreaking(c)
+    );
+    if (matched.length === 0) continue;
+    lines.push(`### ${heading}`, "");
+    for (const c of matched) lines.push(`- ${describe(c.subject)}`);
+    lines.push("");
   }
-  return body.join("\n").trim();
+
+  return lines.join("\n").trim();
+}
+
+/** Commits in `range`, newest first. */
+export function commitsIn(range) {
+  const RECORD = "\x1e";
+  const FIELD = "\x1f";
+  const raw = execFileSync("git", ["log", range, `--pretty=format:%s${FIELD}%b${RECORD}`], {
+    encoding: "utf8",
+    // execFileSync defaults to a 1 MB buffer and throws past it. A long range
+    // with verbose commit bodies can exceed that, and failing to read the log
+    // is not a failure anyone would expect at release time.
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  return raw
+    .split(RECORD)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "")
+    .map((entry) => {
+      const [subject = "", body = ""] = entry.split(FIELD);
+      return { subject: subject.trim(), body: body.trim() };
+    });
 }
 
 function isMain() {
@@ -44,15 +94,12 @@ function isMain() {
 }
 
 if (isMain()) {
-  const [version, path = "CHANGELOG.md"] = process.argv.slice(2);
-  if (version === undefined) {
-    console.error("usage: release-notes.mjs <version> [changelog path]");
+  const range = process.argv[2];
+  if (range === undefined) {
+    console.error("usage: release-notes.mjs <git-range>   e.g. v1.3.0..HEAD");
     process.exitCode = 1;
   } else {
-    const notes = extractReleaseNotes(readFileSync(path, "utf8"), version);
-    if (notes === "") {
-      console.error(`::warning::No changelog section found for ${version}.`);
-    }
-    console.log(notes);
+    const notes = buildNotes(commitsIn(range));
+    console.log(notes === "" ? "_No notable changes._" : notes);
   }
 }

@@ -17,8 +17,8 @@ function triggers(wf: Record<string, any>): Record<string, any> {
   return wf.on ?? wf[true as unknown as string] ?? {};
 }
 
-function steps(wf: Record<string, any>, job: string): Array<Record<string, any>> {
-  return wf.jobs[job].steps;
+function steps(wf: Record<string, any>): Array<Record<string, any>> {
+  return wf.jobs.release.steps;
 }
 
 function stepIndex(list: Array<Record<string, any>>, fragment: string): number {
@@ -27,204 +27,274 @@ function stepIndex(list: Array<Record<string, any>>, fragment: string): number {
   );
 }
 
-describe("release-prepare.yml", () => {
-  const wf = () => workflow("release-prepare.yml");
+const wf = () => workflow("release.yml");
 
-  it("exists", () => {
-    expect(existsSync(join(DIR, "release-prepare.yml"))).toBe(true);
+describe("release.yml — the whole release in one workflow", () => {
+  it("is the only release workflow", () => {
+    expect(existsSync(join(DIR, "release-prepare.yml"))).toBe(false);
+    expect(existsSync(join(DIR, "release.yml"))).toBe(true);
   });
 
-  it("is triggered manually", () => {
-    expect(triggers(wf())).toHaveProperty("workflow_dispatch");
-  });
-
-  it("defaults to a dry run so a mis-click cannot open a release", () => {
-    const inputs = triggers(wf()).workflow_dispatch.inputs;
-    expect(inputs.dry_run.default).toBe(true);
-  });
-
-  // Pushing the branch is all it needs. It deliberately does not open the PR:
-  // a PR created with GITHUB_TOKEN does not trigger workflow runs, so `ci-ok`
-  // would never report and branch protection would make it unmergeable. A
-  // human opening the PR is what makes CI run.
-  it("requests no more permission than pushing a branch needs", () => {
-    const perms = wf().jobs.prepare.permissions;
-    expect(perms).toMatchObject({ contents: "write" });
-    expect(perms["id-token"]).toBeUndefined();
-    expect(perms["pull-requests"]).toBeUndefined();
-  });
-
-  it("never publishes — preparing and publishing are separate concerns", () => {
-    expect(JSON.stringify(wf())).not.toMatch(/npm publish/);
-  });
-
-  // Raised in review of #24: reporting every non-zero exit as "nothing to
-  // release" would misdiagnose a malformed version or a git failure — the same
-  // misleading-error shape that made the v1.3.0 E404 look like a missing package.
-  describe("the derive-version step", () => {
-    const deriveStep = () =>
-      String(steps(wf(), "prepare").find((s) => String(s.name ?? "").includes("Derive"))?.run);
-
-    it("treats exit 2 as the 'nothing releasable' answer specifically", () => {
-      expect(deriveStep()).toMatch(/STATUS.*-eq 2|-eq 2/);
+  describe("triggering", () => {
+    it("runs only when triggered by hand", () => {
+      expect(triggers(wf())).toHaveProperty("workflow_dispatch");
     });
 
-    it("reports other non-zero exits differently", () => {
-      const run = deriveStep();
-      expect(run).toMatch(/-ne 0/);
-      expect(run).toMatch(/not 'nothing to release'/);
+    // A tag that fails to publish leaves a permanent public tag pointing at an
+    // unpublished version. That happened to v1.3.0.
+    it("is not triggered by a tag", () => {
+      expect((triggers(wf()).push ?? {}).tags).toBeUndefined();
     });
 
-    it("captures the exit code rather than relying on `if !`", () => {
-      expect(deriveStep()).toMatch(/STATUS=\$\?/);
+    it("is not triggered by any push", () => {
+      expect(triggers(wf()).push).toBeUndefined();
     });
   });
-});
 
-describe("release.yml", () => {
-  const wf = () => workflow("release.yml");
+  describe("inputs", () => {
+    it("takes exactly bump and mode", () => {
+      expect(Object.keys(triggers(wf()).workflow_dispatch.inputs).sort()).toEqual([
+        "bump",
+        "mode",
+      ]);
+    });
 
-  // A8 — a tag that fails to publish leaves a permanent public tag pointing at
-  // an unpublished version. That happened with v1.3.0.
-  it("is no longer triggered by pushing a tag", () => {
-    const push = triggers(wf()).push ?? {};
-    expect(push.tags).toBeUndefined();
+    it("defaults to a dry run so a careless click cannot ship", () => {
+      expect(triggers(wf()).workflow_dispatch.inputs.mode.default).toBe("dry-run");
+    });
+
+    // A safe-by-default checkbox that cannot be toggled makes releasing
+    // unreachable — a worse failure than the mis-click it guards against.
+    it("has no boolean inputs at all", () => {
+      const inputs = triggers(wf()).workflow_dispatch.inputs;
+      for (const [name, spec] of Object.entries<any>(inputs)) {
+        expect(spec.type, `input "${name}" is a boolean`).not.toBe("boolean");
+      }
+    });
+
+    it("offers an explicit bump override alongside auto", () => {
+      expect(triggers(wf()).workflow_dispatch.inputs.bump.options).toEqual([
+        "auto",
+        "patch",
+        "minor",
+        "major",
+      ]);
+    });
   });
 
-  // Publishing is a deliberate act, not a consequence of merging. Any number of
-  // PRs may land between releases without driving the version number.
-  it("publishes only when triggered by hand", () => {
-    expect(triggers(wf())).toHaveProperty("workflow_dispatch");
+  describe("permissions and pinning", () => {
+    it("grants id-token so OIDC can be used", () => {
+      expect(wf().jobs.release.permissions["id-token"]).toBe("write");
+    });
+
+    // contents:write is for the tag and the GitHub release only — the workflow
+    // makes no commit and writes to no branch. See "never writes to main".
+    it("grants contents write to push the tag and cut the release", () => {
+      expect(wf().jobs.release.permissions.contents).toBe("write");
+    });
+
+    it("does not set registry-url, which would disable OIDC", () => {
+      const setupNode = steps(wf()).find((s) =>
+        String(s.uses ?? "").includes("actions/setup-node")
+      );
+      expect(setupNode?.with?.["registry-url"]).toBeUndefined();
+    });
+
+    it("does not cache in a release build", () => {
+      const setupNode = steps(wf()).find((s) =>
+        String(s.uses ?? "").includes("actions/setup-node")
+      );
+      expect(setupNode?.with?.cache).toBeUndefined();
+    });
+
+    it("pins every action to a commit SHA rather than a mutable tag", () => {
+      for (const step of steps(wf())) {
+        if (!step.uses) continue;
+        expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
+      }
+    });
+
+    it("does not mutate the toolchain during a release", () => {
+      expect(JSON.stringify(wf())).not.toMatch(/npm install -g/);
+    });
+
+    it("asserts the npm floor trusted publishing needs", () => {
+      const step = steps(wf()).find((s) =>
+        String(s.name ?? "").includes("trusted publishing")
+      );
+      expect(String(step?.run)).toMatch(/11\.5\.1/);
+    });
+
+    it("refuses to run from anywhere but main", () => {
+      const guard = steps(wf()).find((s) =>
+        String(s.name ?? "").includes("default branch")
+      );
+      expect(String(guard?.run)).toMatch(/GITHUB_REF_NAME/);
+    });
   });
 
-  it("is not triggered by any push", () => {
-    expect(triggers(wf()).push).toBeUndefined();
-  });
+  // The ordering is the whole safety argument: npm is irreversible, a tag is
+  // not, so the reversible thing happens last and only on success.
+  describe("ordering", () => {
+    const order = (fragment: string) => stepIndex(steps(wf()), fragment);
 
-  // Raised in review of #24: with dry_run defaulting to false, clicking "Run
-  // workflow" without reading the form publishes for real — and npm will not
-  // let a version be reissued.
-  it("defaults to a dry run so a careless click cannot ship", () => {
-    expect(triggers(wf()).workflow_dispatch.inputs.dry_run.default).toBe(true);
-  });
+    // Target the step NAME, not "npm publish" — that substring also appears in
+    // the dry-run step (`npm publish --dry-run`), which sits earlier, so these
+    // assertions were measuring against the wrong step and would not have
+    // caught the real publish being moved.
+    const publishAt = () => order("Publish to npm");
 
-  it("refuses to publish from anywhere but main", () => {
-    const guard = steps(wf(), "publish").find((s) =>
-      String(s.name ?? "").includes("default branch")
-    );
-    expect(guard).toBeDefined();
-    expect(String(guard!.run)).toMatch(/GITHUB_REF_NAME/);
-  });
+    it("targets the real publish step, not the dry run", () => {
+      const list = steps(wf());
+      expect(list[publishAt()]!.name).toBe("Publish to npm");
+      expect(publishAt()).toBeGreaterThan(order("Dry run"));
+    });
 
-  // Raised in review: upgrading npm mid-release makes the pipeline
-  // non-deterministic — a new npm major could change publish behaviour on a run
-  // nobody changed. Assert the floor instead of installing over it.
-  it("does not mutate the toolchain during a release", () => {
-    expect(JSON.stringify(wf())).not.toMatch(/npm install -g/);
-  });
+    it("verifies the version is releasable before publishing", () => {
+      expect(publishAt()).toBeGreaterThan(order("version is releasable"));
+    });
 
-  it("still asserts the npm floor trusted publishing needs", () => {
-    const step = steps(wf(), "publish").find((s) =>
-      String(s.name ?? "").includes("trusted publishing")
-    );
-    expect(String(step?.run)).toMatch(/11\.5\.1/);
+    it("runs the OIDC preflight before publishing", () => {
+      expect(publishAt()).toBeGreaterThan(order("check-npmrc"));
+    });
+
+    it("builds, tests and audits before publishing", () => {
+      for (const check of ["npm run build", "npm run test:coverage", "npm audit"]) {
+        expect(publishAt(), `${check} must precede publish`).toBeGreaterThan(order(check));
+      }
+    });
+
+    it("applies the version to the tree before the checks run", () => {
+      expect(order("npm run test:coverage")).toBeGreaterThan(
+        order("Apply the version to the tree")
+      );
+    });
+
+    it("confirms the registry before pushing the tag", () => {
+      expect(order("Tag and cut")).toBeGreaterThan(order("Confirm the registry has it"));
+    });
   });
 
   describe("dry run", () => {
-    it.each(["Publish", "Confirm it landed", "Tag and cut the GitHub release"])(
-      "skips %s",
-      (name) => {
-        const step = steps(wf(), "publish").find((s) => s.name === name);
-        expect(step, `no step named exactly "${name}"`).toBeDefined();
-        expect(String(step!.if ?? "")).toMatch(/!\s*inputs\.dry_run/);
+    it.each([
+      "Publish to npm",
+      "Confirm the registry has it",
+      "Tag and cut the GitHub release",
+    ])("skips %s unless mode is publish", (name) => {
+      const step = steps(wf()).find((s) => s.name === name);
+      expect(step, `no step named exactly "${name}"`).toBeDefined();
+      expect(String(step!.if ?? "")).toMatch(/inputs\.mode == 'publish'/);
+    });
+
+    it("still runs every check, so a dry run is a real rehearsal", () => {
+      for (const name of ["npm run build", "npm run test:coverage", "npm audit"]) {
+        const step = steps(wf()).find((s) => String(s.run ?? "").startsWith(name));
+        expect(step, `no unconditional step running "${name}"`).toBeDefined();
+        expect(step!.if).toBeUndefined();
       }
-    );
-  });
+    });
 
-  // The head_commit gate raised in review of #24 is gone entirely: with no push
-  // trigger there is no push payload to inspect, and a merge commit can no
-  // longer cause a silent skip.
-  it("does not gate the job on commit messages at all", () => {
-    expect(String(wf().jobs.publish.if ?? "")).not.toMatch(/head_commit|commits/);
-  });
-
-  it("grants id-token so OIDC can be used", () => {
-    expect(wf().jobs.publish.permissions["id-token"]).toBe("write");
-  });
-
-  it("does not set registry-url, which would disable OIDC", () => {
-    const setupNode = steps(wf(), "publish").find((s) =>
-      String(s.uses ?? "").includes("actions/setup-node")
-    );
-    expect(setupNode?.with?.["registry-url"]).toBeUndefined();
-  });
-
-  it("does not cache in a release build", () => {
-    const setupNode = steps(wf(), "publish").find((s) =>
-      String(s.uses ?? "").includes("actions/setup-node")
-    );
-    expect(setupNode?.with?.cache).toBeUndefined();
-  });
-
-  it("pins every action to a commit SHA rather than a mutable tag", () => {
-    for (const step of steps(wf(), "publish")) {
-      if (!step.uses) continue;
-      expect(step.uses).toMatch(/@[0-9a-f]{40}$/);
-    }
-  });
-
-  describe("the version guard", () => {
-    // A3 — on #23 this was `if: github.ref_type == 'tag'`, so a dispatch
-    // publish skipped it entirely. Copilot caught that.
-    it("is not conditional on the trigger type", () => {
-      const guard = steps(wf(), "publish").find((s) =>
-        String(s.name ?? "").includes("version")
+    it("keeps the version guard unconditional", () => {
+      const guard = steps(wf()).find((s) =>
+        String(s.name ?? "").includes("version is releasable")
       );
-      expect(guard).toBeDefined();
-      expect(String(guard!.if ?? "")).not.toMatch(/ref_type/);
+      expect(guard!.if).toBeUndefined();
     });
 
-    // A4 — ordering is the only thing that makes the guard meaningful.
-    it("runs before anything publishes", () => {
-      const list = steps(wf(), "publish");
-      const guard = list.findIndex((s) => String(s.name ?? "").includes("version"));
-      const publish = stepIndex(list, "npm publish");
-      expect(guard).toBeGreaterThanOrEqual(0);
-      expect(publish).toBeGreaterThan(guard);
+    it("does not push, tag or publish for real", () => {
+      const dry = steps(wf()).find((s) => String(s.name ?? "").includes("Dry run"));
+      expect(String(dry!.run)).toMatch(/npm publish --dry-run/);
+      expect(String(dry!.run)).not.toMatch(/git push/);
     });
 
-    it("runs the preflight before publishing too", () => {
-      const list = steps(wf(), "publish");
-      const preflight = stepIndex(list, "check-npmrc");
-      expect(preflight).toBeGreaterThanOrEqual(0);
-      expect(stepIndex(list, "npm publish")).toBeGreaterThan(preflight);
+    // prepublishOnly is `npm run build && npm test`, already run against this
+    // exact tree — repeating it inside the one unretryable step adds minutes and
+    // a fresh chance of failure. The build assertion replaces what it guarded.
+    it("skips lifecycle scripts and asserts the build instead", () => {
+      const publish = steps(wf()).find((s) => s.name === "Publish to npm");
+      expect(String(publish!.run)).toMatch(/npm publish --ignore-scripts/);
+      expect(String(publish!.run)).toMatch(/build\/index\.js/);
     });
   });
 
-  // Raised in review of #24: "not published" was inferred from an npm view that
-  // also fails on a network error, so the guard stated a conclusion it had not
-  // established.
-  it("does not claim a version is unpublished when it only failed to look it up", () => {
-    const guard = String(
-      steps(wf(), "publish").find((s) => String(s.name ?? "").includes("version"))?.run
-    );
-    expect(guard).not.toMatch(/is not published/);
-    expect(guard).toMatch(/registry lookup itself failed|did not report/);
+  // Raised in review of #24: reporting every non-zero exit as "nothing to
+  // release" misdiagnoses a malformed version or a git failure.
+  describe("the derive-version step", () => {
+    const derive = () =>
+      String(steps(wf()).find((s) => String(s.name ?? "").includes("Derive"))?.run);
+
+    it("treats exit 2 as the 'nothing releasable' answer specifically", () => {
+      expect(derive()).toMatch(/-eq 2/);
+    });
+
+    it("reports other non-zero exits differently", () => {
+      expect(derive()).toMatch(/-ne 0/);
+      expect(derive()).toMatch(/not 'nothing to release'/);
+    });
+
+    it("captures the exit code rather than relying on `if !`", () => {
+      expect(derive()).toMatch(/STATUS=\$\?/);
+    });
   });
 
-  it("verifies the publish actually landed", () => {
-    expect(stepIndex(steps(wf(), "publish"), "Confirm")).toBeGreaterThanOrEqual(0);
+  // The tag is the source of truth, so main is never written to — which is what
+  // lets branch protection stay fully intact with no bypass and no stored
+  // credential. On a user-owned repo, GitHub Actions cannot be a ruleset bypass
+  // actor, so pushing to main was never actually available.
+  describe("never writes to main", () => {
+    it("pushes no branch", () => {
+      const yaml = JSON.stringify(wf());
+      expect(yaml).not.toMatch(/HEAD:main/);
+      expect(yaml).not.toMatch(/push origin main/);
+    });
+
+    it("makes no commit", () => {
+      expect(JSON.stringify(wf())).not.toMatch(/git commit/);
+    });
+
+    it("pushes only the tag", () => {
+      const tagStep = steps(wf()).find((s) => String(s.name ?? "").includes("Tag and cut"));
+      const pushes = String(tagStep!.run).match(/git push \S+ \S+/g) ?? [];
+      expect(pushes).toEqual(['git push origin "v$NEXT"']);
+    });
+
+    // Scoped to git: a bare /--force/ also matches next-version.mjs's --force
+    // bump override, which has nothing to do with pushing.
+    it("never force-pushes", () => {
+      expect(JSON.stringify(wf())).not.toMatch(/git push[^"\\]*--force/);
+    });
+
+    it("derives the last released version from the tag, not package.json", () => {
+      const derive = String(
+        steps(wf()).find((s) => String(s.name ?? "").includes("Derive"))?.run
+      );
+      expect(derive).toMatch(/git describe --tags/);
+      expect(derive).not.toMatch(/require\('\.\/package\.json'\)\.version/);
+    });
+  });
+
+  describe("package.json version is a placeholder", () => {
+    const pkg = () => JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    const lock = () =>
+      JSON.parse(readFileSync(join(process.cwd(), "package-lock.json"), "utf8"));
+
+    it("is not a release version", () => {
+      expect(pkg().version).toBe("0.0.0-development");
+    });
+
+    // Raised in review of #27: the lockfile kept 1.3.0 after the manifest moved
+    // to the placeholder. npm ci tolerates the drift, but npm install silently
+    // rewrites the lockfile, so it comes back as noise in an unrelated diff.
+    it("matches the lockfile", () => {
+      expect(lock().version).toBe(pkg().version);
+      expect(lock().packages[""].version).toBe(pkg().version);
+    });
   });
 });
 
-// Raised in review of #24: the prepare workflow's own comment and its job
-// summary still told the maintainer that merging publishes, after the trigger
-// had moved to workflow_dispatch. The job summary is the instruction a
-// maintainer actually reads mid-release, so a stale one strands the release.
 describe("nothing claims that merging publishes", () => {
   const FORBIDDEN = [/merging publishes/i, /is what publishes/i];
   const FILES = [
-    ".github/workflows/release-prepare.yml",
     ".github/workflows/release.yml",
     "CLAUDE.md",
     "CONTRIBUTING.md",
@@ -236,11 +306,6 @@ describe("nothing claims that merging publishes", () => {
     for (const pattern of FORBIDDEN) {
       expect(text, `${file} still claims merging publishes`).not.toMatch(pattern);
     }
-  });
-
-  it("release-prepare points at the Release workflow instead", () => {
-    const text = readFileSync(join(DIR, "release-prepare.yml"), "utf8");
-    expect(text).toMatch(/run the .?Release.? workflow/i);
   });
 });
 
