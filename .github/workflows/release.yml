@@ -1,16 +1,23 @@
 name: Release
 
-# Step 2 of 2. Publishes the version currently on main. Run it deliberately,
-# when you decide to ship.
+# The whole release, in one run. Actions tab → Release → Run workflow.
 #
-# Merging a pull request never ships anything. Any number of them can land on
-# main between releases; this workflow ships whatever version is there when you
-# run it, so merge volume never drives the version number.
+# Derives the next version from the conventional commits since the last release
+# tag, verifies everything, publishes to npm, then pushes the tag and cuts the
+# GitHub release. It never commits to main.
 #
-# There is deliberately no tag trigger and no push trigger. A tag is permanent
-# and public, so a tag that fails to publish leaves a tag pointing at a version
-# that does not exist on the registry — which is exactly what happened to
-# v1.3.0. Here the tag is an output of a successful publish, never its trigger.
+# THE TAG IS THE SOURCE OF TRUTH. package.json in git holds
+# `0.0.0-development`; the version that ships is derived from the latest `v*`
+# tag plus the commits since it, written into the working tree here, and never
+# committed. Nothing is pushed to main, so main's branch protection stays fully
+# intact — this workflow needs no bypass and no stored credential. (Tags are not
+# branch-protected, which is what makes a single-run release possible at all on
+# a user-owned repository, where GitHub Actions cannot be a ruleset bypass actor.)
+#
+# Ordering is deliberate: npm is published FIRST and the tag is pushed only after
+# the registry confirms the version exists. A failed publish therefore leaves no
+# tag behind — the failure that stranded v1.3.0, which was tagged and then failed
+# to publish.
 #
 # Authentication is npm Trusted Publishing (OIDC); there is no NPM_TOKEN.
 # One-time setup on npmjs.com → the package → Settings → Trusted Publisher:
@@ -21,29 +28,36 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      dry_run:
-        # Defaults to a dry run because publishing is irreversible: npm will not
-        # let a version be reissued. "Run workflow" clicked without reading the
-        # form must not ship. Unchecking this is the deliberate act.
-        description: "Run every check and stop before publishing (uncheck to actually ship)"
-        type: boolean
-        default: true
+      bump:
+        description: "Version bump — auto derives it from the commits"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      mode:
+        # A choice, not a boolean. `type: boolean` renders as a checkbox that can
+        # be impossible to toggle in some clients, and a safe-by-default checkbox
+        # nobody can untick makes releasing unreachable — a worse failure than
+        # the mis-click it guards against.
+        description: "dry-run verifies everything and stops; publish ships it"
+        type: choice
+        options: [dry-run, publish]
+        default: dry-run
 
 permissions:
   contents: read
 
 jobs:
-  publish:
-    name: publish to npm
+  release:
+    name: release
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the tag and the GitHub release
+      contents: write # push the tag and create the GitHub release — no branch write
       id-token: write # required for Trusted Publishing and provenance
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # history and tags are what the version is derived from
 
       # No `registry-url`: it makes setup-node write `_authToken=${NODE_AUTH_TOKEN}`
       # into a generated .npmrc, and an empty token still reads as configured
@@ -52,6 +66,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"
+
+      - name: Release only from the default branch
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Releases run from main only (got $GITHUB_REF_NAME)."
+            exit 1
+          fi
+          echo "On main."
 
       # Asserts the floor rather than installing npm@latest. Upgrading the
       # toolchain mid-release makes the pipeline non-deterministic: a new npm
@@ -69,14 +91,8 @@ jobs:
             console.log(`npm ${version} meets the 11.5.1 floor.`);
           ' "$(npm --version)"
 
-      - name: Publish only from the default branch
-        run: |
-          if [ "$GITHUB_REF_NAME" != "main" ]; then
-            echo "::error::Releases publish from main only (got $GITHUB_REF_NAME)."
-            exit 1
-          fi
-          echo "On main."
-
+      # Fails loudly on the misconfiguration that otherwise surfaces as a bare
+      # E404 from an anonymous publish, which reads like "package not found".
       - name: Preflight — nothing is disabling OIDC
         run: |
           if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
@@ -99,52 +115,109 @@ jobs:
 
       - run: npm ci
 
-      # Unconditional on purpose. On the previous revision this was gated to tag
-      # runs, so a dispatch publish skipped it entirely — caught in review of #23.
-      - name: Verify the version is releasable
+      - name: Derive the next version
         id: version
         run: |
-          PKG="$(node -p "require('./package.json').version")"
-          if npm view "macos-mail-mcp@$PKG" version >/dev/null 2>&1; then
-            echo "::error::macos-mail-mcp@$PKG is already on the registry. npm will not republish a version."
+          # The last released version comes from the tag, not package.json —
+          # package.json holds a placeholder. No tag means nothing has shipped.
+          CURRENT="0.0.0"
+          if TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)"; then
+            CURRENT="${TAG#v}"
+          fi
+          echo "Last released: $CURRENT"
+
+          # Exit 2 means "nothing releasable" and is a normal answer; anything
+          # else non-zero is a genuine failure. Collapsing the two would report
+          # a malformed version or a git error as "nothing to release", sending
+          # the reader looking in the wrong place.
+          set +e
+          node scripts/next-version.mjs --current "$CURRENT" --force "${{ inputs.bump }}" > version.json
+          STATUS=$?
+          set -e
+
+          if [ "$STATUS" -eq 2 ]; then
+            echo "::error::No releasable commits since the last release. Nothing to publish."
+            cat version.json
+            exit 1
+          elif [ "$STATUS" -ne 0 ]; then
+            echo "::error::next-version.mjs failed with exit $STATUS — this is not 'nothing to release'. See the step log above for the underlying error."
+            cat version.json 2>/dev/null || true
             exit 1
           fi
-          if git rev-parse "v$PKG" >/dev/null 2>&1; then
+          cat version.json
+          node -e '
+            const v = require("./version.json");
+            console.log(`next=${v.version}`);
+            console.log(`bump=${v.bump}`);
+          ' >> "$GITHUB_OUTPUT"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the version is releasable
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          if npm view "macos-mail-mcp@$NEXT" version >/dev/null 2>&1; then
+            echo "::error::macos-mail-mcp@$NEXT is already on the registry. npm will not republish a version."
+            exit 1
+          fi
+          if git rev-parse "v$NEXT" >/dev/null 2>&1; then
             # States only what is known. "Not published" would be inferred from
             # the npm view above, which also fails on a network or registry
-            # error — and a confident wrong diagnosis is worse than none.
-            echo "::error::Tag v$PKG already exists, and the registry did not report $PKG as published."
-            echo "::error::Either the tag is left over from a failed publish, or the registry lookup itself failed."
+            # error, and a confident wrong diagnosis is worse than none.
+            echo "::error::Tag v$NEXT already exists, and the registry did not report $NEXT as published."
+            echo "::error::Either the tag is left over from a failed release, or the registry lookup itself failed."
             echo "::error::Check with 'npm view macos-mail-mcp versions' and resolve before retrying."
             exit 1
           fi
-          echo "version=$PKG" >> "$GITHUB_OUTPUT"
-          echo "Publishing $PKG."
+          echo "$NEXT is releasable."
 
+      # Written into the working tree and deliberately never committed. The
+      # tarball carries the real version; git keeps the placeholder.
+      - name: Apply the version to the tree being shipped
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          npm version --no-git-tag-version "$NEXT"
+          echo "package.json in this runner is now $NEXT (not committed)."
+
+      # These verify the tree that is about to ship, not the tree checked out.
       - run: npm run build
       - run: npm run test:coverage
       - run: npm audit --audit-level=high
 
-      - name: Publish (dry run)
-        if: inputs.dry_run
+      - name: Dry run — stop before anything irreversible
+        if: inputs.mode == 'dry-run'
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
         run: |
           npm publish --dry-run
-          echo "Dry run — nothing was published, tagged or released."
+          {
+            echo "### Dry run — nothing was published, pushed or tagged"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Current | ${{ steps.version.outputs.current }} |"
+            echo "| Would release | **$NEXT** |"
+            echo "| Bump | ${{ steps.version.outputs.bump }} |"
+            echo
+            echo "Every check passed. Re-run with \`mode: publish\` to ship it."
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Publish
-        if: ${{ !inputs.dry_run }}
+      # The irreversible step. Everything above has already passed.
+      - name: Publish to npm
+        if: ${{ inputs.mode == 'publish' }}
         run: npm publish
 
-      - name: Confirm it landed
-        if: ${{ !inputs.dry_run }}
+      - name: Confirm the registry has it
+        if: ${{ inputs.mode == 'publish' }}
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          NEXT: ${{ steps.version.outputs.next }}
         run: |
           for _ in $(seq 1 10); do
             sleep 6
-            if npm view "macos-mail-mcp@$VERSION" version >/dev/null 2>&1; then
-              echo "Published macos-mail-mcp@$VERSION."
-              if npm view "macos-mail-mcp@$VERSION" dist.attestations >/dev/null 2>&1; then
+            if npm view "macos-mail-mcp@$NEXT" version >/dev/null 2>&1; then
+              echo "Published macos-mail-mcp@$NEXT."
+              if npm view "macos-mail-mcp@$NEXT" dist.attestations >/dev/null 2>&1; then
                 echo "Provenance attestation present."
               else
                 echo "::warning::No provenance attestation — the publish did not go through OIDC."
@@ -152,20 +225,29 @@ jobs:
               exit 0
             fi
           done
-          echo "::error::$VERSION is not on the registry although publishing reported success."
+          echo "::error::$NEXT is not on the registry although publishing reported success."
           exit 1
 
-      # Tag and release only after the registry has confirmed the version, so a
-      # failed publish never leaves a dangling tag.
       - name: Tag and cut the GitHub release
-        if: ${{ !inputs.dry_run }}
+        if: ${{ inputs.mode == 'publish' }}
         env:
-          VERSION: ${{ steps.version.outputs.version }}
+          NEXT: ${{ steps.version.outputs.next }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          SINCE_RANGE="HEAD"
+          if TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)"; then
+            SINCE_RANGE="$TAG..HEAD"
+          fi
+          node scripts/release-notes.mjs "$SINCE_RANGE" > notes.md
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "$VERSION"
-          git push origin "v$VERSION"
-          node scripts/release-notes.mjs "$VERSION" CHANGELOG.md > notes.md
-          gh release create "v$VERSION" --title "v$VERSION" --latest --notes-file notes.md
+          git tag -a "v$NEXT" -m "$NEXT"
+          git push origin "v$NEXT"
+          gh release create "v$NEXT" --title "v$NEXT" --latest --notes-file notes.md
+          {
+            echo "### Released $NEXT"
+            echo
+            echo "- npm: https://www.npmjs.com/package/macos-mail-mcp/v/$NEXT"
+            echo "- tag: v$NEXT"
+          } >> "$GITHUB_STEP_SUMMARY"

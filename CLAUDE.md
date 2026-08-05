@@ -158,34 +158,49 @@ npm run dev          # TypeScript watch mode
 
 ## Releasing
 
-Three steps, each requiring a human. Publishing to npm is a Gated action, and **nothing
-publishes as a side effect of merging.**
+**One run.** Actions tab → **Release** → Run workflow → `mode: publish`. That derives the
+version, verifies everything, publishes to npm, pushes the tag and cuts the GitHub release.
+`mode` defaults to `dry-run`, which does all of that except the irreversible parts.
 
-1. **Run "Release prepare"** from the Actions tab. It derives the next version from the
-   conventional commits since the last release tag, runs build, coverage and audit, and
-   with `dry_run` (the default) reports the version and stops. Re-run with `dry_run`
-   unchecked to push a `release/vX.Y.Z` branch carrying the bump and a changelog entry.
-2. **Open the PR yourself** from the link the job prints, edit the changelog, and merge.
-   This lands the version bump on `main`. It publishes nothing.
-3. **Run "Release"** when you actually want to ship. It publishes whatever version is on
-   `main` via OIDC, confirms the registry has it, then tags and cuts the GitHub release.
-   It also takes a `dry_run` input that stops short of publishing.
+### The tag is the source of truth
 
-Any number of pull requests may land on `main` between releases; merge volume never drives
-the version number. The version is derived once, at prepare time, from everything
-accumulated since the last release — so five merged PRs take 1.0.0 to 1.0.1, not 1.0.5.
-`scripts/next-version.mjs` is the resolver (`feat` → minor, `fix`/`perf` → patch, `!` or
-`BREAKING CHANGE` → major, highest bump wins, applied once);
-`tests/release/next-version.test.ts` is its spec. The `bump` input overrides it when the
-derived level is not what you want.
+`package.json` in git holds **`0.0.0-development`** and is never updated by a release. The
+version that ships is derived from the latest `v*` tag plus the conventional commits since
+it, written into the working tree during the run, and never committed.
 
-**The workflow does not open the PR** and must not be "improved" to do so: a pull request
-created with `GITHUB_TOKEN` does not trigger workflow runs, so `ci-ok` would never report
-and branch protection would leave it unmergeable.
+This is the standard `semantic-release` arrangement, and here it is what makes a single-run
+release possible at all. `main` is protected with `enforce_admins`, so no actor can push a
+commit to it — and on a **user-owned** repository GitHub Actions cannot be a ruleset bypass
+actor (the API rejects it: the actor must belong to the owning organisation). Tags, by
+contrast, are not branch-protected. So the release writes a tag and nothing else, and
+branch protection stays fully intact with no bypass and no stored credential.
+
+The consequence to remember: **the version in `package.json` is not the released version.**
+Read the tag, the GitHub release, or npm.
+
+`CHANGELOG.md` is maintained by hand in ordinary pull requests, since the workflow cannot
+commit to it. GitHub release notes are generated from the commit range by
+`scripts/release-notes.mjs`, grouped by conventional-commit type.
+
+### Why the ordering is what it is
+
+npm is published **first**; the tag is pushed only after the registry confirms the version
+exists. Publishing is irreversible — npm will not reissue a version — while a tag is not.
+So the reversible thing happens last, and only on success. A failed publish leaves no tag
+behind, which is exactly the state v1.3.0 failed to achieve: it was tagged, then failed to
+publish, and the tag outlived the attempt.
+
+The version is derived once, from everything accumulated since the last tag — five merged
+pull requests take 1.0.0 to 1.0.1, not 1.0.5. `scripts/next-version.mjs` is the resolver
+(`feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE` → major, highest wins);
+`tests/release/next-version.test.ts` is its spec. `bump` overrides it.
+
+Note that the resolver types the bump from commit subjects, so a `feat(release):` touching
+only the pipeline still reads as a minor even though nothing consumer-facing changed. That
+is what the `bump` override is for.
 
 **There is no tag trigger and no push trigger.** The tag is an output of a successful
-publish, never its cause — so a failed publish cannot leave a tag pointing at a version
-that does not exist on the registry. That happened to v1.3.0.
+publish, never its cause.
 
 **Do not reintroduce `npm install -g npm@latest` into `release.yml`.** Upgrading the
 toolchain mid-release makes the pipeline non-deterministic: a new npm major could change
