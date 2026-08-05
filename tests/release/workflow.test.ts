@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse } from "yaml";
 
@@ -273,21 +274,35 @@ describe("release.yml — the whole release in one workflow", () => {
     });
   });
 
+  // Read from git, not the working tree. The claim is about what the REPOSITORY
+  // holds, and the release workflow deliberately rewrites the working copy
+  // before running these very checks — reading the tree made this assert the
+  // opposite of its intent and failed the first real release at 1.3.1.
   describe("package.json version is a placeholder", () => {
-    const pkg = () => JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
-    const lock = () =>
-      JSON.parse(readFileSync(join(process.cwd(), "package-lock.json"), "utf8"));
+    const committed = (file: string) =>
+      JSON.parse(execFileSync("git", ["show", `HEAD:${file}`], { encoding: "utf8" }));
 
     it("is not a release version", () => {
-      expect(pkg().version).toBe("0.0.0-development");
+      expect(committed("package.json").version).toBe("0.0.0-development");
     });
 
     // Raised in review of #27: the lockfile kept 1.3.0 after the manifest moved
     // to the placeholder. npm ci tolerates the drift, but npm install silently
     // rewrites the lockfile, so it comes back as noise in an unrelated diff.
     it("matches the lockfile", () => {
-      expect(lock().version).toBe(pkg().version);
-      expect(lock().packages[""].version).toBe(pkg().version);
+      const pkg = committed("package.json");
+      const lock = committed("package-lock.json");
+      expect(lock.version).toBe(pkg.version);
+      expect(lock.packages[""].version).toBe(pkg.version);
+    });
+
+    // The failure this pair caused was invisible until a release ran, because
+    // nothing else mutates the tree. Pin the property directly.
+    it("is unaffected by the working tree being rewritten", () => {
+      const before = committed("package.json").version;
+      expect(before).toBe("0.0.0-development");
+      expect(JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")).version)
+        .toBeTypeOf("string");
     });
   });
 });
