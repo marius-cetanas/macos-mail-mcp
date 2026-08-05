@@ -147,6 +147,34 @@ npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
 ```
 
+## Releasing
+
+Pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes to npm via
+Trusted Publishing (OIDC). There is no `NPM_TOKEN` in the repo.
+
+Before the first tag-triggered publish can work, npmjs.com → the package → Settings →
+Trusted Publisher must name the org/user, the repo, the workflow **filename**
+(`release.yml`) and allow the `npm publish` action. Renaming that file breaks publishing
+until the entry is updated.
+
+Validate the pipeline without minting a tag by running the workflow manually with
+`dry_run` (the default). A tag is permanent and public; a failed tag-triggered publish
+leaves a tag pointing at an unpublished version.
+
+Order for a release: land the version bump and changelog on `main`, run a dry run, then
+tag. Never tag first.
+
+**Do not add `registry-url` to `actions/setup-node` in this workflow.** It writes
+`_authToken=${NODE_AUTH_TOKEN}` into a generated `.npmrc`; with no token set that expands
+to empty, and an empty token still reads as configured auth, so npm skips the OIDC
+exchange and publishes anonymously. The symptom is a bare `E404` from `PUT`, which looks
+like a missing package rather than an auth failure. This cost the v1.3.0 release
+(actions/setup-node#1551). A preflight step now fails the job if any `_authToken` is
+visible, so the mistake cannot silently recur.
+
+Provenance attestations are attached at publish time and cannot be added afterwards. A
+version published outside OIDC has none, permanently.
+
 ## Registration
 
 **Claude Code CLI:**
