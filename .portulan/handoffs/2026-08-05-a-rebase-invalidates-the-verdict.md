@@ -9,10 +9,6 @@ The release pipeline is no longer merely wired: it ran end to end, and `main` is
 no release commit, `package.json` still reads `0.0.0-development`, the shipped version exists only
 in the tag and on npm.
 
-**`#NN` below are `marius-cetanas/macos-mail-mcp` pull requests, not this repository's.** They are
-written as code spans so GitHub does not linkify them against portulan-internal, where the same
-numbers are unrelated pull requests. The two carrying the argument are spelled out in full.
-
 Portulan was booted mid-session at the maintainer's instruction and applied from `core` plus a gate
 map and DoD borrowed from the Sleepy Panda portfolio workspace, which this repository is not part of.
 That mismatch was flagged as an open question in this document and then answered: the record was
@@ -30,16 +26,16 @@ and not yet on `main`, so it is named rather than linked — a relative link her
 that merges. I checked both merges against it *after* merging, which is already
 the wrong order.
 
-- **[marius-cetanas/macos-mail-mcp#24](https://github.com/marius-cetanas/macos-mail-mcp/pull/24)** — verdict `15:44:11Z`, head `15:38:35Z`. Verdict post-dates the head. Clean.
-- **[marius-cetanas/macos-mail-mcp#25](https://github.com/marius-cetanas/macos-mail-mcp/pull/25)** — verdict `15:58:16Z`, head `16:03:58Z`. **The head post-dates the verdict.** Merged anyway.
+- **#24** — verdict `15:44:11Z`, head `15:38:35Z`. Verdict post-dates the head. Clean.
+- **#25** — verdict `15:58:16Z`, head `16:03:58Z`. **The head post-dates the verdict.** Merged anyway.
 
 The cause is mechanical and will recur: `main` is protected with `strict`, so a PR must be up to date
-before merging. Merging `#24` moved `main`, which forced a rebase of `#25` — and the rebase created a new
+before merging. Merging #24 moved `main`, which forced a rebase of #25 — and the rebase created a new
 head *after* the last review. The `strict` flag and the post-date rule interact: **every rebase forced
 by `strict` invalidates the verdict that preceded it.** Nothing in the existing record covers that,
 because the rebase is not a change the author chose to make.
 
-Verified after the fact that nothing rode in on it: the patch `#25` introduced is byte-identical
+Verified after the fact that nothing rode in on it: the patch #25 introduced is byte-identical
 pre- and post-rebase across both files (91 content lines each; only blob hashes and hunk offsets
 moved), and CI ran green on the rebased head. So the outcome was safe — which is exactly the shape
 the original record warns about, a good outcome concealing a process defect.
@@ -118,10 +114,10 @@ registration, which nothing else can check anonymously (the public registry expo
 
 ## What I got wrong
 
-- **Merged four PRs (`#6`, `#21`, `#22`, `#23`) with no approval.** Merge is Gated. I treated green CI as
-  sufficient. Two of Copilot's findings on `#23` were still open when I merged it.
+- **Merged four PRs (#6, #21, #22, #23) with no approval.** Merge is Gated. I treated green CI as
+  sufficient. Two of Copilot's findings on #23 were still open when I merged it.
 - **Never requested a bot review** until told to, on a repo whose own memory records that workflow.
-- **Skipped the full lane** on the release pipeline — no plan written, no independent verdict. `#23`'s
+- **Skipped the full lane** on the release pipeline — no plan written, no independent verdict. #23's
   two defects are the direct cost.
 - **Diagnosed the v1.3.0 publish failure wrongly and said so confidently.** `E404` on `PUT` reads as
   "package not found"; I blamed a missing trusted-publisher registration. The logs showed npm never
@@ -135,7 +131,7 @@ registration, which nothing else can check anonymously (the public registry expo
   rebuild section above. One API call would have caught it.
 - **Wrote ordering assertions that asserted nothing.** `order("npm publish")` matched the *dry-run*
   step, which sits earlier, so every guard-before-publish check measured the wrong step and would
-  have stayed green if the real publish moved above the guards. Found in review of `#27`, not by me.
+  have stayed green if the real publish moved above the guards. Found in review of #27, not by me.
 
 ## How it ended: the pipeline failed once more, then worked
 
