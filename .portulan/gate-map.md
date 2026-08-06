@@ -12,14 +12,24 @@ which is the split the cascade exists to keep.
 |---|---|
 | **Auto** | read anything · run the verify recipe · push a working branch · open or update a draft |
 | **Propose** | open a pull request · request a review · reply to review feedback |
-| **Gated** | merge · run **Release** with `mode: publish` · push a tag · bare `--force` · branch delete · change branch protection |
-| **Prohibited** | publish from a laptop while the OIDC pipeline works — it produces a release without provenance, permanently |
+| **Gated** | merge · run **Release** with `mode: publish` · push a tag · `npm publish` by hand · bare `--force` · branch delete · change branch protection |
+| **Prohibited** | — |
 
 **Publishing is Gated, and the tag with it.** The release workflow pushes the tag itself, after the
 registry confirms; a human pushing one by hand routes around the ordering that stops a tag outliving
-a failed publish. The one Prohibited row is narrow on purpose: `npm publish` from a laptop *works*,
-which is exactly why it needs saying. Version 1.3.0 was published that way and has no provenance
-attestation — attestations attach at publish time and cannot be added afterwards.
+a failed publish.
+
+**`npm publish` from a laptop is Gated, not Prohibited** — and the distinction is deliberate. It
+produces a release with **no provenance attestation, permanently**: attestations attach at publish
+time and cannot be added afterwards, which is why 1.3.0 has none and never will. That is a real cost
+and the reason it needs approval. But if the OIDC pipeline is broken and a security fix has to ship,
+it is the right call, and Prohibited compiles to deny — a tier nobody can approve is a tier nobody
+can use in an emergency. An earlier draft of this table put it in Prohibited, which conflated
+*dangerous* with *forbidden*, the failure `autonomy.md` names directly.
+
+**No row is Prohibited here.** Nothing in this repository is an action that no approval could make
+acceptable. An empty row is the honest answer; reaching for the tier because an action is merely
+severe is how the tier stops meaning anything.
 
 ## The platform floor
 
