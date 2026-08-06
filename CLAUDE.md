@@ -31,7 +31,10 @@ checks that the required status check `ci-ok` is one a workflow here actually re
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (330 unit tests; 100% coverage of `src/`, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest, mocked bridge — no real Mail.app needed. Coverage of `src/` is gated at
+  **100%** (statements, branches, functions, lines) in `vitest.config.ts`, and CI runs
+  `test:coverage`. The gate is the invariant; the raw test count is not tracked here because it goes
+  stale on every change and nothing checks it.
 
 ## Architecture
 
@@ -62,13 +65,15 @@ src/
 scripts/                — release tooling, not shipped in the package
   next-version.mjs      — conventional commits → next semver
   check-npmrc.mjs       — fails a release if anything would disable OIDC
+  release-notes.mjs     — commit range → grouped GitHub release body
 tests/
   index.test.ts                — Entry point: wiring, version, stdio, fatal path
   utils.test.ts                — Tests for sanitize, expandTilde
   helpers/capture-tools.ts     — Stub server for driving registered MCP tools
   bridge/                      — Escaping/parsing, and runAppleScript execution
   domains/*/                   — Handler and registration-layer tests
-  release/                     — Version resolver, npmrc guard, workflow structure
+  release/                     — Version resolver, npmrc guard, release notes,
+                                 workflow structure, and the script CLIs
 ```
 
 Coverage thresholds apply to `src/` only, so `scripts/` does not count toward the 100%
@@ -168,7 +173,7 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 
 ```bash
 npm run build        # tsc + copy .applescript files to build/
-npm test             # Run 330 unit tests
+npm test             # Run the suite
 npm run test:coverage # Tests + coverage; fails below the 100% thresholds
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode

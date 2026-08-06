@@ -33,7 +33,7 @@ severe is how the tier stops meaning anything.
 
 ## The platform floor
 
-| | |
+| Setting | Value |
 |---|---|
 | Required status check | `ci-ok` |
 | Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, strict (branch must be up to date) |
