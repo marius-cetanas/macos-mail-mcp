@@ -6,6 +6,28 @@ MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via A
 
 Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed when adding new accounts; just configure them in Mail.app.
 
+## Operating layer
+
+This repository governs itself: `.portulan/` is a `kind: repository` Portulan workspace, which the
+boot skill finds automatically because it searches `${CLAUDE_PROJECT_DIR}/.portulan/`. It is not part
+of the Sleepy Panda portfolio workspace.
+
+- [`.portulan/identity.md`](.portulan/identity.md) — what this repository is, the stack, the
+  three-layer shape, and the glossary. Start here.
+- [`.portulan/gate-map.md`](.portulan/gate-map.md) — which actions are Auto, Propose, Gated,
+  Prohibited. **Merge, publishing a release, pushing a tag, and `npm publish` by hand are Gated**:
+  they need explicit approval, per action. No action is Prohibited.
+- [`.portulan/dod.md`](.portulan/dod.md) — when a change is done here, including the 100% coverage
+  bar and the rule that a verdict must post-date the head it judges.
+- [`.portulan/principles.md`](.portulan/principles.md) — five principles, each naming the incident
+  that produced it.
+- [`.portulan/handoffs/`](.portulan/handoffs/) — the session record, dated `YYYY-MM-DD-{slug}.md`.
+  Every session ends with one; read the most recent before starting.
+
+It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
+checks that the required status check `ci-ok` is one a workflow here actually reports. Nothing in
+`.portulan/` ships to npm; `files: ["build"]` governs the tarball.
+
 ## Tech Stack
 
 - **Runtime:** Node.js 20+ (`engines` floor; CI builds and tests on 20, 22 and 24)
@@ -13,7 +35,10 @@ Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlo
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)
 - **Validation:** Zod schemas on all tool inputs
-- **Testing:** Vitest (330 unit tests; 100% coverage of `src/`, mocked bridge — no real Mail.app needed)
+- **Testing:** Vitest, mocked bridge — no real Mail.app needed. Coverage of `src/` is gated at
+  **100%** (statements, branches, functions, lines) in `vitest.config.ts`, and CI runs
+  `test:coverage`. The gate is the invariant; the raw test count is not tracked here because it goes
+  stale on every change and nothing checks it.
 
 ## Architecture
 
@@ -44,13 +69,15 @@ src/
 scripts/                — release tooling, not shipped in the package
   next-version.mjs      — conventional commits → next semver
   check-npmrc.mjs       — fails a release if anything would disable OIDC
+  release-notes.mjs     — commit range → grouped GitHub release body
 tests/
   index.test.ts                — Entry point: wiring, version, stdio, fatal path
   utils.test.ts                — Tests for sanitize, expandTilde
   helpers/capture-tools.ts     — Stub server for driving registered MCP tools
   bridge/                      — Escaping/parsing, and runAppleScript execution
   domains/*/                   — Handler and registration-layer tests
-  release/                     — Version resolver, npmrc guard, workflow structure
+  release/                     — Version resolver, npmrc guard, release notes,
+                                 workflow structure, and the script CLIs
 ```
 
 Coverage thresholds apply to `src/` only, so `scripts/` does not count toward the 100%
@@ -150,7 +177,7 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 
 ```bash
 npm run build        # tsc + copy .applescript files to build/
-npm test             # Run 330 unit tests
+npm test             # Run the suite
 npm run test:coverage # Tests + coverage; fails below the 100% thresholds
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
