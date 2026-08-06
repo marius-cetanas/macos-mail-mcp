@@ -12,13 +12,17 @@ This repository governs itself: `.portulan/` is a `kind: repository` Portulan wo
 boot skill finds automatically because it searches `${CLAUDE_PROJECT_DIR}/.portulan/`. It is not part
 of the Sleepy Panda portfolio workspace.
 
+- [`.portulan/identity.md`](.portulan/identity.md) — what this repository is, the stack, the
+  three-layer shape, and the glossary. Start here.
 - [`.portulan/gate-map.md`](.portulan/gate-map.md) — which actions are Auto, Propose, Gated,
-  Prohibited. **Merge, publishing a release, and pushing a tag are Gated**: they need explicit
-  approval, per action.
+  Prohibited. **Merge, publishing a release, pushing a tag, and `npm publish` by hand are Gated**:
+  they need explicit approval, per action. No action is Prohibited.
 - [`.portulan/dod.md`](.portulan/dod.md) — when a change is done here, including the 100% coverage
   bar and the rule that a verdict must post-date the head it judges.
 - [`.portulan/principles.md`](.portulan/principles.md) — five principles, each naming the incident
   that produced it.
+- [`.portulan/handoffs/`](.portulan/handoffs/) — the session record, dated `YYYY-MM-DD-{slug}.md`.
+  Every session ends with one; read the most recent before starting.
 
 It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
 checks that the required status check `ci-ok` is one a workflow here actually reports. Nothing in
