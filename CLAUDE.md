@@ -6,6 +6,24 @@ MCP (Model Context Protocol) server that connects Claude to macOS Mail.app via A
 
 Works with **any email account configured in Mail.app** — iCloud, Gmail, Outlook/Exchange, Yahoo, Fastmail, custom IMAP/POP, etc. No code changes needed when adding new accounts; just configure them in Mail.app.
 
+## Operating layer
+
+This repository governs itself: `.portulan/` is a `kind: repository` Portulan workspace, which the
+boot skill finds automatically because it searches `${CLAUDE_PROJECT_DIR}/.portulan/`. It is not part
+of the Sleepy Panda portfolio workspace.
+
+- [`.portulan/gate-map.md`](.portulan/gate-map.md) — which actions are Auto, Propose, Gated,
+  Prohibited. **Merge, publishing a release, and pushing a tag are Gated**: they need explicit
+  approval, per action.
+- [`.portulan/dod.md`](.portulan/dod.md) — when a change is done here, including the 100% coverage
+  bar and the rule that a verdict must post-date the head it judges.
+- [`.portulan/principles.md`](.portulan/principles.md) — five principles, each naming the incident
+  that produced it.
+
+It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
+checks that the required status check `ci-ok` is one a workflow here actually reports. Nothing in
+`.portulan/` ships to npm; `files: ["build"]` governs the tarball.
+
 ## Tech Stack
 
 - **Runtime:** Node.js 20+ (`engines` floor; CI builds and tests on 20, 22 and 24)
