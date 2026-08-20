@@ -93,23 +93,26 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
   });
 
   /**
-   * #39, asserted as it SHOULD behave and marked `.fails` so it passes only while the defect is
-   * present. When the fix lands this test errors — "expected to fail, but passed" — which forces
-   * the marker off rather than leaving a stale skip nobody revisits.
+   * #39. AppleScript clusters a C0 control with a following combining mark into ONE character
+   * (`id of` -> {1, 769}), so #33's integer guard sent the whole cluster down the passthrough
+   * branch and a raw control byte reached the JSON string.
    *
-   * AppleScript clusters a C0 control with a following combining mark into one character
-   * (`id of` -> {1, 769}), so the guard added in #33 sends the whole cluster down the passthrough
-   * branch and a raw U+0001 reaches the JSON string.
+   * These were `it.fails` while the defect stood. They are ordinary assertions now.
    */
   describe("#39 — a control character leading a grapheme cluster", () => {
-    it.fails("should escape the control and keep the combining mark", () => {
+    it("escapes the control and keeps the combining mark", () => {
       expect(escape(codePoints(0x01, 0x0301))).toBe("\\u0001\u0301");
     });
 
-    it("currently emits the raw control character, which is invalid JSON", () => {
+    it("emits no raw control character, so the result parses as JSON", () => {
       const value = escape(codePoints(0x01, 0x0301));
-      expect(value).toContain("\u0001");
-      expect(() => JSON.parse(`{"v":"${value}"}`)).toThrow();
+      expect(value).not.toContain("\u0001");
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: "\u0001\u0301" });
+    });
+
+    // The general form, since the cluster need not lead with the control.
+    it("judges every code point of a cluster, not only the first", () => {
+      expect(escape(codePoints(0x65, 0x0301, 0x01))).toBe("e\u0301\\u0001");
     });
   });
 });
