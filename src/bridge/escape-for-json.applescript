@@ -33,11 +33,17 @@ on escapeForJson(theString)
     set theString to parts as text
 
     -- Escape other C0 control characters (0-8, 11-12, 14-31)
+    -- Note: "id of c" returns a list of code points (not a single integer) when c is a
+    -- multi-codepoint grapheme cluster (e.g. an emoji + variation selector, or a base
+    -- letter + combining diacritic such as decomposed "é"). Comparing such a list with
+    -- ">=" / "<=" raises "Can't make {…} into type number, date or text" (-1700).
+    -- Real C0 control characters are always single code points, so it's safe to only
+    -- treat cCode as a control character when it is a plain integer.
     set resultList to {}
     repeat with i from 1 to length of theString
         set c to character i of theString
         set cCode to id of c
-        if cCode >= 0 and cCode <= 31 then
+        if (class of cCode is integer) and cCode >= 0 and cCode <= 31 then
             set hexChars to "0123456789abcdef"
             set hi to (cCode div 16) + 1
             set lo to (cCode mod 16) + 1
