@@ -64,10 +64,14 @@ jobs:
     needs: [test, audit]
     if: always()
     steps:
+      # The condition lives in `if:` rather than in shell, so there is no embedded logic to test —
+      # DoD 8 is satisfied by there being nothing to extract, not by extracting it. The alternative,
+      # a `node scripts/…` step, would force a checkout and a Node setup into a job that otherwise
+      # needs neither, to decide one boolean the runner has already computed.
+      #
+      # Semantics are unchanged from the shell it replaces: `failure` and `cancelled` fail the
+      # aggregate, and `skipped` does not. A skipped dependency passing is worth knowing about, but
+      # changing what the merge gate accepts is not something to slip into a review round.
       - name: Fail if any dependency job did not succeed
-        run: |
-          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = "true" ]; then
-            echo "One or more CI jobs failed."
-            exit 1
-          fi
-          echo "All CI jobs succeeded."
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

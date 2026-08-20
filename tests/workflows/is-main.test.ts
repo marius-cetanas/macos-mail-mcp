@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { fileURLToPath } from "node:url";
 import { isMain } from "../../scripts/is-main.mjs";
 
 describe("isMain", () => {
@@ -48,7 +49,10 @@ describe("isMain", () => {
   it("is true when the module really is the entry point", () => {
     const argv = process.argv[1];
     try {
-      process.argv[1] = new URL(import.meta.url).pathname;
+      // `fileURLToPath`, not `new URL(...).pathname` — the latter hands back a percent-encoded
+      // path, which is the very thing this module exists to get right, and would make this test
+      // fail in any checkout whose path needs encoding.
+      process.argv[1] = fileURLToPath(import.meta.url);
       expect(isMain(import.meta.url)).toBe(true);
     } finally {
       process.argv[1] = argv;
