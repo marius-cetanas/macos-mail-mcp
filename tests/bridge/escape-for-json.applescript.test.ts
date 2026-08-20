@@ -93,18 +93,15 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
   });
 
   /**
-   * #39, and the class it belongs to.
+   * #39, and the class it turned out to belong to.
    *
-   * The delimiter phases at the top of the handler are cluster-blind: `text items of` does not
-   * split on a character that sits inside a grapheme cluster. So anything JSON requires escaping
-   * can still be raw when the per-character loop is reached — but only inside a cluster.
-   *
-   * These were `it.fails` while the defect stood. They are ordinary assertions now.
+   * The handler no longer has delimiter phases, so "inside a cluster" is not a category it can
+   * treat differently — every code point is judged once, on its own. These cases are kept because
+   * they are the ones that were broken, and because each broke a different earlier design.
    */
-  describe("#39 — characters JSON must escape, hidden inside a grapheme cluster", () => {
-    it("escapes a control code point wherever it sits in the cluster", () => {
+  describe("#39 — characters JSON must escape, next to a combining mark", () => {
+    it("escapes a control code point wherever it sits", () => {
       expect(escape(codePoints(0x01, 0x0301))).toBe("\\u0001\u0301");
-      // Not only when it leads: the loop judges every code point.
       expect(escape(codePoints(0x65, 0x0301, 0x01))).toBe("e\u0301\\u0001");
     });
 
@@ -114,42 +111,56 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
       expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: "\u0001\u0301" });
     });
 
-    /**
-     * Found by the supervisor pass, and it is the same defect one column over: a quote or
-     * backslash clustered with a combining mark reached the output raw, because the loop's only
-     * judgment was the control range.
-     */
-    it("escapes a quote and a backslash clustered with a combining mark", () => {
+    it("escapes a quote and a backslash next to a combining mark", () => {
       expect(escape(codePoints(0x22, 0x0301))).toBe('\\"\u0301');
       expect(escape(codePoints(0x5c, 0x0301))).toBe("\\\\\u0301");
     });
 
-    /**
-     * The guard on the fix for the line above. By the time the loop runs, the delimiter phases
-     * have already turned a bare quote into `\"` — two single-code-point characters. Escaping 34
-     * and 92 unconditionally would re-escape that half into `\\"`, breaking every quoted string.
-     * The escaping is therefore confined to the cluster branch, and this pins it.
-     */
-    it("does not double-escape a quote or backslash the delimiter phases already handled", () => {
+    it("does not double-escape a bare quote or backslash", () => {
       expect(escape(codePoints(0x22))).toBe('\\"');
       expect(escape(codePoints(0x5c))).toBe("\\\\");
       expect(escape('"say \\"hi\\" \\\\ done"')).toBe('say \\"hi\\" \\\\ done');
     });
 
-    /**
-     * Named controls are handled by their own delimiter phases, which are equally cluster-blind —
-     * so inside a cluster they fall through to the C0 loop and come out as \u00XX rather than \t.
-     * Both are valid JSON. Pinned because a future "tab is already handled above" tidy-up would
-     * regress this invisibly.
-     */
     it.each([
-      ["tab", 0x09, "\\u0009"],
-      ["newline", 0x0a, "\\u000a"],
-      ["carriage return", 0x0d, "\\u000d"],
-    ])("escapes a %s clustered with a combining mark", (_name, point, expected) => {
-      const value = escape(codePoints(point as number, 0x0301));
-      expect(value).toBe(`${expected}\u0301`);
+      ["tab", 0x09, "\\t"],
+      ["newline", 0x0a, "\\n"],
+      ["carriage return", 0x0d, "\\r"],
+    ])("escapes a %s next to a combining mark, by its short form", (_name, point, expected) => {
+      expect(escape(codePoints(point as number, 0x0301))).toBe(`${expected}\u0301`);
+    });
+  });
+
+  /**
+   * The regression the supervisor pass found, and the reason the delimiter phases are gone.
+   *
+   * `text items of` had no single behaviour to reason from — measured, it was blind to a
+   * backslash followed by U+0301, split a cluster containing one followed by U+200D (matching the
+   * backslash and orphaning the ZWJ), and refused to match a bare quote followed by U+200C. Every
+   * phase-based design got one of these wrong: the ZWJ cases were valid on main and broken by the
+   * cluster-branch fix, the ZWNJ case was broken on both.
+   */
+  describe("zero-width joiners and non-joiners", () => {
+    it.each([
+      ["quote + ZWJ", [0x22, 0x200d, 0x41], '\\"\u200dA'],
+      ["backslash + ZWJ", [0x5c, 0x200d, 0x41], "\\\\\u200dA"],
+      ["backslash + ZWJ + quote", [0x5c, 0x200d, 0x22], '\\\\\u200d\\"'],
+      ["quote + ZWNJ", [0x22, 0x200c, 0x41], '\\"\u200cA'],
+    ])("escapes %s and stays valid JSON", (_name, points, expected) => {
+      const value = escape(codePoints(...(points as number[])));
+      expect(value).toBe(expected);
       expect(() => JSON.parse(`{"v":"${value}"}`)).not.toThrow();
+    });
+  });
+
+  describe("degenerate input", () => {
+    it("returns the empty string unchanged", () => {
+      // `id of ""` is an empty list rather than an integer, which the normalisation must survive.
+      expect(escape('""')).toBe("");
+    });
+
+    it("handles a single-character string, whose id is an integer not a list", () => {
+      expect(escape('"A"')).toBe("A");
     });
   });
 });
