@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `npm audit` on every pull request (#36).
 - The repository is governed by its own Portulan workspace at `.portulan/` (#29).
 
+### Thanks
+
+- [@dessyd](https://github.com/dessyd) reported the escaping bug and sent the fix in #33. It was a
+  real one and it was found from outside: `escapeForJson` had no executable test coverage at all,
+  because the bridge is mocked in every other test, so nothing here could have caught it. The
+  diagnosis in that pull request was exact — AppleScript returns a list of code points for a
+  multi-code-point grapheme cluster — and it is what the rest of this release was built on. Thank
+  you for taking the time.
+
 ## [1.3.1] - 2026-08-05
 
 Recorded after the fact — this entry was missing, and is written from the commits the tag carries.
