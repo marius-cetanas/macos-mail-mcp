@@ -4,12 +4,12 @@
 Verified against the tag rather than the publish log: the tarball npm serves carries a handler
 byte-identical to `v1.3.2` (`3405b2a0…`), and running that handler escapes the reported input
 correctly. `main` green — 477 tests across 25 files, 100% statements/branches/functions/lines on
-`src/`, 0 vulnerabilities. Zero open pull requests. Three issues open: #42, #44, and this repository
-now has a review gate that works.
+`src/`, 0 vulnerabilities. **Two issues open** — #42 and #44, both opened this session and both
+recorded rather than fixed. One pull request open: this handoff.
 
-Six pull requests merged or closed this session: #36 (dependency sweep), #37 (CI hardening), #40
-(AppleScript test harness), #41 (the escaping fix), #43 (changelog), plus #33 from an outside
-contributor. #30, #34 and #35 closed as superseded.
+**Six merged** — #33 from an outside contributor, then #36 (dependency sweep), #37 (CI hardening),
+#40 (AppleScript test harness), #41 (the escaping fix), #43 (changelog). **Three closed unmerged**:
+#30, #34 and #35, superseded by #36.
 
 ## What shipped, and why 1.3.2 exists
 
