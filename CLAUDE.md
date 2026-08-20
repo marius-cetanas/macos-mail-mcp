@@ -39,6 +39,13 @@ checks that the required status check `verify` is one a workflow here actually r
   **100%** (statements, branches, functions, lines) in `vitest.config.ts`, and CI runs
   `test:coverage`. The gate is the invariant; the raw test count is not tracked here because it goes
   stale on every change and nothing checks it.
+- **The `.applescript` files are the exception, and it is a real one.** That 100% covers
+  `src/**/*.ts` only. Because the bridge is mocked, the AppleScript templates are text handed to a
+  mock rather than code that runs — which is how #33 shipped a handler that threw on any emoji
+  subject. `tests/bridge/escape-for-json.applescript.test.ts` executes the escaping handler through
+  `osascript` for real, and **skips off macOS, which includes CI**. So those assertions run on a
+  maintainer's machine and never in the merge gate. Run `npm run test:coverage` locally before
+  touching anything under `src/**/*.applescript`; the runner cannot do it for you.
 
 ## Architecture
 
