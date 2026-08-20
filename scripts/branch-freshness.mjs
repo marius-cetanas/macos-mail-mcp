@@ -25,15 +25,23 @@
 export const DEFAULT_LIMIT = 5;
 
 /**
+ * `JSON.stringify(NaN)` is the string `"null"`, so a message built with it reports the one value a
+ * reader would not have passed. NaN is exactly what arrives when a caller does `Number(undefined)`,
+ * which makes it the likeliest input here and the worst one to misname — "an error message that
+ * misleads costs more than one that is missing".
+ */
+const show = (v) => (typeof v === "number" && Number.isNaN(v) ? "NaN" : JSON.stringify(v));
+
+/**
  * @param {{behindBy: number, limit?: number}} input
  * @returns {{ok: boolean, message: string}}
  */
 export function classifyFreshness({ behindBy, limit = DEFAULT_LIMIT }) {
   if (!Number.isInteger(behindBy) || behindBy < 0) {
-    throw new Error(`behindBy must be a non-negative integer, got ${JSON.stringify(behindBy)}`);
+    throw new Error(`behindBy must be a non-negative integer, got ${show(behindBy)}`);
   }
   if (!Number.isInteger(limit) || limit < 0) {
-    throw new Error(`limit must be a non-negative integer, got ${JSON.stringify(limit)}`);
+    throw new Error(`limit must be a non-negative integer, got ${show(limit)}`);
   }
 
   if (behindBy === 0) {

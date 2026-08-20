@@ -35,8 +35,8 @@ severe is how the tier stops meaning anything.
 
 | Setting | Value |
 |---|---|
-| Required status check | `verify` |
-| Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, strict (branch must be up to date) |
+| Required status checks | `verify`, `copilot-reviewed`, `branch-freshness`, `analyze` |
+| Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, conversation resolution required, **not** strict |
 | Required approvals | 0 — GitHub forbids self-approval, and any higher number deadlocks a sole maintainer |
 
 The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset are a pair: the
@@ -49,11 +49,19 @@ whenever the matrix does, and a required check naming a job that no longer repor
 merge. Its job id and its `name:` are both `verify` so the reported context and the declared one
 cannot drift.
 
-**A rebase invalidates the verdict that preceded it.** `strict` forces a rebase whenever `main`
-moves, which creates a new head *after* the last review — so a verdict that was valid stops being
-so through no change the author made. Re-request review after any rebase, before merging.
+**A rebase invalidates the verdict that preceded it**, and that rule is now a check rather than a
+habit. `copilot-reviewed` matches every round against the pull request's *current* head, so a
+verdict that predates the head cannot satisfy the gate — the re-request happens because the check is
+still waiting, not because somebody remembered.
 _(Provenance: `form=link` `href=https://github.com/marius-cetanas/macos-mail-mcp/pull/25` — merged
-2026-08-05 on a verdict predating its head. Nothing rode in on it; the defect was the process.)_
+2026-08-05 on a verdict predating its head. Nothing rode in on it; the defect was the process. It
+recurred on #37, which carried a round on a superseded head; the check refused it, which is the
+first time this rule caught something instead of describing it.)_
+
+**`strict` is off, deliberately.** It forced a rebase whenever `main` moved, and with a review round
+gating the merge every unrelated commit to `main` then cost a full round on a branch whose contents
+had not changed. `branch-freshness` replaces it with a bound that has a number in it: drift is
+allowed up to `DEFAULT_LIMIT` commits (5), which the tests pin.
 
 **Retire when:** this repository compiles a `gates.json`, at which point the compiled artifact is the
 authority and this table becomes its rationale rather than its statement.

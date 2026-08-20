@@ -28,20 +28,30 @@ on:
   pull_request_target:
     types: [opened, reopened, synchronize]
 
-permissions: {}
+permissions:
+  # `contents: read` is for the checkout below and nothing else. The block replaces the default, so
+  # every other scope is `none` — this job cannot write to the pull request even if it tried.
+  contents: read
 
 jobs:
   intake:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # No `ref:` — and that omission is the security boundary, not an oversight. On
+      # `pull_request_target`, actions/checkout defaults to the BASE branch, so this checks out this
+      # repository's own tree. Adding `ref: ${{ github.event.pull_request.head.sha }}` here would
+      # check out the fork's code and then run it on the next line with this token. Do not.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
       - name: Say whether CI is held awaiting approval
         env:
           IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          if [ "$IS_FORK" = "true" ]; then
-            printf '### Awaiting maintainer approval\n\nThis pull request comes from a fork (@%s), so GitHub holds every workflow until a maintainer selects **Approve and run**. Until then the required checks do not report at all, and the pull request is blocked with no other signal.\n' "$AUTHOR" >> "$GITHUB_STEP_SUMMARY"
-          else
-            printf '### CI runs normally\n\nSame-repository branch; nothing is held.\n' >> "$GITHUB_STEP_SUMMARY"
-          fi
+        run: node scripts/pr-intake.mjs
