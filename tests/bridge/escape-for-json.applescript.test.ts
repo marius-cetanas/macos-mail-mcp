@@ -93,23 +93,74 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
   });
 
   /**
-   * #39, asserted as it SHOULD behave and marked `.fails` so it passes only while the defect is
-   * present. When the fix lands this test errors — "expected to fail, but passed" — which forces
-   * the marker off rather than leaving a stale skip nobody revisits.
+   * #39, and the class it turned out to belong to.
    *
-   * AppleScript clusters a C0 control with a following combining mark into one character
-   * (`id of` -> {1, 769}), so the guard added in #33 sends the whole cluster down the passthrough
-   * branch and a raw U+0001 reaches the JSON string.
+   * The handler no longer has delimiter phases, so "inside a cluster" is not a category it can
+   * treat differently — every code point is judged once, on its own. These cases are kept because
+   * they are the ones that were broken, and because each broke a different earlier design.
    */
-  describe("#39 — a control character leading a grapheme cluster", () => {
-    it.fails("should escape the control and keep the combining mark", () => {
+  describe("#39 — characters JSON must escape, next to a combining mark", () => {
+    it("escapes a control code point wherever it sits", () => {
       expect(escape(codePoints(0x01, 0x0301))).toBe("\\u0001\u0301");
+      expect(escape(codePoints(0x65, 0x0301, 0x01))).toBe("e\u0301\\u0001");
     });
 
-    it("currently emits the raw control character, which is invalid JSON", () => {
+    it("emits no raw control character, so the result parses as JSON", () => {
       const value = escape(codePoints(0x01, 0x0301));
-      expect(value).toContain("\u0001");
-      expect(() => JSON.parse(`{"v":"${value}"}`)).toThrow();
+      expect(value).not.toContain("\u0001");
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: "\u0001\u0301" });
+    });
+
+    it("escapes a quote and a backslash next to a combining mark", () => {
+      expect(escape(codePoints(0x22, 0x0301))).toBe('\\"\u0301');
+      expect(escape(codePoints(0x5c, 0x0301))).toBe("\\\\\u0301");
+    });
+
+    it("does not double-escape a bare quote or backslash", () => {
+      expect(escape(codePoints(0x22))).toBe('\\"');
+      expect(escape(codePoints(0x5c))).toBe("\\\\");
+      expect(escape('"say \\"hi\\" \\\\ done"')).toBe('say \\"hi\\" \\\\ done');
+    });
+
+    it.each([
+      ["tab", 0x09, "\\t"],
+      ["newline", 0x0a, "\\n"],
+      ["carriage return", 0x0d, "\\r"],
+    ])("escapes a %s next to a combining mark, by its short form", (_name, point, expected) => {
+      expect(escape(codePoints(point as number, 0x0301))).toBe(`${expected}\u0301`);
+    });
+  });
+
+  /**
+   * The regression the supervisor pass found, and the reason the delimiter phases are gone.
+   *
+   * `text items of` had no single behaviour to reason from — measured, it was blind to a
+   * backslash followed by U+0301, split a cluster containing one followed by U+200D (matching the
+   * backslash and orphaning the ZWJ), and refused to match a bare quote followed by U+200C. Every
+   * phase-based design got one of these wrong: the ZWJ cases were valid on main and broken by the
+   * cluster-branch fix, the ZWNJ case was broken on both.
+   */
+  describe("zero-width joiners and non-joiners", () => {
+    it.each([
+      ["quote + ZWJ", [0x22, 0x200d, 0x41], '\\"\u200dA'],
+      ["backslash + ZWJ", [0x5c, 0x200d, 0x41], "\\\\\u200dA"],
+      ["backslash + ZWJ + quote", [0x5c, 0x200d, 0x22], '\\\\\u200d\\"'],
+      ["quote + ZWNJ", [0x22, 0x200c, 0x41], '\\"\u200cA'],
+    ])("escapes %s and stays valid JSON", (_name, points, expected) => {
+      const value = escape(codePoints(...(points as number[])));
+      expect(value).toBe(expected);
+      expect(() => JSON.parse(`{"v":"${value}"}`)).not.toThrow();
+    });
+  });
+
+  describe("degenerate input", () => {
+    it("returns the empty string unchanged", () => {
+      // `id of ""` is an empty list rather than an integer, which the normalisation must survive.
+      expect(escape('""')).toBe("");
+    });
+
+    it("handles a single-character string, whose id is an integer not a list", () => {
+      expect(escape('"A"')).toBe("A");
     });
   });
 });
