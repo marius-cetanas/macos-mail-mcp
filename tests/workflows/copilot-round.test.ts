@@ -3,6 +3,8 @@ import {
   classifyRound,
   isCopilotLogin,
   awaitRound,
+  DEFAULT_BUDGET_MS,
+  DEFAULT_POLL_MS,
   COPILOT_LOGINS,
 } from "../../scripts/copilot-round.mjs";
 
@@ -99,6 +101,13 @@ describe("classifyRound", () => {
 
 describe("awaitRound", () => {
   const HEAD_B = "c".repeat(40);
+
+  // The budget is a number the workflow comment also states, so it is asserted here rather than
+  // left as two places that can disagree.
+  it("waits ten minutes by default, polling every thirty seconds", () => {
+    expect(DEFAULT_BUDGET_MS).toBe(10 * 60 * 1000);
+    expect(DEFAULT_POLL_MS).toBe(30 * 1000);
+  });
 
   /** Serves a scripted sequence of (pr, reviews) pairs, one per poll. */
   const apiFrom = (polls: Array<{ pr: object; reviews: object[] }>) => {

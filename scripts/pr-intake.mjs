@@ -11,6 +11,8 @@
  * @param {{isFork: boolean, author?: string}} input
  * @returns {string} markdown for the job summary
  */
+import { isMain } from "./is-main.mjs";
+
 export function intakeSummary({ isFork, author }) {
   if (!isFork) {
     return "### CI runs normally\n\nSame-repository branch; nothing is held.\n";
@@ -30,7 +32,7 @@ export function intakeSummary({ isFork, author }) {
 }
 
 /* c8 ignore start -- CLI arm; the summary above is what the tests exercise */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const { appendFileSync } = await import("node:fs");
   const summary = intakeSummary({
     isFork: process.env.IS_FORK === "true",

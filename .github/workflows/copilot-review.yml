@@ -39,8 +39,9 @@ permissions:
 jobs:
   copilot-reviewed:
     runs-on: ubuntu-latest
-    # The wait budget is 20 minutes; this is the backstop for a job that hangs elsewhere.
-    timeout-minutes: 25
+    # The wait budget is 10 minutes (DEFAULT_BUDGET_MS, pinned by a test); this is the backstop
+    # for a job that hangs somewhere other than the wait.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

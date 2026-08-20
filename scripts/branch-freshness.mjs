@@ -22,6 +22,8 @@
  * The default ceiling. A branch this far behind still merges cleanly in practice, while the drift
  * stays small enough that CI's merge-commit result resembles the branch that was reviewed.
  */
+import { isMain } from "./is-main.mjs";
+
 export const DEFAULT_LIMIT = 5;
 
 /**
@@ -64,7 +66,7 @@ export function classifyFreshness({ behindBy, limit = DEFAULT_LIMIT }) {
 }
 
 /* c8 ignore start -- CLI arm; the decision above is what the tests exercise */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const arg = (name, fallback) => {
     const i = process.argv.indexOf(name);
     return i === -1 ? fallback : Number(process.argv[i + 1]);

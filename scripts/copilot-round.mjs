@@ -23,6 +23,8 @@
  */
 
 /** Reviewer logins that count as the Copilot reviewer. Compared lower-cased. */
+import { isMain } from "./is-main.mjs";
+
 export const COPILOT_LOGINS = [
   "copilot-pull-request-reviewer[bot]",
   "copilot",
@@ -77,6 +79,16 @@ export function classifyRound({ reviews, head, draft = false }) {
 
 
 /**
+ * How long the check waits before calling it. Ten minutes against rounds measured here at roughly
+ * one to five — long enough that expiry means something went wrong rather than something was slow,
+ * which is the only way the red at the end of it is worth reading.
+ */
+export const DEFAULT_BUDGET_MS = 10 * 60 * 1000;
+
+/** How often to look. 30s keeps a full budget well inside the token's hourly read allowance. */
+export const DEFAULT_POLL_MS = 30 * 1000;
+
+/**
  * Wait for the round inside the run we already have.
  *
  * The head is re-read on every poll rather than taken once: a push during the wait must not be
@@ -89,7 +101,7 @@ export function classifyRound({ reviews, head, draft = false }) {
  *          budgetMs?: number, pollMs?: number, log?: (line: string) => void}} deps
  * @returns {Promise<{state: string, reason: string, polls: number}>}
  */
-export async function awaitRound({ api, sleep, budgetMs = 20 * 60 * 1000, pollMs = 30 * 1000, log = () => {} }) {
+export async function awaitRound({ api, sleep, budgetMs = DEFAULT_BUDGET_MS, pollMs = DEFAULT_POLL_MS, log = () => {} }) {
   let waited = 0;
   let polls = 0;
 
@@ -124,7 +136,7 @@ export async function awaitRound({ api, sleep, budgetMs = 20 * 60 * 1000, pollMs
 }
 
 /* c8 ignore start -- CLI arm; the classification and the loop above are what the tests exercise */
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const repo = process.env.GITHUB_REPOSITORY;
   const pr = process.env.PR_NUMBER;
   const token = process.env.GH_TOKEN;
