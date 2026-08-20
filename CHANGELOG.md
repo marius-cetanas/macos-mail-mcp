@@ -32,8 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - First tests that execute AppleScript for real, through `osascript`. They cover the escaping
-  handler across precomposed, decomposed, variation-selector, astral and ZWJ text, and they **skip
-  off macOS, which includes CI** — there is no `osascript` on the Linux runner (#40).
+  handler across precomposed, decomposed, variation-selector, astral and ZWJ text. They **run only
+  on macOS and are skipped everywhere else, including CI** — there is no `osascript` on the Linux
+  runner (#40).
 - Merges now wait for a Copilot review round on the exact commit being merged, branch drift behind
   `main` is bounded at five commits, a held fork pull request says so instead of showing nothing,
   and the aggregate status check `ci-ok` was renamed `verify` (#37).

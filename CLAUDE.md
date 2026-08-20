@@ -43,7 +43,8 @@ checks that the required status check `verify` is one a workflow here actually r
   `src/**/*.ts` only. Because the bridge is mocked, the AppleScript templates are text handed to a
   mock rather than code that runs — which is how a handler that threw on any emoji subject shipped
   unexercised, found by an outside contributor (#33) rather than by the suite. `tests/bridge/escape-for-json.applescript.test.ts` executes the escaping handler through
-  `osascript` for real, and **skips off macOS, which includes CI**. So those assertions run on a
+  `osascript` for real. It **runs only on macOS and is skipped everywhere else, including CI**, so
+  those assertions run on a
   maintainer's machine and never in the merge gate. Run `npm run test:coverage` locally before
   touching anything under `src/**/*.applescript`; the runner cannot do it for you.
 
