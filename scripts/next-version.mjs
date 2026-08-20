@@ -7,8 +7,7 @@
 // never existing.
 
 import { execFileSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { isMain } from "./is-main.mjs";
 
 const RANK = { none: 0, patch: 1, minor: 2, major: 3 };
 const FORCEABLE = ["patch", "minor", "major"];
@@ -127,25 +126,11 @@ function arg(name) {
   return i === -1 ? undefined : process.argv[i + 1];
 }
 
-/**
- * True when this file was executed directly rather than imported.
- * Compares resolved real paths: matching on the basename would fire for any
- * same-named script, and splitting on "/" alone misses Windows separators.
- */
-function isMain() {
-  if (process.argv[1] === undefined) return false;
-  try {
-    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
 // CLI: prints JSON for the workflow to consume.
 //
 // Exit codes are load-bearing — the workflow distinguishes them. 0 releasable,
 // 2 nothing releasable (a normal answer), anything else a genuine failure.
-if (isMain()) {
+if (isMain(import.meta.url)) {
   const current = arg("current");
   if (current === undefined) {
     console.error(

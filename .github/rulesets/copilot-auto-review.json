@@ -1,0 +1,12 @@
+{
+  "name": "copilot auto-review on pull requests",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": { "ref_name": { "include": ["~DEFAULT_BRANCH"], "exclude": [] } },
+  "rules": [
+    {
+      "type": "copilot_code_review",
+      "parameters": { "review_draft_pull_requests": false, "review_on_push": true }
+    }
+  ]
+}

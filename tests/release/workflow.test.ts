@@ -341,8 +341,8 @@ describe("nothing claims that merging publishes", () => {
   });
 });
 
-describe("ci.yml", () => {
-  it("still gates on the aggregate ci-ok job", () => {
-    expect(workflow("ci.yml").jobs["ci-ok"]).toBeDefined();
+describe("verify.yml", () => {
+  it("still gates on the aggregate verify job", () => {
+    expect(workflow("verify.yml").jobs["verify"]).toBeDefined();
   });
 });

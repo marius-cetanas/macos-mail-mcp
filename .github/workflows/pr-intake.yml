@@ -1,0 +1,57 @@
+# A fork pull request that is waiting for a maintainer says so, instead of showing nothing.
+#
+# ## The defect this exists for
+#
+# `approval_policy` is `first_time_contributors`, so a first-time contributor's pull request starts
+# no workflows at all until a maintainer clicks *Approve and run*. Those held runs conclude as
+# `action_required`, which is terminal — so the required contexts are not pending, they are ABSENT,
+# and branch protection reads an absent required context exactly as it reads a failing one. The
+# result is a pull request that is blocked with no visible reason, which is the state #33 sat in.
+#
+# Hardening made that worse rather than better: four required contexts are now absent instead of
+# one. The approval gate itself is right and stays — running a stranger's code on this repository's
+# runners should be a decision somebody makes. What was wrong was the silence.
+#
+# ## Why `pull_request_target`, and why it is safe here
+#
+# `pull_request_target` runs the workflow file from the BASE branch in the base repository's
+# context, so it is not subject to the approval hold and it runs on the first-party definition of
+# this file rather than whatever the fork proposes.
+#
+# That trigger is dangerous exactly when a job checks out the fork's code and runs it with the base
+# repository's token. **This job checks out nothing and runs nothing from the pull request.** It
+# reads two fields off the event payload and writes a summary. Keep it that way: adding a checkout
+# of `github.event.pull_request.head.sha` here would hand a stranger this token.
+name: pr intake
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  # `contents: read` is for the checkout below and nothing else. The block replaces the default, so
+  # every other scope is `none` — this job cannot write to the pull request even if it tried.
+  contents: read
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # No `ref:` — and that omission is the security boundary, not an oversight. On
+      # `pull_request_target`, actions/checkout defaults to the BASE branch, so this checks out this
+      # repository's own tree. Adding `ref: ${{ github.event.pull_request.head.sha }}` here would
+      # check out the fork's code and then run it on the next line with this token. Do not.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Say whether CI is held awaiting approval
+        env:
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: node scripts/pr-intake.mjs

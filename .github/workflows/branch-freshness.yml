@@ -1,0 +1,41 @@
+# A pull request may drift behind `main`, but not far.
+#
+# GitHub's `strict` is binary — exactly up to date, or no requirement at all — and neither is what
+# this repository wants. `strict: true` forces a rebase every time `main` moves, and the gate map
+# records the cost: a rebase creates a new head after the last review, so every unrelated commit to
+# `main` spends a full Copilot round on a branch whose contents did not change. `strict: false`
+# alone drops the churn and the bound together.
+#
+# So the bound lives where a bound with a number in it can live: a check. The number is
+# `DEFAULT_LIMIT` in scripts/branch-freshness.mjs, which the tests pin.
+name: branch freshness
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  branch-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # `behind_by` comes from the event payload's base/head, computed by the compare API. Reading
+      # it from the API rather than from git avoids depending on how the checkout ref was built:
+      # a pull_request checkout is a merge commit, whose distance from main is not the branch's.
+      - name: The branch is not too far behind main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/check-freshness.mjs

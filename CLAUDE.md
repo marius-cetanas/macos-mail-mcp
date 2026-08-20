@@ -25,7 +25,7 @@ of the Sleepy Panda portfolio workspace.
   Every session ends with one; read the most recent before starting.
 
 It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
-checks that the required status check `ci-ok` is one a workflow here actually reports. Nothing in
+checks that the required status check `verify` is one a workflow here actually reports. Nothing in
 `.portulan/` ships to npm; `files: ["build"]` governs the tarball.
 
 ## Tech Stack
