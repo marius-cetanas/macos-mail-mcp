@@ -39,6 +39,10 @@ severe is how the tier stops meaning anything.
 | Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, strict (branch must be up to date) |
 | Required approvals | 0 — GitHub forbids self-approval, and any higher number deadlocks a sole maintainer |
 
+The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset are a pair: the
+check waits for a round, the ruleset is what requests one. The payload is kept at
+`.github/rulesets/copilot-auto-review.json` so the dependency is reviewable rather than remembered.
+
 `verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix and the
 audit. It exists so branch protection has one stable context to require: matrix job names change
 whenever the matrix does, and a required check naming a job that no longer reports blocks every
