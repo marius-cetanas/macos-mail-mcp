@@ -9,10 +9,10 @@ const escape = (expression: string) => runHandler(HANDLER, `escapeForJson(${expr
  * The first tests in this repository that execute AppleScript.
  *
  * Run only on macOS; skipped everywhere else, including CI, because `osascript` does not exist on
- * the Linux runner. That is a
- * real limit and not a soft one: these assertions run where the code runs, on a maintainer's
- * machine, and never in the merge gate. They are still worth having, because the alternative was a
- * handler with no executable coverage at all, which is how #33 shipped.
+ * the Linux runner. That is a real limit and not a soft one: these assertions run where the code
+ * runs, on a maintainer's machine, and never in the merge gate. They are still worth having,
+ * because the alternative was a handler with no executable coverage at all, which is how #33
+ * shipped.
  */
 describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
   describe("text that needs no escaping survives unchanged", () => {
