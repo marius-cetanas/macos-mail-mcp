@@ -58,8 +58,8 @@ jobs:
 
   # Single stable context for branch protection to require. Matrix job names
   # change whenever the matrix changes; this one does not.
-  ci-ok:
-    name: ci-ok
+  verify:
+    name: verify
     runs-on: ubuntu-latest
     needs: [test, audit]
     if: always()

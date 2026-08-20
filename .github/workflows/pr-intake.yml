@@ -1,0 +1,47 @@
+# A fork pull request that is waiting for a maintainer says so, instead of showing nothing.
+#
+# ## The defect this exists for
+#
+# `approval_policy` is `first_time_contributors`, so a first-time contributor's pull request starts
+# no workflows at all until a maintainer clicks *Approve and run*. Those held runs conclude as
+# `action_required`, which is terminal — so the required contexts are not pending, they are ABSENT,
+# and branch protection reads an absent required context exactly as it reads a failing one. The
+# result is a pull request that is blocked with no visible reason, which is the state #33 sat in.
+#
+# Hardening made that worse rather than better: four required contexts are now absent instead of
+# one. The approval gate itself is right and stays — running a stranger's code on this repository's
+# runners should be a decision somebody makes. What was wrong was the silence.
+#
+# ## Why `pull_request_target`, and why it is safe here
+#
+# `pull_request_target` runs the workflow file from the BASE branch in the base repository's
+# context, so it is not subject to the approval hold and it runs on the first-party definition of
+# this file rather than whatever the fork proposes.
+#
+# That trigger is dangerous exactly when a job checks out the fork's code and runs it with the base
+# repository's token. **This job checks out nothing and runs nothing from the pull request.** It
+# reads two fields off the event payload and writes a summary. Keep it that way: adding a checkout
+# of `github.event.pull_request.head.sha` here would hand a stranger this token.
+name: pr intake
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Say whether CI is held awaiting approval
+        env:
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          if [ "$IS_FORK" = "true" ]; then
+            printf '### Awaiting maintainer approval\n\nThis pull request comes from a fork (@%s), so GitHub holds every workflow until a maintainer selects **Approve and run**. Until then the required checks do not report at all, and the pull request is blocked with no other signal.\n' "$AUTHOR" >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '### CI runs normally\n\nSame-repository branch; nothing is held.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi

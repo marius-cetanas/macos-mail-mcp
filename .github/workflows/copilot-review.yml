@@ -1,0 +1,58 @@
+# A pull request waits for the Copilot round on the commit it is actually merging.
+#
+# The policy is `.portulan/gate-map.md`; this file is only the checker.
+#
+# ## Why this exists: resolution was only half the rule
+#
+# `main` already requires conversation resolution, which covers the RESOLVED half — a Copilot thread
+# cannot be ignored. Nothing covered the AWAITED half, so a merge could land in the window between
+# the final push and the review arriving, leaving a round that describes the merged tree answered by
+# nobody in particular.
+#
+# ## Waiting is not failing
+#
+# The job waits inside the run it already has. While a round is owed and has not arrived the job is
+# simply still running — a pending check, not a red one. Red means the budget expired, which is a
+# statement that something went wrong rather than that something was slow.
+#
+# ## `pull_request_review` is deliberately not a trigger
+#
+# It would be the obvious way to turn the check green the moment a review lands, and it does not
+# work: the triggering actor is a bot, so GitHub holds the run as `action_required` awaiting a
+# maintainer's click. The awaited guarantee would then cost one click per pull request. Waiting
+# inside a `pull_request` run costs none.
+name: copilot review
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+# Read-only, and narrower than Portulan's equivalent on purpose. Portulan's widens to
+# `pull-requests: write` for one mid-wait re-request call; here the repository ruleset carries
+# `review_on_push: true`, so a round is re-requested by the platform on every push and this job
+# never needs to ask. If the budget expires, a maintainer re-runs the job — the rare case, rather
+# than a standing write scope for it.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  copilot-reviewed:
+    runs-on: ubuntu-latest
+    # The wait budget is 20 minutes; this is the backstop for a job that hangs elsewhere.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: A Copilot round has landed on the current head commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/copilot-round.mjs
