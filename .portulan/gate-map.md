@@ -39,7 +39,7 @@ severe is how the tier stops meaning anything.
 | Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, strict (branch must be up to date) |
 | Required approvals | 0 — GitHub forbids self-approval, and any higher number deadlocks a sole maintainer |
 
-`verify` is an aggregate job in `.github/workflows/ci.yml` that depends on the test matrix and the
+`verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix and the
 audit. It exists so branch protection has one stable context to require: matrix job names change
 whenever the matrix does, and a required check naming a job that no longer reports blocks every
 merge. Its job id and its `name:` are both `verify` so the reported context and the declared one
