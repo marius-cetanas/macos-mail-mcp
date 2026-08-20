@@ -93,15 +93,19 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
   });
 
   /**
-   * #39. AppleScript clusters a C0 control with a following combining mark into ONE character
-   * (`id of` -> {1, 769}), so #33's integer guard sent the whole cluster down the passthrough
-   * branch and a raw control byte reached the JSON string.
+   * #39, and the class it belongs to.
+   *
+   * The delimiter phases at the top of the handler are cluster-blind: `text items of` does not
+   * split on a character that sits inside a grapheme cluster. So anything JSON requires escaping
+   * can still be raw when the per-character loop is reached — but only inside a cluster.
    *
    * These were `it.fails` while the defect stood. They are ordinary assertions now.
    */
-  describe("#39 — a control character leading a grapheme cluster", () => {
-    it("escapes the control and keeps the combining mark", () => {
+  describe("#39 — characters JSON must escape, hidden inside a grapheme cluster", () => {
+    it("escapes a control code point wherever it sits in the cluster", () => {
       expect(escape(codePoints(0x01, 0x0301))).toBe("\\u0001\u0301");
+      // Not only when it leads: the loop judges every code point.
+      expect(escape(codePoints(0x65, 0x0301, 0x01))).toBe("e\u0301\\u0001");
     });
 
     it("emits no raw control character, so the result parses as JSON", () => {
@@ -110,9 +114,42 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
       expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: "\u0001\u0301" });
     });
 
-    // The general form, since the cluster need not lead with the control.
-    it("judges every code point of a cluster, not only the first", () => {
-      expect(escape(codePoints(0x65, 0x0301, 0x01))).toBe("e\u0301\\u0001");
+    /**
+     * Found by the supervisor pass, and it is the same defect one column over: a quote or
+     * backslash clustered with a combining mark reached the output raw, because the loop's only
+     * judgment was the control range.
+     */
+    it("escapes a quote and a backslash clustered with a combining mark", () => {
+      expect(escape(codePoints(0x22, 0x0301))).toBe('\\"\u0301');
+      expect(escape(codePoints(0x5c, 0x0301))).toBe("\\\\\u0301");
+    });
+
+    /**
+     * The guard on the fix for the line above. By the time the loop runs, the delimiter phases
+     * have already turned a bare quote into `\"` — two single-code-point characters. Escaping 34
+     * and 92 unconditionally would re-escape that half into `\\"`, breaking every quoted string.
+     * The escaping is therefore confined to the cluster branch, and this pins it.
+     */
+    it("does not double-escape a quote or backslash the delimiter phases already handled", () => {
+      expect(escape(codePoints(0x22))).toBe('\\"');
+      expect(escape(codePoints(0x5c))).toBe("\\\\");
+      expect(escape('"say \\"hi\\" \\\\ done"')).toBe('say \\"hi\\" \\\\ done');
+    });
+
+    /**
+     * Named controls are handled by their own delimiter phases, which are equally cluster-blind —
+     * so inside a cluster they fall through to the C0 loop and come out as \u00XX rather than \t.
+     * Both are valid JSON. Pinned because a future "tab is already handled above" tidy-up would
+     * regress this invisibly.
+     */
+    it.each([
+      ["tab", 0x09, "\\u0009"],
+      ["newline", 0x0a, "\\u000a"],
+      ["carriage return", 0x0d, "\\u000d"],
+    ])("escapes a %s clustered with a combining mark", (_name, point, expected) => {
+      const value = escape(codePoints(point as number, 0x0301));
+      expect(value).toBe(`${expected}\u0301`);
+      expect(() => JSON.parse(`{"v":"${value}"}`)).not.toThrow();
     });
   });
 });
