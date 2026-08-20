@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-08-20
+
+### Fixed
+
+- Reading a mailbox no longer fails when a message subject or sender contains emoji or accented
+  text. AppleScript returns a *list* of code points rather than an integer for a multi-code-point
+  grapheme cluster — an emoji with a variation selector (`❤️`), a ZWJ sequence (`👨‍👩‍👧`), or a
+  decomposed accent — and comparing that list against the control-character range raised
+  `Can't make {…} into type number, date or text (-1700)`. A single such message made
+  `list_messages` fail outright, not just that message, because `escapeForJson` is applied to every
+  subject and sender. Reported and first fixed by [@dessyd](https://github.com/dessyd) in #33.
+- Characters that JSON requires escaping no longer reach the output raw when they sit next to a
+  combining mark or a zero-width joiner. A control character, quote or backslash in that position
+  was emitted unescaped, producing a JSON string no parser accepts — the tool then failed with a
+  parse error naming neither the message nor the cause (#41).
+
+### Changed
+
+- `escapeForJson` now escapes by code point in a single pass, rather than by five text-item-delimiter
+  passes followed by a per-character sweep. The delimiter approach had no consistent behaviour to
+  reason from: measured, it was blind to a backslash followed by a combining mark, split a cluster
+  containing one followed by a zero-width joiner, and refused to match a bare quote followed by a
+  zero-width non-joiner. Also about 1.8× faster on long strings (#41).
+
+### Internal
+
+- First tests that execute AppleScript for real, through `osascript`. They cover the escaping
+  handler across precomposed, decomposed, variation-selector, astral and ZWJ text. They **run only
+  on macOS and are skipped everywhere else, including CI** — there is no `osascript` on the Linux
+  runner (#40).
+- Merges now wait for a Copilot review round on the exact commit being merged, branch drift behind
+  `main` is bounded at five commits, a held fork pull request says so instead of showing nothing,
+  and the aggregate status check `ci-ok` was renamed `verify` (#37).
+- Dependency and action-pin sweep, clearing a high-severity `nanoid` advisory that was failing
+  `npm audit` on every pull request (#36).
+- The repository is governed by its own Portulan workspace at `.portulan/` (#29).
+
+### Thanks
+
+- [@dessyd](https://github.com/dessyd) reported the escaping bug and sent the fix in #33. It was a
+  real one and it was found from outside: `escapeForJson` had no executable test coverage at all,
+  because the bridge is mocked in every other test, so nothing here could have caught it. The
+  diagnosis in that pull request was exact — AppleScript returns a list of code points for a
+  multi-code-point grapheme cluster — and it is what the rest of this release was built on. Thank
+  you for taking the time.
+
+## [1.3.1] - 2026-08-05
+
+Recorded after the fact — this entry was missing, and is written from the commits the tag carries.
+
+### Fixed
+
+- Publishing over OIDC no longer fails on an empty `_authToken`. `setup-node` writes one into
+  `.npmrc`, which disabled trusted publishing and surfaced as `E404` — a message that reads as a
+  missing package rather than an authentication failure (#23).
+- The release now asserts the version it committed rather than the working tree, which a release
+  rewrites before its checks run (#28).
+
+### Changed
+
+- The release is one workflow run, with the tag as the source of truth for what shipped. The
+  version is computed at release time from the conventional commits since the last tag, and the tag
+  is pushed only after the registry confirms the publish — so a failed publish cannot leave a tag
+  pointing at a version that does not exist (#24, #27).
+
+### Documentation
+
+- README registers the server via `npx` rather than a frozen local build path (#25).
+
 ## [1.3.0] - 2026-08-04
 
 ### Added
