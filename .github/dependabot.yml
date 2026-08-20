@@ -18,3 +18,13 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      # codeql-action ships init and analyze as separate updatable paths, and
+      # CodeQL refuses a run whose steps are not the same version: "Loaded a
+      # configuration file for version 'X', but running version 'Y'". Ungrouped,
+      # Dependabot opens one PR per path, and each is red on its own because it
+      # moves half the pair. Grouping makes the pair one PR, which is the only
+      # shape that can go green.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
