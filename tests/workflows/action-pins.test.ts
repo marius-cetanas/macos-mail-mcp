@@ -46,8 +46,19 @@ describe(".github/workflows — action pins", () => {
   // A matcher that silently finds nothing reports green for the wrong reason:
   // every assertion below would pass over an empty list. This is the rail on
   // the rail.
+  //
+  // It anchors on a pin that is present rather than on how many pins there are.
+  // A count couples this to the number of steps the workflows happen to have,
+  // which merging two jobs or dropping a workflow legitimately moves — so it
+  // would red for a reason that has nothing to do with the matcher working.
   it("finds the pins it is meant to be checking", () => {
-    expect(pins().length).toBeGreaterThanOrEqual(9);
+    const found = pins();
+    expect(found.length).toBeGreaterThan(0);
+
+    // Counting alone would pass a regex that matched some lines but not the
+    // canonical `uses: owner/repo@sha # vX.Y.Z` form, so name one that has to
+    // be there: nothing in this repository builds without checking out.
+    expect(found.map((p) => p.action)).toContain("actions/checkout");
   });
 
   // dependabot.yml states that actions are pinned to commit SHAs. Asserted
