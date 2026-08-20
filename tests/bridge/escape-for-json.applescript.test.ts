@@ -21,7 +21,10 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
 
     it("passes a precomposed accent through", () => {
       // U+00E9 — one code point, so `id of` returns an integer and the old guard coped.
-      expect(escape(codePoints(0x00e9))).toBe("é");
+      // Written as an escape, not as a literal: this file's whole premise is that a literal `é`
+      // could be either form and an editor could normalise one into the other. The expected value
+      // is subject to that exactly as the input is.
+      expect(escape(codePoints(0x00e9))).toBe("\u00e9");
     });
 
     /** #33: `id of` returns {101, 769} here, and comparing a list with `>=` raised -1700. */
@@ -63,14 +66,18 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
       expect(escape(codePoints(0x0d, 0x0a))).toBe("\\r\\n");
     });
 
+    // The label carries the code point because vitest's title formatting has no %04X — an earlier
+    // version used one and every title rendered as the literal "U+%04X", hiding which case ran.
     it.each([
-      [0x01, "\\u0001"],
-      [0x08, "\\u0008"],
-      [0x0b, "\\u000b"],
-      [0x0c, "\\u000c"],
-      [0x1f, "\\u001f"],
-    ])("escapes C0 control U+%04X as %s", (point, expected) => {
-      expect(escape(codePoints(point))).toBe(expected);
+      ["U+0001", "\\u0001", 0x01],
+      ["U+0008", "\\u0008", 0x08],
+      ["U+000B", "\\u000b", 0x0b],
+      ["U+000C", "\\u000c", 0x0c],
+      ["U+001F", "\\u001f", 0x1f],
+      // vitest fills %s positionally from the row, so the two it prints must be items 0 and 1 —
+      // the point rides last precisely because it is the one value the title should not show.
+    ])("escapes C0 control %s as %s", (_label, expected, point) => {
+      expect(escape(codePoints(point as number))).toBe(expected as string);
     });
 
     it("escapes a control character embedded in ordinary text", () => {
