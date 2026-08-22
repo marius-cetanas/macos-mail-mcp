@@ -1,0 +1,122 @@
+{
+  "portulan": {
+    "spec": "2.2"
+  },
+
+  "why": "gate-map.md",
+
+  "floor": {
+    "branch": "main",
+    "checks": [
+      { "context": "verify", "integration_id": 15368 },
+      { "context": "copilot-reviewed" },
+      { "context": "branch-freshness", "integration_id": 15368 },
+      { "context": "analyze", "integration_id": 15368 }
+    ],
+    "reviews": 0,
+    "resolve_conversations": true
+  },
+
+  "rules": [
+    {
+      "id": "merge-a-pull-request",
+      "tier": "gated",
+      "action": { "shell": "gh pr merge" },
+      "reason": "An agent never decides for itself that a change is ready to land. A commit enters this repository's record here, not at the push. Two preconditions the maintainer's approval does not waive: the required checks are green on the CURRENT head, and the review verdict post-dates that head — `copilot-reviewed` enforces the second, after PR #25 merged on a verdict that predated its tree."
+    },
+    {
+      "id": "publish-a-release",
+      "tier": "gated",
+      "action": { "shell": "gh workflow run" },
+      "reason": "Running the Release workflow with `mode: publish` publishes to npm, pushes the tag and cuts the GitHub release in one irreversible run. `mode: dry-run` is the default and does everything except the irreversible parts, but the two spellings share one command, so the gate is on the command and the mode is what the human is approving. Matched at `gh workflow run` rather than at the mode, because a matcher that read the mode would let a typo through as Auto."
+    },
+    {
+      "id": "push-a-tag",
+      "tier": "gated",
+      "action": { "shell": "git push --tags" },
+      "reason": "The release workflow pushes the tag itself, after the registry confirms the version exists. A human pushing one by hand routes around the ordering that stops a tag outliving a failed publish — the state v1.3.0 reached and the reason `prefer the reversible thing last` is a principle here. NAMED GAP: this matches `--tags` only. `git push origin v1.3.3` pushes a tag by a spelling no prefix here reaches, and `git push` is Auto, so that spelling compiles to nothing. The gap is named rather than papered over with a matcher that would gate every push."
+    },
+    {
+      "id": "publish-to-npm-by-hand",
+      "tier": "gated",
+      "action": { "shell": "npm publish" },
+      "reason": "Gated, not Prohibited, and the distinction is deliberate. A hand publish produces a release with NO provenance attestation, permanently — attestations attach at publish time and cannot be added afterwards, which is why 1.3.0 has none and never will. That is a real cost and the reason it needs approval. But if the OIDC pipeline is broken and a security fix has to ship, it is the right call, and a tier nobody can approve is a tier nobody can use in an emergency."
+    },
+    {
+      "id": "force-push-without-a-lease",
+      "tier": "gated",
+      "action": { "shell": "git push --force" },
+      "reason": "A bare `--force` can silently discard commits that arrived since you last fetched, and that is the one part of pushing which is not recoverable inside a working copy. Use `--force-with-lease`, which is Auto: the lease refuses the push if the remote moved. The matcher is token-aware, so this rule does not catch `--force-with-lease`."
+    },
+    {
+      "id": "delete-a-remote-branch",
+      "tier": "gated",
+      "action": { "shell": "git push --delete" },
+      "reason": "Deleting a branch on a shared remote destroys a ref rather than adding one, which is the single push spelling that stays Gated while ordinary pushes are Auto. `main` is protected against deletion by the platform floor regardless, which is a rail rather than a rule."
+    },
+    {
+      "id": "change-branch-protection",
+      "tier": "gated",
+      "action": {
+        "none": "No matchable prefix. Branch protection here is changed through `gh api` against a rulesets or protection endpoint, or in the web UI, which no permission rule reaches. `gh api` is also how read-only queries are made — `gh api repos/{owner}/{repo}/compare/...` is part of checking a head is not behind — so gating the prefix would gate reads and train the human to approve on sight, which is worse than the honest gap. Stated as a rule with no surface so the tier is visible rather than implied."
+      },
+      "reason": "Changing branch protection changes what every future merge is allowed to do, including the required checks and the review gate this repository relies on. It is the one settings change that can retroactively weaken every gate beneath it."
+    },
+
+    {
+      "id": "open-a-pull-request",
+      "tier": "propose",
+      "action": { "shell": "gh pr create" },
+      "reason": "Opening a pull request is reversible but consequential: it requests a review round and starts the checks. The gate is the maintainer's decision to merge, not the keystroke that opens the request. A draft is Auto — `open-or-update-a-draft` is the narrower prefix and is matched first."
+    },
+    {
+      "id": "request-a-review",
+      "tier": "propose",
+      "action": { "shell": "gh pr edit --add-reviewer" },
+      "reason": "Requesting a review spends a Copilot round and, on a stacked pull request against a non-default branch, may draw nobody at all — issue #44. Proposing rather than doing it unattended keeps the budget visible."
+    },
+    {
+      "id": "reply-to-review-feedback",
+      "tier": "propose",
+      "action": { "shell": "gh pr comment" },
+      "reason": "A reply on a pull request is outward-facing text under the maintainer's name. Reversible, so not Gated; visible to a reviewer, so not unattended."
+    },
+
+    {
+      "id": "read-anything-in-the-repository",
+      "tier": "auto",
+      "action": { "read": "./" },
+      "reason": "Reading anything in the repository, including git history, is unattended."
+    },
+    {
+      "id": "edit-on-a-working-branch",
+      "tier": "auto",
+      "action": { "write": "./" },
+      "reason": "Creating and editing files on a working branch, in a worktree, is unattended. What makes this safe is the merge gate, not the edit itself — `main` is protected with `enforce_admins`, so no edit here reaches the record without passing through `merge-a-pull-request`."
+    },
+    {
+      "id": "commit-to-a-working-branch",
+      "tier": "auto",
+      "action": { "shell": "git commit" },
+      "reason": "Committing to a working branch is unattended. Committing to `main` is refused by the platform floor, which is a rail rather than a rule."
+    },
+    {
+      "id": "push-a-working-branch",
+      "tier": "auto",
+      "action": { "shell": "git push" },
+      "reason": "Pushing a working branch is unattended: it is visible but is not yet a claim on the repository, and the guarantee lives at the merge. The three Gated spellings — `--tags`, `--force`, `--delete` — are narrower prefixes and are matched first."
+    },
+    {
+      "id": "open-or-update-a-draft",
+      "tier": "auto",
+      "action": { "shell": "gh pr create --draft" },
+      "reason": "A draft pull request draws no review round and makes no claim that a change is ready. Opening or updating one is unattended; promoting it out of draft is `open-a-pull-request`."
+    },
+    {
+      "id": "run-the-verify-recipe",
+      "tier": "auto",
+      "action": { "shell": "npm run" },
+      "reason": "The default recipe is `npm run build && npm run test:coverage && npm audit --audit-level=high`. Every script in this package is local and reversible — build, copy-scripts, test, test:coverage, test:watch, dev — and the one that touches a registry, `prepublishOnly`, runs only as part of `npm publish`, which is Gated on its own prefix. Running the recipe is not merely permitted here, it is condition 1 of the definition of done."
+    }
+  ]
+}

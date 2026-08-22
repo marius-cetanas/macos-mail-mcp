@@ -5,3 +5,13 @@ coverage/
 .DS_Store
 .env
 .env.*
+
+# Portulan — compiled enforcement. Machine-specific: the hook command is an absolute
+# path into this machine's plugin cache, pinned to a plugin version, because the runner
+# is not under this project. Committing it would put a path in the tree that is wrong on
+# every other machine, and a hook whose file is missing FAILS OPEN. Regenerate with
+# `portulan compile`. See .portulan/gate-map.md, "The policy, and what compiles it".
+.claude/settings.json
+
+# Worktrees live under .claude/ and are whole checkouts; never commit one.
+.claude/worktrees/
