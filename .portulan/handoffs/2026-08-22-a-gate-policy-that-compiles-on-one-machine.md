@@ -4,7 +4,7 @@
 reads. `.portulan/gates.json` now exists — 16 rules and a floor, spec 2.2 — and `portulan compile`
 **exits 0**, emitting six `ask` permissions, two hooks, and an importable GitHub ruleset. `doctor` GREEN, agent legibility **2 of 5 → 3 of 5**.
 Verify green: **491 tests across 26 files** (477 + 14 new), 100% statements/branches/functions/lines on
-`src/`, 0 vulnerabilities. Committed to a working branch and opened as a pull request.
+`src/`, 0 vulnerabilities. Committed to a working branch and opened as [#46](https://github.com/marius-cetanas/macos-mail-mcp/pull/46).
 
 ## What was added, and the one thing that was deliberately not
 
@@ -36,8 +36,9 @@ branch-protection change and therefore Gated.
   scaffold writes `"portulan": { "gates": "1.0" }`, the compiler validates `portulan.spec` against
   `{2.1, 2.2}`, so a freshly scaffolded policy dies on `gate-policy spec undefined` (exit 2). The
   scaffold's `floor` shape disagrees too — `require_pull_request` / `block_force_push` against the
-  compiler's `reviews` / `resolve_conversations`. Worth filing against portulan 0.1.2. The policy here
-  was written against the compiler's actual contract, not the scaffold.
+  compiler's `reviews` / `resolve_conversations`. Filed upstream as
+  [portulan#329](https://github.com/sleepy-panda-srl/portulan/issues/329) — do not re-file it. The
+  policy here was written against the compiler's actual contract, not the scaffold.
 - **The compiled artifact is pinned to one machine and is therefore not committed.** The runner is not
   under this project, so the hook command is an absolute path into the plugin cache including the
   version — `…/portulan/0.1.2/cli/gate.mjs`. On any other machine that path does not resolve, and **a
