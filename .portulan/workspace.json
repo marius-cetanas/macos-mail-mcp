@@ -17,6 +17,8 @@
     "handoffs": "handoffs/"
   },
 
+  "gates": "gates.json",
+
   "verify": {
     "default": "repo",
     "recipes": [
