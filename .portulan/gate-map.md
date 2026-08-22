@@ -90,13 +90,6 @@ problem and is committed. Installing the CLI as a dev dependency would make the 
 project-relative and that artifact portable too; that is a dependency decision the maintainer has not
 taken.
 
-**The compiled artifact is not committed.** The hook command is an absolute path into the maintainer's
-plugin cache, pinned to a plugin version, because the runner does not live under this project. On any
-other machine that path does not resolve, and **a missing hook fails open** — so committing it would
-ship a file that looks like enforcement and is not. `.claude/settings.json` is git-ignored and
-regenerated with `portulan compile`. Installing the CLI as a dev dependency would make the path
-project-relative and the artifact portable; that is a dependency decision the maintainer has not taken.
-
 **Retire when:** the compiled artifact becomes portable and committable, at which point it is the
 authority and this table becomes its rationale rather than its statement. Until then the policy
 compiles on one machine and this map is what every other reader has.
