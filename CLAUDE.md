@@ -98,6 +98,12 @@ gate — its tests are real tests and run in the same suite.
 
 The `escapeForJson` AppleScript function lives in `src/bridge/escape-for-json.applescript` and is **automatically prepended** to every script at runtime by the bridge. Domain scripts call it via `my escapeForJson(...)`. Never duplicate this handler into domain scripts.
 
+That file defines **two** handlers — `escapeForJson` and its helper `joinStrings` — and prepending puts both into every script's namespace, alongside `resolveMailbox` and `mailboxFullName` from `resolve-mailbox.applescript`. All four are therefore reserved names in domain scripts. A script redefining one does **not** shadow it quietly: AppleScript refuses to compile the concatenated result — `The joinStrings handler is specified more than once. (-2752)` — so every call of that tool fails. Loud, which is the good outcome; the bad one is meeting -2752 with no idea why. `tests/bridge/prepended-handler-names.test.ts` enforces this, and it is the one check in this area that **runs in CI**, because it reads text rather than needing `osascript`.
+
+Its shape is dictated by AppleScript's list performance rather than by taste (#42): the code-point list is held in a script object, and both accumulators are flushed at a fixed threshold so neither grows large. The header comment carries the measurements, including the ones that corrected an earlier draft of itself. **It is not O(n) and the comment does not claim it is** — a false complexity claim in that header was half of what #42 reported.
+
+Two details in it are guards rather than optimisations, and both are pinned by tests. The "needs no escape" sentinel is compared with `(length of esc) = 0` rather than `esc is ""`, because `considering`/`ignoring` are dynamically scoped into called handlers and under `ignoring punctuation` a quote's escape compares equal to the empty string — measured, the handler then emitted raw quotes and backslashes. And every `string id runBuf` is guarded by a non-zero count because `string id {}` **segfaults `osascript`** (exit 139) rather than raising, so `try` cannot catch it.
+
 ### Multi-line Content via Temp Files
 
 AppleScript string literals cannot span multiple lines. Any content that may contain newlines is written to a temp file in TypeScript and read via `do shell script "cat ..."` in AppleScript:

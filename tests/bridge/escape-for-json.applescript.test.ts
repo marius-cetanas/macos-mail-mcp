@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runHandler, codePoints, onMacOS } from "../helpers/run-applescript.js";
+import { runHandler, runHandlerScript, codePoints, onMacOS } from "../helpers/run-applescript.js";
 
 const HANDLER = "src/bridge/escape-for-json.applescript";
 
@@ -151,6 +151,145 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
       const value = escape(codePoints(...(points as number[])));
       expect(value).toBe(expected);
       expect(() => JSON.parse(`{"v":"${value}"}`)).not.toThrow();
+    });
+  });
+
+  /**
+   * #42 introduced a flush boundary, and nothing in the tree pinned it.
+   *
+   * The rewrite accumulates ordinary code points into a buffer and converts them in one
+   * `string id` call every 500. That is a new failure surface with no analogue in the handler it
+   * replaced: a grapheme cluster can straddle a flush, an escape can land exactly on one, and a
+   * run of astral characters can cross it. Every existing correctness test uses inputs far below
+   * 500 code points, so none of them reaches it.
+   *
+   * These are deterministic and assert exact output — no timing, unlike the performance file.
+   */
+  describe("#42 — the 500-code-point flush boundary", () => {
+    /** `n` copies of "a", then whatever code points follow. */
+    const run = (n: number, ...after: number[]) =>
+      `(my repeatText("a", ${n}))${after.length ? ` & ${codePoints(...after)}` : ""}`;
+
+    // A handler the test script defines for itself, to build inputs without a quadratic concat.
+    const REPEAT = [
+      "on repeatText(c, n)",
+      "    set out to {}",
+      "    repeat n times",
+      "        set end of out to c",
+      "    end repeat",
+      "    set oldD to AppleScript's text item delimiters",
+      "    set AppleScript's text item delimiters to \"\"",
+      "    set s to out as text",
+      "    set AppleScript's text item delimiters to oldD",
+      "    return s",
+      "end repeatText",
+    ].join("\n");
+
+    const escapeAt = (expression: string) =>
+      runHandlerScript(HANDLER, `${REPEAT}\n\nreturn my escapeForJson(${expression})`);
+
+    it.each([499, 500, 501])(
+      "escapes a quote sitting immediately after %i ordinary characters",
+      (n) => {
+        expect(escapeAt(run(n, 0x22))).toBe(`${"a".repeat(n)}\\"`);
+      }
+    );
+
+    it.each([498, 499, 500])(
+      "keeps a decomposed accent intact when the flush falls inside it (%i leading)",
+      (n) => {
+        // e + U+0301. At n=499 the cluster straddles the boundary exactly.
+        //
+        // Escapes on BOTH sides, for the reason this file states at the top: a literal accented
+        // character on the page could be the precomposed U+00E9 or the decomposed pair, and those
+        // are exactly the two forms that behave differently here. An editor normalising the
+        // expected value would silently retarget the assertion.
+        expect(escapeAt(run(n, 0x65, 0x0301))).toBe(`${"a".repeat(n)}\u0065\u0301`);
+      }
+    );
+
+    it("keeps a ZWJ sequence intact across the boundary", () => {
+      // The emoji occupies 499..502, so the joiner itself crosses the flush. The joiner is written
+      // as an escape rather than a literal: it is invisible on the page, and editors and
+      // formatters are known to drop or reorder it.
+      expect(escapeAt(run(498, 0x1f468, 0x200d, 0x1f469))).toBe(
+        `${"a".repeat(498)}\u{1f468}\u200d\u{1f469}`
+      );
+    });
+
+    it("carries an astral character across the boundary", () => {
+      expect(escapeAt(run(499, 0x1f600))).toBe(`${"a".repeat(499)}\u{1f600}`);
+    });
+
+    it("escapes a control character landing exactly on the boundary", () => {
+      expect(escapeAt(run(500, 0x01))).toBe(`${"a".repeat(500)}\\u0001`);
+    });
+
+    /**
+     * Every code point escapes, so the run buffer is never filled and `parts` is what reaches its
+     * flush instead. 600 crosses that second threshold; the old shape had neither.
+     */
+    it("escapes 600 consecutive quotes, crossing the parts flush", () => {
+      const value = escapeAt(`(my repeatText(${codePoints(0x22)}, 600))`);
+      expect(value).toBe('\\"'.repeat(600));
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: '"'.repeat(600) });
+    });
+
+    /**
+     * The empty-run paths. `string id {}` does not raise — it SEGFAULTS osascript, uncatchable by
+     * `try` — so an input ending exactly on a flush, and one that is nothing but escapes, are the
+     * two shapes that would reach it if a guard were ever dropped.
+     */
+    it.each([500, 1000])("survives an input ending exactly on a flush (%i)", (n) => {
+      expect(escapeAt(run(n))).toBe("a".repeat(n));
+    });
+
+    it("round-trips a mixed 1,200-character input through JSON.parse", () => {
+      const value = escapeAt(`(my repeatText("ab" & ${codePoints(0x22)} & ${codePoints(0x09)}, 300))`);
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: 'ab"\t'.repeat(300) });
+    });
+  });
+
+  /**
+   * A caller's comparison attributes reach into this handler, and one of them used to disable it.
+   *
+   * `considering` / `ignoring` are dynamically scoped in AppleScript: they apply inside every
+   * handler called from the block, including a prepended one. The rewrite for #42 introduced a
+   * text comparison — `esc is ""` as the "needs no escape" sentinel — and under
+   * `ignoring punctuation` both `"\\\"" is ""` and `"\\\\" is ""` are TRUE. Measured, the handler
+   * then returned `say "hi" b\s`: raw quote and raw backslash, the two characters that carry JSON's
+   * structure, in the function whose entire job is escaping them.
+   *
+   * Nothing in this repository sets those attributes today, so this never shipped broken. It is
+   * pinned because the file is prepended into every script forever, and a future `ignoring` around
+   * some mailbox-name comparison would re-enable it silently — the exact failure class
+   * *a silent wrong answer is worse than a loud failure* names.
+   */
+  describe("comparison attributes cannot disable the escaping", () => {
+    const escapeUnder = (attribute: string, expression: string) =>
+      runHandlerScript(
+        HANDLER,
+        [
+          `${attribute}`,
+          `    return my escapeForJson(${expression})`,
+          `end ${attribute.split(" ")[0]}`,
+        ].join("\n")
+      );
+
+    const INPUT = `"say " & ${codePoints(0x22)} & "hi" & ${codePoints(0x22)} & " b" & ${codePoints(0x5c)} & "s"`;
+    const EXPECTED = 'say \\"hi\\" b\\\\s';
+
+    it("escapes normally, as the baseline for the cases below", () => {
+      expect(escape(INPUT)).toBe(EXPECTED);
+    });
+
+    it.each([
+      ["ignoring punctuation", "ignoring punctuation"],
+      ["ignoring white space", "ignoring white space"],
+      ["ignoring case", "ignoring case"],
+      ["considering punctuation", "considering punctuation"],
+    ])("still escapes under %s", (_label, attribute) => {
+      expect(escapeUnder(attribute, INPUT)).toBe(EXPECTED);
     });
   });
 
