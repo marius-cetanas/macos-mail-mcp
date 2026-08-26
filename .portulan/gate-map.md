@@ -81,18 +81,35 @@ command's flags. And `merge-a-pull-request` compiles to nothing on this backend:
 approving reviews the floor constrains a merge but does not require a human's yes, which is what Gated
 means. That gate lives in the Claude Code artifact and in habit, not in the ruleset.
 
-**The Claude Code artifact is not committed.** The hook command is an absolute path into the
-maintainer's plugin cache, pinned to a plugin version, because the runner does not live under this
-project. On any other machine that path does not resolve, and **a missing hook fails open** — so
-committing it would ship a file that looks like enforcement and is not. `.claude/settings.json` is
-git-ignored and regenerated with `portulan compile`. The ruleset artifact beside it has no such
-problem and is committed. Installing the CLI as a dev dependency would make the hook path
-project-relative and that artifact portable too; that is a dependency decision the maintainer has not
-taken.
+**The Claude Code artifact is committed, and drift-checked in CI.** It was not, and the reason was
+real: the hook command was an absolute path into one maintainer's plugin cache, pinned to a plugin
+version, because the runner did not live under this project. On any other machine that path does not
+resolve, and **a missing hook fails open** — so committing it would have shipped a file that looked
+like enforcement and was not.
 
-**Retire when:** the compiled artifact becomes portable and committable, at which point it is the
-authority and this table becomes its rationale rather than its statement. Until then the policy
-compiles on one machine and this map is what every other reader has.
+`@sleepy_panda_srl/portulan` is now a dev dependency, which makes the hook command
+`${CLAUDE_PROJECT_DIR}/node_modules/@sleepy_panda_srl/portulan/cli/gate.mjs` — a literal string,
+identical on every machine, with no version baked into the path. Three consequences, and the third
+is the one that matters:
+
+- `.claude/settings.json` is in the tree, so a change to what this repository gates is **reviewable
+  in a diff** rather than invisible.
+- `npm ci` puts the runner where the hook looks for it, so a fresh clone is gated rather than
+  failing open.
+- **`portulan compile --check` runs in CI**, in the `gate-policy` job. That could not work while the
+  artifact was machine-specific — CI would recompile with a different runner path and report drift
+  that was not drift. Now it compares like with like, and an edit to `gates.json` that was never
+  recompiled turns the merge gate red. The job joins `verify`'s dependencies rather than becoming a
+  required check of its own, so the floor covers it **without a branch-protection change**.
+
+`tests/portulan/gate-policy.test.ts` pins the conditions that made this possible — the
+`${CLAUDE_PROJECT_DIR}` path, the absence of any absolute path or pinned version, the dev
+dependency, and the CI check. If any regresses, the artifact is machine-specific again and
+committing it is once more the wrong thing.
+
+**Retire when:** superseded. This table is now the artifact's rationale rather than its statement —
+the artifact is the authority, it is in the tree, and CI holds the two in agreement. What remains
+prose is only what compiles to nothing, which the two bullets above already name.
 
 ## The platform floor
 

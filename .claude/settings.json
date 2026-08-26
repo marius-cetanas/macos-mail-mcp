@@ -1,0 +1,42 @@
+{
+  "$portulan": {
+    "generated": "cli/compile.mjs",
+    "source": ".portulan/gates.json",
+    "warning": "Generated file. Edit .portulan/gates.json and recompile; `verify/compile.sh` fails on drift."
+  },
+  "permissions": {
+    "deny": [],
+    "ask": [
+      "Bash(gh pr merge:*)",
+      "Bash(gh workflow run:*)",
+      "Bash(git push --tags:*)",
+      "Bash(npm publish:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push --delete:*)"
+    ],
+    "allow": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/node_modules/@sleepy_panda_srl/portulan/cli/gate.mjs\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/node_modules/@sleepy_panda_srl/portulan/cli/stop-gate.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

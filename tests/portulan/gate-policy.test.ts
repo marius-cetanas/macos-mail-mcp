@@ -104,8 +104,51 @@ describe("the workspace wires the policy in", () => {
     expect(manifest.slots.gates).toBe("gate-map.md");
   });
 
-  it("ignores the compiled artifact, which is machine-specific and fails open when stale", () => {
-    expect(read(".gitignore")).toContain(".claude/settings.json");
+  /**
+   * The compiled artifact is committed, and these are the conditions that made it committable.
+   *
+   * It was ignored for a real reason: the hook command was an absolute path into one machine's
+   * plugin cache, pinned to a plugin version, and **a hook whose file is missing fails open** — so
+   * committing it would have shipped a file that looked like enforcement and was not. Installing
+   * the CLI as a dev dependency makes the path `${CLAUDE_PROJECT_DIR}`-relative, which is what
+   * these assert. If any of them regresses, the artifact is machine-specific again and committing
+   * it is once more the wrong thing.
+   */
+  describe("the compiled Claude Code artifact is portable", () => {
+    const settings = read(".claude/settings.json");
+
+    it("is committed rather than ignored", () => {
+      expect(existsSync(join(process.cwd(), ".claude/settings.json"))).toBe(true);
+      expect(read(".gitignore")).not.toMatch(/^\.claude\/settings\.json$/m);
+    });
+
+    it("resolves the hook through the project, not an absolute path", () => {
+      expect(settings).toContain("${CLAUDE_PROJECT_DIR}");
+      // The two spellings a machine-local path took: a home directory, or the plugin cache.
+      expect(settings).not.toMatch(/"\/Users\/|\/home\/|\.claude\/plugins/);
+    });
+
+    it("pins no plugin version into the hook path, which an upgrade would silently break", () => {
+      // The old path carried `…/portulan/0.1.2/cli/gate.mjs`, so upgrading the plugin unhooked the
+      // gate — failing open — until someone recompiled. The dependency's version lives in
+      // package.json now, where `npm ci` resolves it.
+      expect(settings).not.toMatch(/\/\d+\.\d+\.\d+\//);
+    });
+
+    it("depends on the CLI that provides the hook, so `npm ci` puts it there", () => {
+      const pkg = JSON.parse(read("package.json"));
+      expect(pkg.devDependencies["@sleepy_panda_srl/portulan"]).toBeDefined();
+      // A devDependency, so it stays out of the published tarball — `files` governs that anyway.
+      expect(pkg.dependencies?.["@sleepy_panda_srl/portulan"]).toBeUndefined();
+    });
+
+    it("is drift-checked in CI, which is what keeps it honest once committed", () => {
+      const ci = read(".github/workflows/verify.yml");
+      expect(ci).toContain("portulan compile --check");
+      // Reached through the aggregate the branch protection already requires, so the merge gate
+      // covers it without a branch-protection change.
+      expect(ci).toMatch(/needs:\s*\[test,\s*audit,\s*gate-policy\]/);
+    });
   });
 });
 
