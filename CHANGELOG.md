@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.3] - 2026-08-26
 
 ### Fixed
 
@@ -50,7 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `copilot-pull-request-reviewer[bot]` returns **201 Created and adds nobody**, because Copilot is a
   Bot and that endpoint takes Users and Teams. #44 observed the same behaviour and read it as the
   API not working; the narrower cause is what made the fix possible.
-
 
 ## [1.3.2] - 2026-08-20
 
