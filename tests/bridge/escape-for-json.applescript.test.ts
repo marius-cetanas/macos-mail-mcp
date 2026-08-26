@@ -199,14 +199,21 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
       "keeps a decomposed accent intact when the flush falls inside it (%i leading)",
       (n) => {
         // e + U+0301. At n=499 the cluster straddles the boundary exactly.
-        expect(escapeAt(run(n, 0x65, 0x0301))).toBe(`${"a".repeat(n)}é`);
+        //
+        // Escapes on BOTH sides, for the reason this file states at the top: a literal accented
+        // character on the page could be the precomposed U+00E9 or the decomposed pair, and those
+        // are exactly the two forms that behave differently here. An editor normalising the
+        // expected value would silently retarget the assertion.
+        expect(escapeAt(run(n, 0x65, 0x0301))).toBe(`${"a".repeat(n)}\u0065\u0301`);
       }
     );
 
     it("keeps a ZWJ sequence intact across the boundary", () => {
-      // The emoji occupies 499..502, so the joiner itself crosses the flush.
+      // The emoji occupies 499..502, so the joiner itself crosses the flush. The joiner is written
+      // as an escape rather than a literal: it is invisible on the page, and editors and
+      // formatters are known to drop or reorder it.
       expect(escapeAt(run(498, 0x1f468, 0x200d, 0x1f469))).toBe(
-        `${"a".repeat(498)}\u{1f468}‍\u{1f469}`
+        `${"a".repeat(498)}\u{1f468}\u200d\u{1f469}`
       );
     });
 

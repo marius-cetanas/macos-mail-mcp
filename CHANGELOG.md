@@ -16,8 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Two quadratic sources had to go together. Element access on a large AppleScript list is O(n) per
   element — the read loop alone cost 20.46s at 50,000 code points — which the fix avoids by holding
-  the list in a script object property; and unbounded appends grow the accumulator until it re-
-  enters that same trap, which the fix avoids by flushing at a fixed threshold. Element access
+  the list in a script object property; and unbounded appends grow the accumulator until it
+  re-enters that same trap, which the fix avoids by flushing at a fixed threshold. Element access
   dominated, so replacing `copy … to end of` alone measured as no improvement at all (5.69s to
   5.71s at 20,000), which is what made the cause hard to see.
 
