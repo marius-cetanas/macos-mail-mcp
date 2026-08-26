@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Internal
+
+- `copilot-reviewed` now requests the Copilot round it waits for, instead of depending on the
+  `copilot auto-review on pull requests` ruleset to have requested one. The ruleset does not cover
+  every pull request the check gates, and the ones it skips could never go green however long the
+  check waited — the symptom in both cases was a red required check that no push could clear,
+  reading as though the change were at fault (#44).
+
+  Two holes, with different causes. The ruleset is conditioned on `~DEFAULT_BRANCH`, so a pull
+  request opened against any other branch never drew a round. And a **bot author** drew none either:
+  #47 was opened by Dependabot against `main` — condition satisfied, not a draft — and got nothing
+  in 16 hours, where #43, #45, #46 and #48 were each requested one second after opening. Ten
+  Dependabot pull requests in this repository's history have drawn zero automatic rounds.
+
+  Requesting it needs GraphQL. `POST /pulls/{n}/requested_reviewers` with
+  `copilot-pull-request-reviewer[bot]` returns **201 Created and adds nobody**, because Copilot is a
+  Bot and that endpoint takes Users and Teams. #44 recorded the same result and read it as the API
+  not working; the narrower cause is what made the fix possible.
+
 ## [1.3.2] - 2026-08-20
 
 ### Fixed

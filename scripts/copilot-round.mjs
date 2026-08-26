@@ -36,6 +36,50 @@ export function isCopilotLogin(login) {
 }
 
 /**
+ * The reviewer's REST login, which is how its node id is looked up.
+ *
+ * ## Why this is not requested over REST (#44)
+ *
+ * `POST /pulls/{n}/requested_reviewers` with this login returns **201 Created and adds nobody**.
+ * Measured on #48 on 2026-08-26: 201, then `/requested_reviewers` empty and no timeline event.
+ * #44 recorded the same result and read it as "the API does not work"; the cause is narrower and
+ * makes the fix obvious. Copilot is a **Bot**, and that endpoint takes `reviewers` (Users) and
+ * `team_reviewers` (Teams). A Bot matches neither, so it is accepted and dropped.
+ *
+ * A success status for an action that did not happen is precisely the failure this repository has
+ * a principle about, so it is written down here rather than rediscovered.
+ */
+export const COPILOT_REVIEWER = "copilot-pull-request-reviewer[bot]";
+
+/**
+ * The same actor's GraphQL `Bot.login`, which drops the `[bot]` suffix REST carries. Measured, not
+ * assumed: the two spellings differ and comparing the wrong one silently never matches.
+ */
+export const COPILOT_BOT_LOGIN = "copilot-pull-request-reviewer";
+
+/**
+ * Is a Copilot round already on order?
+ *
+ * Asked before requesting one, so the ordinary case — the ruleset requested it a second after the
+ * pull request opened — does not draw a duplicate request from this job as well.
+ *
+ * Reads the GraphQL `reviewRequests` shape, because the REST `/requested_reviewers` payload never
+ * lists a Bot at all: on #48, with Copilot demonstrably requested and visible in GraphQL, REST
+ * reported `users: []`. Asking REST would answer "nothing pending" every time.
+ *
+ * @param {Array<{requestedReviewer?: {login?: string}}>} nodes `pullRequest.reviewRequests.nodes`
+ */
+export function hasPendingRequest(nodes) {
+  return (
+    Array.isArray(nodes) &&
+    nodes.some((n) => {
+      const login = n?.requestedReviewer?.login;
+      return isCopilotLogin(login) || login?.toLowerCase() === COPILOT_BOT_LOGIN;
+    })
+  );
+}
+
+/**
  * @param {{reviews: Array<object>, head: string, draft?: boolean}} input
  * @returns {{state: "landed"|"awaited"|"not-owed", reason: string}}
  */
@@ -89,21 +133,44 @@ export const DEFAULT_BUDGET_MS = 10 * 60 * 1000;
 export const DEFAULT_POLL_MS = 30 * 1000;
 
 /**
- * Wait for the round inside the run we already have.
+ * Wait for the round inside the run we already have — and ask for it if nobody else has.
  *
  * The head is re-read on every poll rather than taken once: a push during the wait must not be
  * answered against the head this run started on. `synchronize` will start a fresh run for the new
  * head, and this one noticing the move is what stops it reporting a stale success.
  *
+ * ## Why this asks (#44)
+ *
+ * The check used to only wait, on the reasoning that the `copilot auto-review on pull requests`
+ * ruleset is what requests the round. Measured, that ruleset does not fire for every pull request
+ * this check gates, and the two holes have different causes:
+ *
+ *   * **A non-default base.** The ruleset is conditioned on `~DEFAULT_BRANCH`, so a pull request
+ *     opened against another branch never draws a round. Measured on #41: zero reviews across three
+ *     heads, three runs each burning the full budget.
+ *   * **A bot author.** #47 was opened by Dependabot against `main` — the default branch, condition
+ *     satisfied, not a draft — and drew no round in 16 hours. For comparison, #43, #45, #46 and #48
+ *     were each auto-requested **one second** after opening. Across this repository's history, ten
+ *     Dependabot pull requests have drawn zero automatic rounds.
+ *
+ * Both present identically: a red required check with no explanation, which reads as though the
+ * change were at fault. Widening the ruleset's `ref_name` would fix only the first. Asking here
+ * fixes both, because it stops depending on which pull requests the ruleset chooses to notice.
+ *
+ * Asked at most once per run, and only when nothing is pending — the ordinary case already has a
+ * request in flight a second after opening, and a duplicate would be noise.
+ *
  * I/O is injected so the loop is testable without a network or a clock.
  *
  * @param {{api: (path: string) => Promise<any>, sleep: (ms: number) => Promise<void>,
+ *          requestRound?: () => Promise<unknown>, isRoundPending?: () => Promise<boolean>,
  *          budgetMs?: number, pollMs?: number, log?: (line: string) => void}} deps
  * @returns {Promise<{state: string, reason: string, polls: number}>}
  */
-export async function awaitRound({ api, sleep, budgetMs = DEFAULT_BUDGET_MS, pollMs = DEFAULT_POLL_MS, log = () => {} }) {
+export async function awaitRound({ api, sleep, requestRound, isRoundPending, budgetMs = DEFAULT_BUDGET_MS, pollMs = DEFAULT_POLL_MS, log = () => {} }) {
   let waited = 0;
   let polls = 0;
+  let asked = false;
 
   for (;;) {
     polls += 1;
@@ -117,6 +184,23 @@ export async function awaitRound({ api, sleep, budgetMs = DEFAULT_BUDGET_MS, pol
 
     if (result.state !== "awaited") {
       return { ...result, polls };
+    }
+
+    if (!asked && requestRound) {
+      asked = true;
+      // A failure here must not end the wait. On a pull request from a fork the token is read-only
+      // whatever the workflow asks for, so this is expected to fail there — and the right answer to
+      // that is the one the check always had: wait, and let the budget decide.
+      try {
+        if (isRoundPending && (await isRoundPending())) {
+          log("requested already: a Copilot round is on order, waiting for it");
+        } else {
+          await requestRound();
+          log(`requested: no round was on order, asked ${COPILOT_REVIEWER} for one`);
+        }
+      } catch (err) {
+        log(`could not request a round (${err.message}) — waiting anyway`);
+      }
     }
 
     if (waited >= budgetMs) {
@@ -145,20 +229,87 @@ if (isMain(import.meta.url)) {
     process.exit(1);
   }
 
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "user-agent": "macos-mail-mcp-copilot-gate",
+  };
+
   const api = async (suffix) => {
     const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${pr}${suffix}`, {
-      headers: {
-        authorization: `Bearer ${token}`,
-        accept: "application/vnd.github+json",
-        "user-agent": "macos-mail-mcp-copilot-gate",
-      },
+      headers,
     });
     if (!res.ok) throw new Error(`GET pulls/${pr}${suffix} -> ${res.status}`);
     return res.json();
   };
 
+  const graphql = async (query, variables) => {
+    const res = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`GraphQL -> ${res.status}`);
+    const body = await res.json();
+    // GraphQL answers 200 with an `errors` array, so a non-ok status is not the only failure.
+    if (body.errors?.length) throw new Error(body.errors.map((e) => e.message).join("; "));
+    return body.data;
+  };
+
+  const [owner, name] = repo.split("/");
+
+  const pullRequest = async (selection) =>
+    (
+      await graphql(
+        `query($owner:String!,$name:String!,$number:Int!){
+           repository(owner:$owner,name:$name){ pullRequest(number:$number){ ${selection} } }
+         }`,
+        { owner, name, number: Number(pr) }
+      )
+    ).repository.pullRequest;
+
+  const isRoundPending = async () =>
+    hasPendingRequest(
+      (
+        await pullRequest(
+          "reviewRequests(first:20){nodes{requestedReviewer{... on Bot{login} ... on User{login}}}}"
+        )
+      ).reviewRequests.nodes
+    );
+
+  /*
+   * Requested over GraphQL because REST cannot do it — see COPILOT_REVIEWER above for the measured
+   * 201-and-nothing-happens. `botIds` is the field a Bot reviewer goes in, and `union: true` adds
+   * to the existing requests rather than replacing them, so a human reviewer already on the pull
+   * request is not removed by this call.
+   *
+   * Needs `pull-requests: write`, which the workflow grants. On a fork's pull request the token is
+   * read-only regardless and this throws — `awaitRound` treats that as "wait anyway".
+   */
+  const requestRound = async () => {
+    const { node_id: botId } = await (
+      await fetch(
+        `https://api.github.com/users/${encodeURIComponent(COPILOT_REVIEWER)}`,
+        { headers }
+      )
+    ).json();
+    if (!botId) throw new Error(`no node id for ${COPILOT_REVIEWER}`);
+
+    const { id } = await pullRequest("id");
+    return graphql(
+      `mutation($pullRequestId:ID!,$botIds:[ID!]){
+         requestReviews(input:{pullRequestId:$pullRequestId,botIds:$botIds,union:true}){
+           pullRequest{ id }
+         }
+       }`,
+      { pullRequestId: id, botIds: [botId] }
+    );
+  };
+
   const { state, reason } = await awaitRound({
     api,
+    requestRound,
+    isRoundPending,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (line) => console.log(line),
   });
