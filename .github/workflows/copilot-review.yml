@@ -15,6 +15,13 @@
 # simply still running — a pending check, not a red one. Red means the budget expired, which is a
 # statement that something went wrong rather than that something was slow.
 #
+# ## It also asks, because waiting alone was not enough (#44)
+#
+# The round has to be requested by somebody. The ruleset does it for most pull requests and not for
+# all of them, and the ones it skips could never go green no matter how long this waited. So the
+# job now requests the round itself when none is pending — at most once per run, and never when the
+# ruleset already has one in flight.
+#
 # ## `pull_request_review` is deliberately not a trigger
 #
 # It would be the obvious way to turn the check green the moment a review lands, and it does not
@@ -27,18 +34,34 @@ on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
 
-# Read-only, and narrower than Portulan's equivalent on purpose. Portulan's widens to
-# `pull-requests: write` for one mid-wait re-request call; here the repository ruleset carries
-# `review_on_push: true`, so a round is re-requested by the platform on every push and this job
-# never needs to ask. If the budget expires, a maintainer re-runs the job — the rare case, rather
-# than a standing write scope for it.
+# Read-only by default; the job below widens exactly one scope. Same shape as `release.yml`, which
+# keeps `contents: read` here and grants what it needs per job.
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   copilot-reviewed:
     runs-on: ubuntu-latest
+    # `pull-requests: write` buys exactly one call: requesting the Copilot round when nothing else
+    # has.
+    #
+    # This was `read`, on the reasoning that the repository ruleset carries `review_on_push: true`
+    # so the platform always requests the round and this job never needs to ask. Measured, that is
+    # false for two kinds of pull request this check gates — a non-default base, where the
+    # ruleset's `~DEFAULT_BRANCH` condition never matches, and a bot author, where #47 drew no
+    # round in 16 hours against `main` while #43/#45/#46/#48 were each requested one second after
+    # opening. Both produced a red required check that no push could turn green. See #44 and
+    # `scripts/copilot-round.mjs`.
+    #
+    # Job-level rather than workflow-level, because job-level REPLACES the workflow block rather
+    # than merging with it: declared in both places, whichever sits here is what the token gets,
+    # and a `read` left behind here would silently undo the widening above. One place, and the
+    # suite asserts the effective value rather than a literal.
+    #
+    # `contents` stays read: this job never checks anything out beyond the scripts it runs.
+    permissions:
+      contents: read
+      pull-requests: write
     # The wait budget is 10 minutes (DEFAULT_BUDGET_MS, pinned by a test); this is the backstop
     # for a job that hangs somewhere other than the wait.
     timeout-minutes: 15
