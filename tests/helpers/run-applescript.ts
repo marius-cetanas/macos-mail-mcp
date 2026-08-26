@@ -39,9 +39,12 @@ export function runHandler(handlerPath: string, expression: string): string {
 /**
  * Run arbitrary statements against a handler file, rather than a single expression.
  *
- * `runHandler` cannot build a large input: AppleScript string concatenation is itself quadratic, so
- * a 40,000-character literal has to be produced by doubling in a loop, and a loop is not an
- * expression.
+ * Needed wherever a test has to *do* something before it escapes — build a 40,000-character input
+ * by doubling, define a helper, or wrap the call in an `ignoring` block. None of those is an
+ * expression, which is all `runHandler` can take.
+ *
+ * (Doubling is used for the large inputs because appending one character at a time is quadratic in
+ * AppleScript. Thirteen `&` operations are not; the loop shape is what costs, not `&` itself.)
  */
 export function runHandlerScript(
   handlerPath: string,

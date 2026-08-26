@@ -12,14 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Escaping a long message body no longer approaches the bridge's 30s timeout. `escapeForJson` was
   quadratic in the length of its input: 40,000 characters took ~25s, and a body somewhat larger
   than that would have failed as a timeout naming neither the tool nor the cause. The same input
-  now escapes in ~0.3s. Cost is also no longer sensitive to how much of the input needs escaping —
-  before, 40,000 characters of quotes cost an order of magnitude more than 40,000 of plain prose
-  (#42).
+  now escapes in ~0.3s (#42).
 
-  Two independent quadratic sources had to go, and each was masking the other, which is why fixing
-  either alone measured as no improvement: element access on a large AppleScript list, and
-  unbounded appends to the accumulator. The handler's header comment carries the measurements and
-  the four specific list operations that turned out to be traps.
+  Two quadratic sources had to go together. Element access on a large AppleScript list is O(n) per
+  element — the read loop alone cost 20.46s at 50,000 code points — which the fix avoids by holding
+  the list in a script object property; and unbounded appends grow the accumulator until it re-
+  enters that same trap, which the fix avoids by flushing at a fixed threshold. Element access
+  dominated, so replacing `copy … to end of` alone measured as no improvement at all (5.69s to
+  5.71s at 20,000), which is what made the cause hard to see.
+
+- Two latent hazards in the rewritten escaper, neither of which ever shipped broken, both now
+  pinned by tests: the "needs no escape" check is an integer comparison, because a text comparison
+  is subject to a caller's `ignoring punctuation` and under it the handler emitted raw quotes and
+  backslashes; and the run buffer is never converted while empty, because `string id {}` segfaults
+  `osascript` rather than raising, so `try` cannot catch it.
+
+- Handler names the bridge prepends — `escapeForJson`, `joinStrings`, `resolveMailbox`,
+  `mailboxFullName` — are now enforced as reserved by a test that runs in CI. Redefining one makes
+  AppleScript refuse to compile the script (`-2752`), failing every call of that tool.
 
 ## [1.3.2] - 2026-08-20
 

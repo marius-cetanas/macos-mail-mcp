@@ -14,10 +14,12 @@ const HANDLER = "src/bridge/escape-for-json.applescript";
  *     police a few hundred milliseconds of drift on a slower or busier machine — it is there to
  *     catch a return to the quadratic shape, which cost 27.67s on the same input and would miss
  *     the bound by a factor of three.
- *   * The second test is the one that would have caught the shape this replaced. Before the fix,
- *     cost depended on how much of the input needed escaping: the same 40,000 characters took an
- *     order of magnitude longer as quotes than as prose. Asserting the two are within a small
- *     factor of each other pins content-independence, which no single-input timing test can.
+ *   * The second test does NOT describe a bug users met. The handler this replaced was already flat
+ *     across escape density — measured at 40,960: 21.26s plain against 27.31s at 50% quotes. What
+ *     cost an order of magnitude more on dense input was a *candidate* for this rewrite, which
+ *     sliced each run out of the full code-point list (0.18s plain, 3.06s at 50%). The assertion
+ *     is kept because that candidate is the obvious way to write this and the tempting one to
+ *     return to — it pins the design against a rewrite, not against history.
  *
  * Like every other executable AppleScript test here, these run on macOS only and never in the merge
  * gate. `npm run test:coverage` on a maintainer's machine is what runs them.
@@ -55,13 +57,23 @@ describe.skipIf(!onMacOS)("escapeForJson, performance (#42)", () => {
   /** Five characters of which one is a quote, so one in five needs escaping. */
   const DENSE = '"abc" & (character id 34) & "d"';
 
-  it(`escapes ${SIZE.toLocaleString()} plain characters well inside the bridge timeout`, () => {
+  /**
+   * An explicit timeout on each timing test, well above the budget they assert.
+   *
+   * vitest's default is 5s. `execFileSync` is synchronous, so vitest cannot preempt it — but on a
+   * slower machine the green path of the two-run test (~0.55s here) could brush 5s and fail as
+   * "timed out", which reports the wrong thing. The only way these should fail is their own
+   * assertion, with the measured number in the message.
+   */
+  const TEST_TIMEOUT_MS = BUDGET_MS * 3;
+
+  it(`escapes ${SIZE} plain characters well inside the bridge timeout`, () => {
     const { length, ms } = escapeLarge(PLAIN);
 
     // Nothing needed escaping, so the output is the input.
     expect(length).toBe(SIZE);
     expect(ms).toBeLessThan(BUDGET_MS);
-  });
+  }, TEST_TIMEOUT_MS);
 
   it("costs about the same whether the input needs escaping or not", () => {
     const plain = escapeLarge(PLAIN);
@@ -72,13 +84,13 @@ describe.skipIf(!onMacOS)("escapeForJson, performance (#42)", () => {
     expect(dense.ms).toBeLessThan(BUDGET_MS);
 
     /*
-     * The property the old shape failed. It sliced the run out of the full code-point list once per
-     * escape, so cost scaled with escape count — 20% density cost roughly an order of magnitude
-     * more than 0%. A factor of 5 is loose enough to absorb process startup and a noisy machine,
-     * and far tighter than the behaviour it rules out.
+     * The property the rejected candidate failed — not the shipped predecessor, which was flat.
+     * That candidate sliced each run out of the full code-point list, so cost scaled with escape
+     * count: 0.18s at 0% against 3.06s at 50%. A factor of 5 is loose enough to absorb process
+     * startup and a noisy machine, and far tighter than the behaviour it rules out.
      */
     expect(dense.ms).toBeLessThan(plain.ms * 5);
-  });
+  }, TEST_TIMEOUT_MS);
 
   it("still produces valid JSON at that size", () => {
     const body = [
@@ -91,11 +103,12 @@ describe.skipIf(!onMacOS)("escapeForJson, performance (#42)", () => {
 
     const escaped = runHandlerScript(HANDLER, body);
 
-    // The contract is that the result can be dropped between two quotes. Parsing it back is the
-    // only assertion that covers a flush boundary landing mid-escape, which is the failure mode
-    // the chunked accumulation introduces and the reason this test exists at this size.
+    // The contract is that the result can be dropped between two quotes, asserted here at a size
+    // that crosses many flushes. An escape cannot itself be split — it is appended to `parts` as
+    // one item — so the boundary risks are mid-cluster and mid-run, and those are pinned
+    // deterministically in `escape-for-json.applescript.test.ts` rather than by this timing file.
     const parsed = JSON.parse(`{"v":"${escaped}"}`) as { v: string };
     expect(parsed.v).toHaveLength(SIZE);
     expect(parsed.v.startsWith('abc"d')).toBe(true);
-  });
+  }, TEST_TIMEOUT_MS);
 });

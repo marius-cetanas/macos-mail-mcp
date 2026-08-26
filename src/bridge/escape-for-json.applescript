@@ -39,28 +39,48 @@
 --   200,000       n/a     2.45s
 --
 -- #42 guessed the cause was `copy ... to end of`. That is a real quadratic source and it was not
--- the only one, which is why fixing it alone measured as no improvement at all: element access was
--- quadratic too, and each masked the other. Four things were measured to be traps, and all four
--- have to be avoided together or the win does not appear:
+-- the only one, which is why fixing it alone measured as no improvement at all: 5.69s to 5.71s at
+-- 20,000. Element access was quadratic too, and it dominated. Two things had to change together:
 --
---   * `item i of aList` on a plain variable falls off a cliff somewhere between 50,000 and 100,000
---     elements -- 0.08s to 86s for the read loop alone, with no escaping and no appends. Holding
---     the list in a script object property avoids that cliff, which is why `src` exists below.
---   * `items a thru b of aBigList` costs in proportion to `a`, so slicing a run out of the full
---     list once per escape is quadratic in the number of escapes. Runs are accumulated into a
---     small buffer instead.
---   * `count of aList` in the loop body is not free. Lengths are tracked in integers.
---   * appending without bound makes the target list large, which re-enters the first trap. Both
---     accumulators are flushed at `flushAt` so neither ever grows past it.
+--   * **Element access on a plain variable is O(n) per element, at every size.** The read loop
+--     alone -- no escaping, no appends -- costs 3.36s at 20,000, 10.16s at 35,000, 20.46s at
+--     50,000 and 35.01s at 65,000. Holding the list in a script object property instead costs
+--     0.09s at 20,000, 0.20s at 50,000, 0.60s at 100,000, 2.42s at 200,000. That is why `src`
+--     exists below, and it is the larger half of the win.
+--   * **Appending without bound makes the target list large, which re-enters the first trap.**
+--     Both accumulators are flushed at `flushAt`, so neither ever grows past it.
+--
+-- An earlier draft of this comment claimed a cliff here -- "0.08s at 50,000, 86s at 100,000". That
+-- reproduced from a benchmark whose 50,000-character input file did not exist, so the loop it timed
+-- ran over an empty list. There is no cliff; the curve is smooth and quadratic throughout. The
+-- correction is recorded rather than quietly applied because writing an unmeasured number into this
+-- particular header is the defect #42 was half about.
+--
+-- Two further things this shape does, which measurement says are tidiness rather than speed:
+--
+--   * Runs are accumulated in a small buffer rather than sliced out of the full list with
+--     `items a thru b`. That slice is not proportional to its start offset -- measured at 2.16s,
+--     2.20s and 2.30s for 2,000 slices beginning at 1, 90,000 and 180,000 of a 200,000 list -- but
+--     it does carry a large fixed per-call cost, so one per escape is still quadratic in the number
+--     of escapes.
+--   * `runCount` and `partsCount` are integers, but not because `count of` is expensive here:
+--     against the small buffers it measures identically, 0.29s versus 0.28s at 40,960. `count of`
+--     is only costly on a large plain-variable list, which is the first trap again rather than a
+--     separate one.
 --
 -- ## What this is NOT
 --
 -- It is not O(n), and this comment will not claim it is -- a false complexity claim in this very
 -- header is the other half of what #42 reported. Past roughly 65,000 code points the single
 -- unavoidable `item i of` walk over the full list starts to degrade again, so 200,000 costs rather
--- more than five times 40,000. What the shape below buys is that the degradation is gradual and
--- content-independent rather than sudden: escape density no longer matters, where before a body of
--- quotes cost an order of magnitude more than the same length of plain prose.
+-- more than five times 40,000.
+--
+-- **It is also not a fix for content-dependence, because there was none to fix.** The handler this
+-- replaced was already flat across escape density -- 21.26s plain against 27.31s at 50% quotes, at
+-- 40,960 -- and this one is flatter still. The shape that cost an order of magnitude more on dense
+-- input was a *candidate for this rewrite* that sliced runs out of the full list, never anything
+-- that shipped. The density test below is worth keeping precisely because it rules that candidate
+-- out, but it is not describing a bug that users ever met.
 on escapeForJson(theString)
     set codePoints to id of theString
     if class of codePoints is integer then set codePoints to {codePoints}
@@ -89,8 +109,9 @@ on escapeForJson(theString)
     repeat with i from 1 to pointCount
         set pt to (item i of (pts of src)) as integer
 
-        -- "" means this code point needs no escape. Every point is still judged on its own; the
-        -- only change from the earlier shape is that the verdict is computed before it is acted on.
+        -- An empty `esc` means this code point needs no escape. Every point is still judged on its
+        -- own; the only change from the earlier shape is that the verdict is computed before it is
+        -- acted on.
         set esc to ""
 
         if pt = 34 then
@@ -110,11 +131,23 @@ on escapeForJson(theString)
             set esc to ("\\u00" & character hi of hexChars & character lo of hexChars)
         end if
 
-        if esc is "" then
+        -- `(length of esc) = 0` and NOT `esc is ""`, which is a text comparison and therefore reads
+        -- the caller's comparison attributes. Measured: inside `ignoring punctuation`, both
+        -- `"\\\"" is ""` and `"\\\\" is ""` are TRUE, so the handler emitted `say "hi" b\s` —
+        -- quote and backslash, the two JSON-structural characters, passed through raw. `length` is
+        -- an integer and `= 0` is an integer comparison, which no attribute reaches. The handler
+        -- this replaced compared integers throughout and was immune by construction; nothing in
+        -- this repository sets those attributes today, so this is a guard rather than a fix.
+        if (length of esc) = 0 then
             -- Ordinary code point: hold it and convert the run in one `string id` call later,
             -- rather than one call per character.
             set end of runBuf to pt
             set runCount to runCount + 1
+            -- Every `string id runBuf` below is guarded by a non-zero count, and that guard is
+            -- load-bearing in a way an error would not be: `string id {}` does not raise, it
+            -- SEGFAULTS osascript (exit 139), and `try` cannot catch it. Merging these flush paths
+            -- without keeping the guard turns a bad input into a crashed bridge process with no
+            -- JSON and no error number to report.
             if runCount >= flushAt then
                 set end of parts to (string id runBuf)
                 set partsCount to partsCount + 1
