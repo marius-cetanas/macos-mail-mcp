@@ -13,6 +13,8 @@ import {
   COPILOT_LOGINS,
   COPILOT_REVIEWER,
   COPILOT_BOT_LOGIN,
+  makeGithubIo,
+  REVIEWER_PAGE,
 } from "../../scripts/copilot-round.mjs";
 
 const HEAD = "a".repeat(40);
@@ -166,6 +168,9 @@ describe("hasPendingRequest", () => {
     expect(hasPendingRequest(undefined as never)).toBe(false);
     expect(hasPendingRequest([{}] as never)).toBe(false);
     expect(hasPendingRequest([{ requestedReviewer: {} }] as never)).toBe(false);
+    // A deleted reviewer arrives as a null element or a null requestedReviewer, both legal.
+    expect(hasPendingRequest([null] as never)).toBe(false);
+    expect(hasPendingRequest([{ requestedReviewer: null }] as never)).toBe(false);
   });
 });
 
@@ -179,10 +184,8 @@ describe("hasPendingRequest", () => {
  * second after opening.
  */
 describe("awaitRound requesting the round (#44)", () => {
-  const HEAD_SHA = "a".repeat(40);
-
   /** Serves the two endpoints the loop reads. Pending state is injected separately, as in the CLI. */
-  const apiWith = (reviews: object[], head = HEAD_SHA) => async (suffix: string) =>
+  const apiWith = (reviews: object[], head = HEAD) => async (suffix: string) =>
     suffix === "/reviews" ? reviews : { head: { sha: head } };
 
   const noSleep = async () => {};
@@ -302,9 +305,15 @@ describe("awaitRound requesting the round (#44)", () => {
     expect(s.lines.find((l) => l.includes("could not request"))).toContain(shown as string);
   });
 
-  // The pending check is a network call too, and it failing must not be worse than the request
-  // failing — same answer, same log, still waiting.
-  it("keeps waiting when the pending check itself fails", async () => {
+  /**
+   * A failing pending check must ask anyway.
+   *
+   * A check that did not answer is not evidence that a round is on order — the same reasoning the
+   * "no pending check supplied" case below already applies to a missing one. Skipping the ask here
+   * would burn the whole budget over a single transient 502 and go red, which is the symptom this
+   * whole change exists to remove.
+   */
+  it("asks anyway when the pending check fails, and blames the right call", async () => {
     const s = spy();
     const result = await awaitRound({
       api: apiWith([]),
@@ -317,14 +326,42 @@ describe("awaitRound requesting the round (#44)", () => {
       log: s.log,
     });
     expect(result.state).toBe("expired");
-    expect(s.asked).toBe(0);
-    expect(s.lines.some((l) => l.includes("could not request") && l.includes("502"))).toBe(true);
+    expect(s.asked).toBe(1);
+    // Naming the call that failed. Folded into one catch, this said "could not request a round"
+    // while quoting a status that described the check, and the request had not been attempted.
+    expect(s.lines.some((l) => l.includes("could not check for a pending round") && l.includes("502"))).toBe(
+      true
+    );
+    expect(s.lines.some((l) => l.includes("could not request a round"))).toBe(false);
+  });
+
+  /**
+   * "At most once per run" has to hold on the failure path too, and that was unpinned — a mutant
+   * latching only on success passed the whole suite. It matters most exactly here: a fork's token
+   * is read-only, so every retry is a guaranteed 403, and an unlatched loop would spend the budget
+   * making nineteen more of them.
+   */
+  it("asks only once even when every attempt fails", async () => {
+    let attempts = 0;
+    const result = await awaitRound({
+      api: apiWith([]),
+      requestRound: async () => {
+        attempts += 1;
+        throw new Error("GraphQL -> 403");
+      },
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 300_000,
+      pollMs: 30_000,
+    });
+    expect(result.polls).toBeGreaterThan(2);
+    expect(attempts).toBe(1);
   });
 
   it("does not ask when the round has already landed", async () => {
     const s = spy();
     const result = await awaitRound({
-      api: apiWith([review("Copilot", HEAD_SHA)]),
+      api: apiWith([review("Copilot", HEAD)]),
       requestRound: s.requestRound,
       isRoundPending: notPending,
       sleep: noSleep,
@@ -338,7 +375,7 @@ describe("awaitRound requesting the round (#44)", () => {
     const s = spy();
     const result = await awaitRound({
       api: async (suffix: string) =>
-        suffix === "/reviews" ? [] : { head: { sha: HEAD_SHA }, draft: true },
+        suffix === "/reviews" ? [] : { head: { sha: HEAD }, draft: true },
       requestRound: s.requestRound,
       isRoundPending: notPending,
       sleep: noSleep,
@@ -373,17 +410,176 @@ describe("awaitRound requesting the round (#44)", () => {
  * fails, the check waits out its budget and goes red — the exact symptom #44 describes, with the
  * fix still apparently in place. That is worth an assertion rather than a comment.
  */
+/**
+ * The half that actually runs in CI, and which had no test at all until this change.
+ *
+ * It used to live inside the `isMain` block, so every real network path — status handling, the
+ * GraphQL error envelope, the node-id lookup — was beyond the suite's reach. `tests/release/cli.test.ts`
+ * makes the same argument for the sibling scripts: an entry point is only meaningful if invoking it
+ * runs something.
+ */
+describe("makeGithubIo", () => {
+  /** A `fetch` that answers from a queue and records what it was asked. */
+  const fetchStub = (answers: Array<{ ok?: boolean; status?: number; body?: unknown }>) => {
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetch = async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      const a = answers.shift() ?? { ok: true, body: {} };
+      return {
+        ok: a.ok ?? true,
+        status: a.status ?? 200,
+        json: async () => a.body ?? {},
+      } as unknown as Response;
+    };
+    return { fetch, calls };
+  };
+
+  const io = (answers: Parameters<typeof fetchStub>[0]) => {
+    const { fetch, calls } = fetchStub(answers);
+    return {
+      calls,
+      ...makeGithubIo({
+        fetch: fetch as unknown as typeof globalThis.fetch,
+        token: "t",
+        repo: "o/r",
+        pr: "7",
+      }),
+    };
+  };
+
+  describe("api", () => {
+    it("names the status when a read fails", async () => {
+      await expect(io([{ ok: false, status: 404 }]).api("/reviews")).rejects.toThrow(
+        "GET pulls/7/reviews -> 404"
+      );
+    });
+
+    it("sends the token and reads the pull request path", async () => {
+      const g = io([{ body: { head: { sha: "abc" } } }]);
+      await expect(g.api("")).resolves.toEqual({ head: { sha: "abc" } });
+      expect(g.calls[0].url).toBe("https://api.github.com/repos/o/r/pulls/7");
+      expect((g.calls[0].init?.headers as Record<string, string>).authorization).toBe("Bearer t");
+    });
+  });
+
+  describe("graphql", () => {
+    it("names the status when the transport fails", async () => {
+      await expect(io([{ ok: false, status: 502 }]).graphql("query{x}", {})).rejects.toThrow(
+        "GraphQL -> 502"
+      );
+    });
+
+    /** GraphQL answers 200 with an `errors` array, so a non-ok status is not the only failure. */
+    it("raises the errors array that arrives with a 200", async () => {
+      const g = io([{ body: { errors: [{ message: "NOT_FOUND" }, { message: "and this" }] } }]);
+      await expect(g.graphql("query{x}", {})).rejects.toThrow("NOT_FOUND; and this");
+    });
+
+    it("posts the query and variables as JSON", async () => {
+      const g = io([{ body: { data: { ok: 1 } } }]);
+      await expect(g.graphql("query{x}", { a: 1 })).resolves.toEqual({ ok: 1 });
+      expect(JSON.parse(g.calls[0].init?.body as string)).toEqual({
+        query: "query{x}",
+        variables: { a: 1 },
+      });
+    });
+  });
+
+  describe("isRoundPending", () => {
+    const withNodes = (nodes: unknown[]) => ({
+      body: { data: { repository: { pullRequest: { reviewRequests: { nodes } } } } },
+    });
+
+    it("is true when the reviewer is on order", async () => {
+      const g = io([withNodes([{ requestedReviewer: { login: COPILOT_BOT_LOGIN } }])]);
+      await expect(g.isRoundPending()).resolves.toBe(true);
+    });
+
+    it("is false when nothing is on order", async () => {
+      await expect(io([withNodes([])]).isRoundPending()).resolves.toBe(false);
+    });
+
+    // Slack, not a limit — but if the reviewer fell outside the page the check would read "nothing
+    // pending" and ask for a round already on order.
+    it("asks for a page wide enough that the reviewer cannot fall off it", async () => {
+      const g = io([withNodes([])]);
+      await g.isRoundPending();
+      expect(REVIEWER_PAGE).toBeGreaterThanOrEqual(100);
+      expect(JSON.parse(g.calls[0].init?.body as string).query).toContain(
+        `reviewRequests(first:${REVIEWER_PAGE})`
+      );
+    });
+  });
+
+  describe("requestRound", () => {
+    const BOT = { body: { node_id: "BOT_x" } };
+    const PR_ID = { body: { data: { repository: { pullRequest: { id: "PR_x" } } } } };
+
+    it("looks the bot up, then mutates with its node id", async () => {
+      const g = io([BOT, PR_ID, { body: { data: { requestReviews: { pullRequest: { id: "PR_x" } } } } }]);
+      await g.requestRound();
+      expect(g.calls[0].url).toContain("/users/copilot-pull-request-reviewer%5Bbot%5D");
+      const mutation = JSON.parse(g.calls[2].init?.body as string);
+      expect(mutation.query).toContain("requestReviews");
+      // `union` is what stops the call evicting a human reviewer already on the pull request.
+      expect(mutation.query).toContain("union:true");
+      expect(mutation.variables).toEqual({ pullRequestId: "PR_x", botIds: ["BOT_x"] });
+    });
+
+    /**
+     * The lookup used to parse without checking the status. On a 403 the body still parses,
+     * `node_id` is simply absent, and the throw then blamed the account for not existing while the
+     * truth was a rate limit — the misleading error this repository has a principle about.
+     */
+    it("names the status when the bot lookup fails, rather than blaming the account", async () => {
+      const g = io([{ ok: false, status: 403 }]);
+      await expect(g.requestRound()).rejects.toThrow(
+        "GET users/copilot-pull-request-reviewer[bot] -> 403"
+      );
+    });
+
+    it("says so distinctly when the lookup succeeds but carries no node id", async () => {
+      const g = io([{ body: {} }]);
+      await expect(g.requestRound()).rejects.toThrow(/no node id in the response/);
+    });
+  });
+});
+
 describe("the copilot review workflow grants what the request needs", () => {
+  interface Workflow {
+    permissions?: Record<string, string>;
+    jobs: Record<string, { permissions?: Record<string, string> }>;
+  }
+
   const workflow = parse(
     readFileSync(join(process.cwd(), ".github/workflows/copilot-review.yml"), "utf8")
-  ) as { permissions: Record<string, string> };
+  ) as Workflow;
 
-  it("grants pull-requests: write", () => {
-    expect(workflow.permissions["pull-requests"]).toBe("write");
+  /**
+   * The permissions the job's token actually gets.
+   *
+   * Asserting the workflow-level block alone was a hole, found by mutation: adding a job-level
+   * `pull-requests: read` while the workflow level still said `write` left the suite green, because
+   * GitHub has job-level **replace** workflow-level rather than merge with it. The token would have
+   * been read-only, every request would have 403'd, and #44's symptom would have returned with this
+   * very test still passing — which is the one thing its docstring promises cannot happen.
+   */
+  const effective = (job: string) =>
+    workflow.jobs[job].permissions ?? workflow.permissions ?? {};
+
+  it("grants pull-requests: write to the job that makes the request", () => {
+    expect(effective("copilot-reviewed")["pull-requests"]).toBe("write");
   });
 
   it("keeps contents read-only, because the job checks nothing out", () => {
-    expect(workflow.permissions.contents).toBe("read");
+    expect(effective("copilot-reviewed").contents).toBe("read");
+  });
+
+  // The default the job widens from. Without it, a job added later inherits whatever GitHub's
+  // repository-wide default happens to be rather than this file's answer.
+  it("defaults the workflow itself to read-only", () => {
+    expect(workflow.permissions?.contents).toBe("read");
+    expect(workflow.permissions?.["pull-requests"]).toBeUndefined();
   });
 });
 

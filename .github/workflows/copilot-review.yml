@@ -34,23 +34,34 @@ on:
   pull_request:
     types: [opened, reopened, ready_for_review, synchronize]
 
-# `pull-requests: write` buys exactly one call: requesting the Copilot round when nothing else has.
-#
-# This was `read`, on the reasoning that the repository ruleset carries `review_on_push: true` so
-# the platform always requests the round and this job never needs to ask. Measured, that is false
-# for two kinds of pull request this check gates — a non-default base, where the ruleset's
-# `~DEFAULT_BRANCH` condition never matches, and a bot author, where #47 drew no round in 16 hours
-# against `main` while #43/#45/#46/#48 were each requested one second after opening. Both produced a
-# red required check that no push could turn green. See #44 and `scripts/copilot-round.mjs`.
-#
-# `contents` stays read: this job never checks anything out beyond the scripts it runs.
+# Read-only by default; the job below widens exactly one scope. Same shape as `release.yml`, which
+# keeps `contents: read` here and grants what it needs per job.
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   copilot-reviewed:
     runs-on: ubuntu-latest
+    # `pull-requests: write` buys exactly one call: requesting the Copilot round when nothing else
+    # has.
+    #
+    # This was `read`, on the reasoning that the repository ruleset carries `review_on_push: true`
+    # so the platform always requests the round and this job never needs to ask. Measured, that is
+    # false for two kinds of pull request this check gates — a non-default base, where the
+    # ruleset's `~DEFAULT_BRANCH` condition never matches, and a bot author, where #47 drew no
+    # round in 16 hours against `main` while #43/#45/#46/#48 were each requested one second after
+    # opening. Both produced a red required check that no push could turn green. See #44 and
+    # `scripts/copilot-round.mjs`.
+    #
+    # Job-level rather than workflow-level, because job-level REPLACES the workflow block rather
+    # than merging with it: declared in both places, whichever sits here is what the token gets,
+    # and a `read` left behind here would silently undo the widening above. One place, and the
+    # suite asserts the effective value rather than a literal.
+    #
+    # `contents` stays read: this job never checks anything out beyond the scripts it runs.
+    permissions:
+      contents: read
+      pull-requests: write
     # The wait budget is 10 minutes (DEFAULT_BUDGET_MS, pinned by a test); this is the backstop
     # for a job that hangs somewhere other than the wait.
     timeout-minutes: 15

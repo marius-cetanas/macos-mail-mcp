@@ -18,13 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Two holes, with different causes. The ruleset is conditioned on `~DEFAULT_BRANCH`, so a pull
   request opened against any other branch never drew a round. And a **bot author** drew none either:
   #47 was opened by Dependabot against `main` — condition satisfied, not a draft — and got nothing
-  in 16 hours, where #43, #45, #46 and #48 were each requested one second after opening. Ten
-  Dependabot pull requests in this repository's history have drawn zero automatic rounds.
+  in 16 hours, where #43, #45, #46 and #48 were each requested one second after opening. Every
+  Dependabot pull request here — 18 of them — has drawn zero automatic rounds, though 17 predate the
+  ruleset, so #47 is the one that evidences the hole rather than merely illustrating it.
 
   Requesting it needs GraphQL. `POST /pulls/{n}/requested_reviewers` with
   `copilot-pull-request-reviewer[bot]` returns **201 Created and adds nobody**, because Copilot is a
-  Bot and that endpoint takes Users and Teams. #44 recorded the same result and read it as the API
-  not working; the narrower cause is what made the fix possible.
+  Bot and that endpoint takes Users and Teams. #44 observed the same behaviour and read it as the
+  API not working; the narrower cause is what made the fix possible.
 
 ## [1.3.2] - 2026-08-20
 

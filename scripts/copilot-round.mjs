@@ -42,9 +42,10 @@ export function isCopilotLogin(login) {
  *
  * `POST /pulls/{n}/requested_reviewers` with this login returns **201 Created and adds nobody**.
  * Measured on #48 on 2026-08-26: 201, then `/requested_reviewers` empty and no timeline event.
- * #44 recorded the same result and read it as "the API does not work"; the cause is narrower and
- * makes the fix obvious. Copilot is a **Bot**, and that endpoint takes `reviewers` (Users) and
- * `team_reviewers` (Teams). A Bot matches neither, so it is accepted and dropped.
+ * #44 observed the same behaviour and recorded the status as 200; either way it is a success code
+ * for an action that did not happen. #44 read that as "the API does not work"; the cause is
+ * narrower and makes the fix obvious. Copilot is a **Bot**, and that endpoint takes `reviewers`
+ * (Users) and `team_reviewers` (Teams). A Bot matches neither, so it is accepted and dropped.
  *
  * A success status for an action that did not happen is precisely the failure this repository has
  * a principle about, so it is written down here rather than rediscovered.
@@ -173,8 +174,13 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *     heads, three runs each burning the full budget.
  *   * **A bot author.** #47 was opened by Dependabot against `main` — the default branch, condition
  *     satisfied, not a draft — and drew no round in 16 hours. For comparison, #43, #45, #46 and #48
- *     were each auto-requested **one second** after opening. Across this repository's history, ten
- *     Dependabot pull requests have drawn zero automatic rounds.
+ *     were each auto-requested **one second** after opening.
+ *
+ * On the second one, be careful what the evidence is. Every Dependabot pull request in this
+ * repository's history — 18 of them — has drawn zero automatic rounds, but 17 predate the ruleset
+ * (created 2026-08-20) and so prove nothing about it. **#47 is the only probative case**, against
+ * the human pull requests opened after the same date as controls. An earlier draft of this comment
+ * said "ten", which reproduces from no query at all.
  *
  * Both present identically: a red required check with no explanation, which reads as though the
  * change were at fault. Widening the ruleset's `ref_name` would fix only the first. Asking here
@@ -182,6 +188,13 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *
  * Asked at most once per run, and only when nothing is pending — the ordinary case already has a
  * request in flight a second after opening, and a duplicate would be noise.
+ *
+ * ## What this still does not cover
+ *
+ * "Pending" is trusted for the rest of the run. If Copilot accepts a request and never delivers,
+ * every poll sees the request still on order, nothing re-asks, and the check expires red. That is
+ * exactly the pre-#44 behaviour rather than a regression, but the log will say "requested already"
+ * throughout, which is the opposite of a clue.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
@@ -211,18 +224,36 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
 
     if (!asked && requestRound) {
       asked = true;
-      // A failure here must not end the wait. On a pull request from a fork the token is read-only
-      // whatever the workflow asks for, so this is expected to fail there — and the right answer to
-      // that is the one the check always had: wait, and let the budget decide.
+
+      /*
+       * The two calls are tried separately so a failure names the one that failed. Folded into one
+       * catch, a failing pending check reported "could not request a round", which is false — the
+       * request had not been attempted — and named a status describing the other call entirely.
+       *
+       * A failed check also falls through to asking rather than skipping. A check that did not
+       * answer is not evidence that a round is on order, any more than a missing check is; the
+       * worst case is a duplicate request, which `union: true` makes a no-op, and the best case is
+       * the round this check exists to wait for.
+       */
+      let pending = false;
       try {
-        if (isRoundPending && (await isRoundPending())) {
-          log("requested already: a Copilot round is on order, waiting for it");
-        } else {
+        pending = Boolean(isRoundPending && (await isRoundPending()));
+      } catch (err) {
+        log(`could not check for a pending round (${describeError(err)}) — asking anyway`);
+      }
+
+      if (pending) {
+        log("requested already: a Copilot round is on order, waiting for it");
+      } else {
+        // A failure here must not end the wait. On a pull request from a fork the token is
+        // read-only whatever the workflow asks for, so this is expected to fail there — and the
+        // right answer is the one the check always had: wait, and let the budget decide.
+        try {
           await requestRound();
           log(`requested: no round was on order, asked ${COPILOT_REVIEWER} for one`);
+        } catch (err) {
+          log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
-      } catch (err) {
-        log(`could not request a round (${describeError(err)}) — waiting anyway`);
       }
     }
 
@@ -242,16 +273,27 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
   }
 }
 
-/* c8 ignore start -- CLI arm; the classification and the loop above are what the tests exercise */
-if (isMain(import.meta.url)) {
-  const repo = process.env.GITHUB_REPOSITORY;
-  const pr = process.env.PR_NUMBER;
-  const token = process.env.GH_TOKEN;
-  if (!repo || !pr || !token) {
-    console.error("need GITHUB_REPOSITORY, PR_NUMBER and GH_TOKEN");
-    process.exit(1);
-  }
+/**
+ * How many requested reviewers to read when checking whether a round is on order.
+ *
+ * A pull request here carries one or two, so this is slack rather than a limit. It matters only in
+ * one direction: if Copilot fell outside the page, the check would read "nothing pending" and ask
+ * for a round that was already on order — harmless under `union: true`, but a wasted call.
+ */
+export const REVIEWER_PAGE = 100;
 
+/**
+ * Build the GitHub calls `awaitRound` needs, over an injected `fetch`.
+ *
+ * Extracted from the CLI arm so it can be tested. It is the half that actually runs in CI, and
+ * leaving it inside the `isMain` block put every real network path — status handling, the GraphQL
+ * error envelope, the node-id lookup — beyond the reach of the suite. `tests/release/cli.test.ts`
+ * makes the same argument for the other scripts: an entry point is only meaningful if invoking it
+ * runs something.
+ *
+ * @param {{fetch: typeof globalThis.fetch, token: string, repo: string, pr: string|number}} deps
+ */
+export function makeGithubIo({ fetch, token, repo, pr }) {
   const headers = {
     authorization: `Bearer ${token}`,
     accept: "application/vnd.github+json",
@@ -279,7 +321,7 @@ if (isMain(import.meta.url)) {
     return body.data;
   };
 
-  const [owner, name] = repo.split("/");
+  const [owner, name] = String(repo).split("/");
 
   const pullRequest = async (selection) =>
     (
@@ -295,7 +337,7 @@ if (isMain(import.meta.url)) {
     hasPendingRequest(
       (
         await pullRequest(
-          "reviewRequests(first:20){nodes{requestedReviewer{... on Bot{login} ... on User{login}}}}"
+          `reviewRequests(first:${REVIEWER_PAGE}){nodes{requestedReviewer{... on Bot{login} ... on User{login}}}}`
         )
       ).reviewRequests.nodes
     );
@@ -310,13 +352,15 @@ if (isMain(import.meta.url)) {
    * read-only regardless and this throws — `awaitRound` treats that as "wait anyway".
    */
   const requestRound = async () => {
-    const { node_id: botId } = await (
-      await fetch(
-        `https://api.github.com/users/${encodeURIComponent(COPILOT_REVIEWER)}`,
-        { headers }
-      )
-    ).json();
-    if (!botId) throw new Error(`no node id for ${COPILOT_REVIEWER}`);
+    // Checked rather than parsed blind: on a 403 the body still parses, `node_id` is simply absent,
+    // and the throw below would then blame the account for not existing instead of naming the
+    // status. That is the misleading error this repository has a principle about.
+    const res = await fetch(`https://api.github.com/users/${encodeURIComponent(COPILOT_REVIEWER)}`, {
+      headers,
+    });
+    if (!res.ok) throw new Error(`GET users/${COPILOT_REVIEWER} -> ${res.status}`);
+    const { node_id: botId } = await res.json();
+    if (!botId) throw new Error(`no node id in the response for ${COPILOT_REVIEWER}`);
 
     const { id } = await pullRequest("id");
     return graphql(
@@ -328,6 +372,21 @@ if (isMain(import.meta.url)) {
       { pullRequestId: id, botIds: [botId] }
     );
   };
+
+  return { api, graphql, isRoundPending, requestRound };
+}
+
+/* c8 ignore start -- CLI arm; everything it calls is exercised above */
+if (isMain(import.meta.url)) {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const pr = process.env.PR_NUMBER;
+  const token = process.env.GH_TOKEN;
+  if (!repo || !pr || !token) {
+    console.error("need GITHUB_REPOSITORY, PR_NUMBER and GH_TOKEN");
+    process.exit(1);
+  }
+
+  const { api, isRoundPending, requestRound } = makeGithubIo({ fetch, token, repo, pr });
 
   const { state, reason } = await awaitRound({
     api,
