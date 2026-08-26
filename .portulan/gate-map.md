@@ -107,6 +107,16 @@ is the one that matters:
 dependency, and the CI check. If any regresses, the artifact is machine-specific again and
 committing it is once more the wrong thing.
 
+**One line in the generated artifact is wrong here, and cannot be fixed here.** Its `$portulan.warning`
+reads *"Edit `.portulan/gates.json` and recompile; `verify/compile.sh` fails on drift."* There is no
+`verify/compile.sh` in this repository — that is Portulan's own verify recipe, hard-coded into every
+adopter's artifact. **Drift is enforced here by the `gate-policy` job**, which runs
+`npx portulan compile --check`. The text cannot be corrected locally: it is generated, and
+hand-editing it makes `compile --check` report drift (measured, exit 1), which would trade a
+misleading sentence for a red merge gate. Recorded here so the repository's own prose corrects it;
+the fix belongs upstream. _(Raised by Copilot on
+[#52](https://github.com/marius-cetanas/macos-mail-mcp/pull/52).)_
+
 **Retire when:** superseded. This table is now the artifact's rationale rather than its statement —
 the artifact is the authority, it is in the tree, and CI holds the two in agreement. What remains
 prose is only what compiles to nothing, which the two bullets above already name.

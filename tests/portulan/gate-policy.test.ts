@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parse } from "yaml";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -143,11 +144,27 @@ describe("the workspace wires the policy in", () => {
     });
 
     it("is drift-checked in CI, which is what keeps it honest once committed", () => {
-      const ci = read(".github/workflows/verify.yml");
-      expect(ci).toContain("portulan compile --check");
-      // Reached through the aggregate the branch protection already requires, so the merge gate
-      // covers it without a branch-protection change.
-      expect(ci).toMatch(/needs:\s*\[test,\s*audit,\s*gate-policy\]/);
+      /*
+       * Parsed rather than pattern-matched. A regex over the raw YAML pinned one spelling of
+       * `needs: [test, audit, gate-policy]` — so reordering the list, or rewriting it as a block
+       * sequence, would have failed a workflow that was still correct, while `needs: [gate-policy]`
+       * written across two lines would have passed a workflow that was not. What matters is which
+       * job runs the check and whether the required aggregate depends on it, and both are
+       * properties of the document, not of its formatting.
+       */
+      const ci = parse(read(".github/workflows/verify.yml")) as {
+        jobs: Record<string, { needs?: string[]; steps?: { run?: string }[] }>;
+      };
+
+      const runsCheck = Object.entries(ci.jobs).filter(([, job]) =>
+        (job.steps ?? []).some((s) => s.run?.includes("portulan compile --check"))
+      );
+      expect(runsCheck).toHaveLength(1);
+
+      const [checkJob] = runsCheck[0];
+      // `verify` is the one context branch protection requires, so the merge gate covers the drift
+      // check only if the aggregate depends on the job that runs it.
+      expect(ci.jobs.verify.needs).toContain(checkJob);
     });
   });
 });
