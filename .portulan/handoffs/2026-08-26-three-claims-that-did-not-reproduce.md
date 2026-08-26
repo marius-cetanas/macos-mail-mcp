@@ -1,16 +1,22 @@
 # Handoff — three claims that did not reproduce, and the reviews that caught them
 
 **State.** `macos-mail-mcp` at **1.3.3** on npm, published over OIDC with a provenance attestation
-and verified against the tag rather than the publish log: `v1.3.3` and `main` are both `aad758b`,
-and the handler in the tarball npm serves is byte-identical to the tagged source
-(`29223671…`). Running that published handler escapes 40,960 characters in **0.37s**, against ~25s
-at 1.3.2 — the fix this release exists for. `main` green: **576 tests across 28 files**, 100%
-statements/branches/functions/lines on `src/`, 0 vulnerabilities. **No open issues and no open pull
-requests.**
+and verified against the tag rather than the publish log: `v1.3.3` is `aad758b`, and the handler in
+the tarball npm serves is byte-identical to the tagged source (`29223671…`). Running that published
+handler escapes 40,960 characters in **0.37s**, against ~25s at 1.3.2 — the fix this release exists
+for. `main` has since moved to `a9b9e1a`, two commits past the tag, both of them documentation and
+tooling: nothing consumer-facing is unreleased. `main` green: **587 tests across 29 files**, 100%
+statements/branches/functions/lines on `src/`, 0 vulnerabilities, and `portulan compile --check`
+exits 0 in CI. **No open issues and no open pull requests.**
 
-**Four merged, all on 2026-08-26** — #47 (CodeQL bump), #49 (the Copilot gate, closing #44), #48
-(`escapeForJson`, closing #42) and #50 (the changelog for 1.3.3). #46 is in the range since v1.3.2
-but belongs to the previous session, having merged on 2026-08-22.
+**Six merged, all on 2026-08-26** — #47 (CodeQL bump), #49 (the Copilot gate, closing #44), #48
+(`escapeForJson`, closing #42), #50 (the changelog for 1.3.3), #51 (this handoff) and #52 (the
+portable gate artifact). #46 is in the range since v1.3.2 but belongs to the previous session,
+having merged on 2026-08-22.
+
+_(#51 and #52 landed after this file was first written; the two sections they changed are marked
+below. A handoff amended by its own session is unusual, and leaving it stale would have been worse
+than saying so.)_
 
 ## The pattern, because it happened three times in one session
 
@@ -101,15 +107,74 @@ on order`, and the timeline recorded `review_requested by github-actions[bot]`.
   Both times the conclusion held and the stated reason did not, and both times chasing the real
   mechanism found something extra — a silent `(undefined)` log, and `throw ""` rendering as `()`.
 
+## After the release — the gate artifact became enforcement (#52)
+
+The gate map had carried a retirement condition since 2026-08-22: *"Retire when: the compiled
+artifact becomes portable and committable."* It is met.
+
+`@sleepy_panda_srl/portulan` is now a **dev dependency**, which changes the compiled hook command
+from an absolute path into one machine's plugin cache to
+`${CLAUDE_PROJECT_DIR}/node_modules/@sleepy_panda_srl/portulan/cli/gate.mjs`. A literal string,
+identical on every machine, **with no version in the path** — so a plugin upgrade can no longer
+silently unhook the gate, which is the failure the compiler itself warns about and which the old
+path (`…/portulan/0.1.2/cli/gate.mjs`) was exposed to.
+
+The consequence that matters is not that the file is committed. It is that **`portulan compile
+--check` now runs in CI**, in a `gate-policy` job. That was impossible while the artifact was
+machine-specific — CI would recompile with a different runner path and report drift that was not
+drift, which is exactly why the previous session recorded it as a local check. An edit to
+`gates.json` that was never recompiled now turns the merge gate red.
+
+`gate-policy` joins `verify`'s `needs` rather than becoming a required check of its own, so the
+floor covers it **without a branch-protection change** — which would itself have been Gated.
+
+**One line of the generated artifact is wrong here and cannot be fixed here.** Its
+`$portulan.warning` points at `verify/compile.sh`, which is Portulan's own verify recipe, hard-coded
+into every adopter's artifact; no such file exists in this repository. Measured: hand-correcting the
+sentence makes `compile --check` exit 1, because it *is* drift — so editing it would trade a
+misleading sentence for a red merge gate. `gate-map.md` records the divergence instead. **The fix
+belongs upstream and has not been filed**; filing on a third-party repository was left to the
+maintainer.
+
+## The `[Unreleased]` convention was reversed by the maintainer (#52)
+
+I declined it on #50, measuring that no tagged release here had ever carried the heading. The
+maintainer asked for it, so it is now standing.
+
+Worth recording is the second half, which the request did not name and which is where the convention
+actually fails: **at release time the version heading is inserted *below* `[Unreleased]`, never
+renamed from it.** Renaming lands the entry correctly and silently removes the standing heading,
+leaving the next change nowhere to go — a one-word difference in a procedure performed rarely. So
+the shape is asserted in `tests/release/changelog.test.ts` rather than documented, and performing
+the rename fails three of those assertions.
+
+One more measurement-shaped bug came out of writing that test, and it belongs with the three above:
+its ordering assertion compared parsed `[major, minor, patch]` arrays with `>`, which coerces both
+to strings. `[1,10,0] > [1,9,0]` is **false**. Every version in the file avoids that shape, so it was
+green and would have stayed green until 1.10.0 or 1.3.10, then failed on a correctly ordered
+changelog — in the test whose only job is ordering. Caught by Copilot, fixed to compare field by
+field, and the comparator is now pinned by its own case so the fix does not rest on the same
+coincidence the bug did.
+
 ## For the next session
 
-- **The `[Unreleased]` convention is an open question and I decided it unilaterally.** Copilot asked
-  for a standing empty `[Unreleased]` heading per Keep a Changelog; I declined on the measurement
-  that no tagged release here has ever carried one (v1.2.0, v1.3.0, v1.3.1, v1.3.2 — all zero), and
-  because an empty section asserts pending changes that do not exist. If the maintainer wants the
-  Keep a Changelog form, it is a deliberate convention change deserving its own pull request.
-- **`.claude/settings.json` is still machine-local** and the pinning decision from 2026-08-22 is
-  still open. Unchanged this session.
+- **File the upstream defect, or decide not to.** The generated `$portulan.warning` sends every
+  Portulan adopter to `verify/compile.sh`, a file only Portulan itself has. It is documented in
+  `gate-map.md` here, but the fix is upstream and no issue has been opened — the precedent is
+  [portulan#329](https://github.com/sleepy-panda-srl/portulan/issues/329) from 2026-08-22. **This is
+  the one open item that needs a decision.**
+- ~~**The `[Unreleased]` convention.**~~ **Resolved by the maintainer in #52** — the standing heading
+  is in, and the insert-don't-rename rule is asserted. My earlier reasoning for declining is above,
+  and was overruled; the measurement it rested on (no tagged release had ever carried one) was
+  accurate but is not what decides a convention.
+- ~~**`.claude/settings.json` is still machine-local.**~~ **Resolved in #52** — the pinning decision
+  from 2026-08-22 was taken. See the section above; the gate map's retirement condition is met, and
+  the artifact is now enforcement rather than a description of it.
+- **Re-run `portulan compile` after any CLI upgrade, and let CI tell you if you forgot.** This
+  replaces the previous session's warning that an upgrade silently unhooks the gate. It cannot any
+  more — the version is out of the hook path and `gate-policy` fails on drift. What an upgrade *can*
+  still change is the generated content, and that now surfaces as a red check rather than as
+  nothing.
 - **The gate map now says the check and the ruleset are no longer a pair.** It claimed the ruleset
   was what requests the round; that is now only half true, and the paragraph records both holes and
   the REST trap.
