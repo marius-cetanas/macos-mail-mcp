@@ -3,6 +3,25 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
+ * Timeout for an expression-based correctness test. These escape a handful of code points, so 20s
+ * is already three orders of magnitude of headroom, and a hang should surface fast rather than
+ * hold the suite for two minutes.
+ */
+const CORRECTNESS_TIMEOUT_MS = 20_000;
+
+/**
+ * Timeout for a test that deliberately escapes tens of thousands of characters.
+ *
+ * Generous on purpose, and it is *not* the bound the performance tests assert against — they time
+ * themselves and fail on their own assertion, with a measured number in the message. This only
+ * stops a genuine hang from running forever, so it sits far above the ~10s bound those tests use.
+ * Kept separate from `CORRECTNESS_TIMEOUT_MS` because a regression to the quadratic shape #42
+ * reported took ~25s: sharing the 20s timeout would turn that assertion into an opaque
+ * `ETIMEDOUT` from the runner instead of the number the test exists to report.
+ */
+const LARGE_INPUT_TIMEOUT_MS = 120_000;
+
+/**
  * Run a shared AppleScript handler for real, through `osascript`.
  *
  * Every other test in this suite mocks `node:child_process`, which means the `.applescript` files
@@ -14,7 +33,7 @@ import { join } from "node:path";
  * `osascript` exists, so callers gate on `darwin` — see `onMacOS` below.
  */
 export function runHandler(handlerPath: string, expression: string): string {
-  return runHandlerScript(handlerPath, `return ${expression}`);
+  return runHandlerScript(handlerPath, `return ${expression}`, CORRECTNESS_TIMEOUT_MS);
 }
 
 /**
@@ -22,11 +41,13 @@ export function runHandler(handlerPath: string, expression: string): string {
  *
  * `runHandler` cannot build a large input: AppleScript string concatenation is itself quadratic, so
  * a 40,000-character literal has to be produced by doubling in a loop, and a loop is not an
- * expression. The timeout is generous on purpose — a regression to the quadratic shape #42 reported
- * should fail on the test's own assertion, with a measured number in the message, rather than as an
- * opaque `ETIMEDOUT` from the runner.
+ * expression.
  */
-export function runHandlerScript(handlerPath: string, body: string, timeoutMs = 120_000): string {
+export function runHandlerScript(
+  handlerPath: string,
+  body: string,
+  timeoutMs = LARGE_INPUT_TIMEOUT_MS
+): string {
   const source = readFileSync(join(process.cwd(), handlerPath), "utf8");
   const script = `${source}\n\n${body}\n`;
   return execFileSync("osascript", ["-"], {
