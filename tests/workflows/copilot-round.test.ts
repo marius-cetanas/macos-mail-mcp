@@ -6,6 +6,7 @@ import {
   classifyRound,
   isCopilotLogin,
   hasPendingRequest,
+  describeError,
   awaitRound,
   DEFAULT_BUDGET_MS,
   DEFAULT_POLL_MS,
@@ -102,6 +103,31 @@ describe("classifyRound", () => {
       classifyRound({ reviews: undefined as unknown as [], head: HEAD }).state
     ).toBe("awaited");
     expect(classifyRound({ reviews: [{} as never], head: HEAD }).state).toBe("awaited");
+  });
+});
+
+describe("describeError", () => {
+  it("uses the message when there is a real one", () => {
+    expect(describeError(new Error("GraphQL -> 403"))).toBe("GraphQL -> 403");
+  });
+
+  // The two values whose property access raises, which is what would abort the wait loop.
+  it("names null and undefined instead of raising on them", () => {
+    expect(describeError(null)).toBe("null");
+    expect(describeError(undefined)).toBe("undefined");
+  });
+
+  // These do not raise; `err.message` yields undefined and the log then names nothing.
+  it("names a thrown value that has no message, rather than saying undefined", () => {
+    expect(describeError("just a string")).toBe("just a string");
+    expect(describeError({ code: 42 })).toBe("[object Object]");
+    expect(describeError(new Error(""))).toBe("Error");
+  });
+
+  it("never returns an empty string, whatever it is handed", () => {
+    for (const v of [null, undefined, "", 0, false, {}, new Error("")]) {
+      expect(describeError(v), String(v)).not.toBe("");
+    }
   });
 });
 
@@ -242,6 +268,38 @@ describe("awaitRound requesting the round (#44)", () => {
     });
     expect(result.state).toBe("expired");
     expect(s.lines.some((l) => l.includes("could not request") && l.includes("403"))).toBe(true);
+  });
+
+  /**
+   * Copilot's round on this pull request raised the `err.message` case. Its example was wrong —
+   * a thrown string yields `undefined` rather than raising — but the concern is real for `throw
+   * null` and `throw undefined`, where the property access itself raises and aborts the wait. Both
+   * that and the silent `(undefined)` are covered here, since a log naming nothing is the second
+   * failure and the one easier to ship.
+   */
+  it.each([
+    ["an Error", new Error("GraphQL -> 500"), "GraphQL -> 500"],
+    ["null", null, "null"],
+    ["undefined", undefined, "undefined"],
+    ["a string", "just a string", "just a string"],
+    ["an object with no message", { code: 42 }, "[object Object]"],
+  ])("keeps waiting and names the cause when the request throws %s", async (_l, thrown, shown) => {
+    const s = spy();
+    const result = await awaitRound({
+      api: apiWith([]),
+      requestRound: async () => {
+        throw thrown;
+      },
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s.log,
+    });
+    expect(result.state).toBe("expired");
+    // Naming the value is the assertion. A regression to bare `err.message` turns the string and
+    // object rows into `(undefined)`, which fails here — while the genuinely-undefined row still
+    // passes, because there `(undefined)` is the honest answer rather than a swallowed one.
+    expect(s.lines.find((l) => l.includes("could not request"))).toContain(shown as string);
   });
 
   // The pending check is a network call too, and it failing must not be worse than the request

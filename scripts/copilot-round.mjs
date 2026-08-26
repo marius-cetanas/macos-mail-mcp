@@ -123,6 +123,29 @@ export function classifyRound({ reviews, head, draft = false }) {
 
 
 /**
+ * Describe a thrown value for the log, whatever it turns out to be.
+ *
+ * `err.message` alone has two failure modes, and only the first is the obvious one. `throw null`
+ * and `throw undefined` make the property access itself raise, which would abort the wait loop —
+ * the exact opposite of the "keep waiting" the catch exists for. Less obviously, a thrown **string
+ * or object** does not throw: it yields `undefined`, and the log then reads
+ * `could not request a round (undefined)`, naming nothing. That is the failure
+ * *an error message that misleads costs more than one that is missing* describes, so both are
+ * handled here rather than only the one that crashes.
+ *
+ * @param {unknown} err
+ * @returns {string} something a reader can act on, never empty
+ */
+export function describeError(err) {
+  if (err === null) return "null";
+  if (err === undefined) return "undefined";
+  if (typeof err === "object" && typeof err.message === "string" && err.message) return err.message;
+  // `String("")` is `""`, and an empty parenthesis in the log names as little as `(undefined)`
+  // does. Falling back to the type is not much, but it is something a reader can act on.
+  return String(err) || `empty ${typeof err}`;
+}
+
+/**
  * How long the check waits before calling it. Ten minutes against rounds measured here at roughly
  * one to five — long enough that expiry means something went wrong rather than something was slow,
  * which is the only way the red at the end of it is worth reading.
@@ -199,7 +222,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
           log(`requested: no round was on order, asked ${COPILOT_REVIEWER} for one`);
         }
       } catch (err) {
-        log(`could not request a round (${err.message}) — waiting anyway`);
+        log(`could not request a round (${describeError(err)}) — waiting anyway`);
       }
     }
 
