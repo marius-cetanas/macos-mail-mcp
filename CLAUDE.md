@@ -98,6 +98,10 @@ gate — its tests are real tests and run in the same suite.
 
 The `escapeForJson` AppleScript function lives in `src/bridge/escape-for-json.applescript` and is **automatically prepended** to every script at runtime by the bridge. Domain scripts call it via `my escapeForJson(...)`. Never duplicate this handler into domain scripts.
 
+That file defines **two** handlers — `escapeForJson` and its helper `joinStrings` — and prepending puts both into every script's namespace. So `joinStrings` is a reserved name in domain scripts too, and a script defining its own would silently shadow the one the escaper calls. Grep before adding a top-level handler to that file.
+
+Its shape is dictated by AppleScript's list performance rather than by taste (#42): the code-point list is held in a script object, runs are accumulated in a bounded buffer, and lengths are tracked in integers because `count of` in the loop body is not free. The header comment carries the measurements. **It is not O(n) and the comment does not claim it is** — a false complexity claim in that header was half of what #42 reported.
+
 ### Multi-line Content via Temp Files
 
 AppleScript string literals cannot span multiple lines. Any content that may contain newlines is written to a temp file in TypeScript and read via `do shell script "cat ..."` in AppleScript:

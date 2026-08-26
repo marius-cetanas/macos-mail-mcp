@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Escaping a long message body no longer approaches the bridge's 30s timeout. `escapeForJson` was
+  quadratic in the length of its input: 40,000 characters took ~25s, and a body somewhat larger
+  than that would have failed as a timeout naming neither the tool nor the cause. The same input
+  now escapes in ~0.3s. Cost is also no longer sensitive to how much of the input needs escaping —
+  before, 40,000 characters of quotes cost an order of magnitude more than 40,000 of plain prose
+  (#42).
+
+  Two independent quadratic sources had to go, and each was masking the other, which is why fixing
+  either alone measured as no improvement: element access on a large AppleScript list, and
+  unbounded appends to the accumulator. The handler's header comment carries the measurements and
+  the four specific list operations that turned out to be traps.
+
 ## [1.3.2] - 2026-08-20
 
 ### Fixed

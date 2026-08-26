@@ -14,12 +14,25 @@ import { join } from "node:path";
  * `osascript` exists, so callers gate on `darwin` — see `onMacOS` below.
  */
 export function runHandler(handlerPath: string, expression: string): string {
+  return runHandlerScript(handlerPath, `return ${expression}`);
+}
+
+/**
+ * Run arbitrary statements against a handler file, rather than a single expression.
+ *
+ * `runHandler` cannot build a large input: AppleScript string concatenation is itself quadratic, so
+ * a 40,000-character literal has to be produced by doubling in a loop, and a loop is not an
+ * expression. The timeout is generous on purpose — a regression to the quadratic shape #42 reported
+ * should fail on the test's own assertion, with a measured number in the message, rather than as an
+ * opaque `ETIMEDOUT` from the runner.
+ */
+export function runHandlerScript(handlerPath: string, body: string, timeoutMs = 120_000): string {
   const source = readFileSync(join(process.cwd(), handlerPath), "utf8");
-  const script = `${source}\n\nreturn ${expression}\n`;
+  const script = `${source}\n\n${body}\n`;
   return execFileSync("osascript", ["-"], {
     input: script,
     encoding: "utf8",
-    timeout: 20_000,
+    timeout: timeoutMs,
   }).replace(/\n$/, "");
 }
 
