@@ -27,6 +27,7 @@ import { isMain } from "./is-main.mjs";
 
 export const COPILOT_LOGINS = [
   "copilot-pull-request-reviewer[bot]",
+  "copilot-pull-request-reviewer",
   "copilot",
   "copilot[bot]",
 ];
@@ -68,16 +69,19 @@ export const COPILOT_BOT_LOGIN = "copilot-pull-request-reviewer";
  * lists a Bot at all: on #48, with Copilot demonstrably requested and visible in GraphQL, REST
  * reported `users: []`. Asking REST would answer "nothing pending" every time.
  *
- * @param {Array<{requestedReviewer?: {login?: string}}>} nodes `pullRequest.reviewRequests.nodes`
+ * Every comparison goes through `isCopilotLogin`, which is the only place that type-guards. An
+ * earlier version tested `COPILOT_BOT_LOGIN` with a second, unguarded `login?.toLowerCase()` — and
+ * `?.` short-circuits on null and undefined only, so a login that was present but not a string
+ * (`{login: 42}`) raised `login?.toLowerCase is not a function` and aborted the wait loop. Raised
+ * by Copilot's round on #49 and reproduced before fixing. Both spellings now live in
+ * `COPILOT_LOGINS`, so there is one comparison and it cannot drift from the guard.
+ *
+ * @param {Array<{requestedReviewer?: {login?: unknown}} | null>} nodes
+ *   `pullRequest.reviewRequests.nodes` — elements and `requestedReviewer` are both nullable, and a
+ *   Team or Mannequin reviewer matches neither inline fragment and arrives as `{}`.
  */
 export function hasPendingRequest(nodes) {
-  return (
-    Array.isArray(nodes) &&
-    nodes.some((n) => {
-      const login = n?.requestedReviewer?.login;
-      return isCopilotLogin(login) || login?.toLowerCase() === COPILOT_BOT_LOGIN;
-    })
-  );
+  return Array.isArray(nodes) && nodes.some((n) => isCopilotLogin(n?.requestedReviewer?.login));
 }
 
 /**

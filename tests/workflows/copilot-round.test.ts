@@ -167,10 +167,26 @@ describe("hasPendingRequest", () => {
     expect(hasPendingRequest([])).toBe(false);
     expect(hasPendingRequest(undefined as never)).toBe(false);
     expect(hasPendingRequest([{}] as never)).toBe(false);
+    // A Team or Mannequin reviewer matches neither inline fragment and arrives as `{}`.
     expect(hasPendingRequest([{ requestedReviewer: {} }] as never)).toBe(false);
     // A deleted reviewer arrives as a null element or a null requestedReviewer, both legal.
     expect(hasPendingRequest([null] as never)).toBe(false);
     expect(hasPendingRequest([{ requestedReviewer: null }] as never)).toBe(false);
+  });
+
+  /**
+   * Raised by Copilot's round on #49 and reproduced before fixing: `?.` short-circuits on null and
+   * undefined only, so a login that is *present but not a string* sailed past the guard and
+   * `login?.toLowerCase()` raised `is not a function` — inside the loop whose whole contract is to
+   * keep waiting. "Malformed" has to mean any shape, not just an absent one.
+   */
+  it.each([
+    ["a number", 42],
+    ["a boolean", true],
+    ["an object", {}],
+    ["an array", ["copilot"]],
+  ])("is false for a login that is %s, rather than throwing", (_label, login) => {
+    expect(hasPendingRequest([{ requestedReviewer: { login } }] as never)).toBe(false);
   });
 });
 
