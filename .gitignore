@@ -6,12 +6,11 @@ coverage/
 .env
 .env.*
 
-# Portulan — compiled enforcement. Machine-specific: the hook command is an absolute
-# path into this machine's plugin cache, pinned to a plugin version, because the runner
-# is not under this project. Committing it would put a path in the tree that is wrong on
-# every other machine, and a hook whose file is missing FAILS OPEN. Regenerate with
-# `portulan compile`. See .portulan/gate-map.md, "The policy, and what compiles it".
-.claude/settings.json
+# `.claude/settings.json` is COMMITTED — see .portulan/gate-map.md. It used to be ignored,
+# because the hook command was an absolute path into one machine's plugin cache and a hook
+# whose file is missing FAILS OPEN. With the CLI installed as a dev dependency the path is
+# `${CLAUDE_PROJECT_DIR}`-relative, so the artifact is portable, reviewable in a diff, and
+# drift-checked in CI by `portulan compile --check`. Regenerate with `portulan compile`.
 
 # Worktrees live under .claude/ and are whole checkouts; never commit one.
 .claude/worktrees/

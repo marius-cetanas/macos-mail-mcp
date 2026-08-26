@@ -222,7 +222,17 @@ Read the tag, the GitHub release, or npm.
 
 `CHANGELOG.md` is maintained by hand in ordinary pull requests, since the workflow cannot
 commit to it. GitHub release notes are generated from the commit range by
-`scripts/release-notes.mjs`, grouped by conventional-commit type.
+`scripts/release-notes.mjs`, grouped by conventional-commit type — two independent artifacts,
+so writing one does not write the other.
+
+It carries a **standing `## [Unreleased]` heading**, and at release time the version heading is
+**inserted below it, not renamed from it**. Renaming is the natural move and it silently removes
+the standing heading, leaving the next change nowhere to land. Both halves are asserted in
+`tests/release/changelog.test.ts` — the heading exists, sits at the top, carries no date, and every
+heading below it does.
+
+The window matters: the workflow never commits to `main`, so a version's entry can only be written
+**before its tag exists**. 1.3.1 shipped with no entry and had to be backfilled from its own commits.
 
 ### Why the ordering is what it is
 

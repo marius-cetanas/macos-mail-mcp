@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parse } from "yaml";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -104,8 +105,67 @@ describe("the workspace wires the policy in", () => {
     expect(manifest.slots.gates).toBe("gate-map.md");
   });
 
-  it("ignores the compiled artifact, which is machine-specific and fails open when stale", () => {
-    expect(read(".gitignore")).toContain(".claude/settings.json");
+  /**
+   * The compiled artifact is committed, and these are the conditions that made it committable.
+   *
+   * It was ignored for a real reason: the hook command was an absolute path into one machine's
+   * plugin cache, pinned to a plugin version, and **a hook whose file is missing fails open** — so
+   * committing it would have shipped a file that looked like enforcement and was not. Installing
+   * the CLI as a dev dependency makes the path `${CLAUDE_PROJECT_DIR}`-relative, which is what
+   * these assert. If any of them regresses, the artifact is machine-specific again and committing
+   * it is once more the wrong thing.
+   */
+  describe("the compiled Claude Code artifact is portable", () => {
+    const settings = read(".claude/settings.json");
+
+    it("is committed rather than ignored", () => {
+      expect(existsSync(join(process.cwd(), ".claude/settings.json"))).toBe(true);
+      expect(read(".gitignore")).not.toMatch(/^\.claude\/settings\.json$/m);
+    });
+
+    it("resolves the hook through the project, not an absolute path", () => {
+      expect(settings).toContain("${CLAUDE_PROJECT_DIR}");
+      // The two spellings a machine-local path took: a home directory, or the plugin cache.
+      expect(settings).not.toMatch(/"\/Users\/|\/home\/|\.claude\/plugins/);
+    });
+
+    it("pins no plugin version into the hook path, which an upgrade would silently break", () => {
+      // The old path carried `…/portulan/0.1.2/cli/gate.mjs`, so upgrading the plugin unhooked the
+      // gate — failing open — until someone recompiled. The dependency's version lives in
+      // package.json now, where `npm ci` resolves it.
+      expect(settings).not.toMatch(/\/\d+\.\d+\.\d+\//);
+    });
+
+    it("depends on the CLI that provides the hook, so `npm ci` puts it there", () => {
+      const pkg = JSON.parse(read("package.json"));
+      expect(pkg.devDependencies["@sleepy_panda_srl/portulan"]).toBeDefined();
+      // A devDependency, so it stays out of the published tarball — `files` governs that anyway.
+      expect(pkg.dependencies?.["@sleepy_panda_srl/portulan"]).toBeUndefined();
+    });
+
+    it("is drift-checked in CI, which is what keeps it honest once committed", () => {
+      /*
+       * Parsed rather than pattern-matched. A regex over the raw YAML pinned one spelling of
+       * `needs: [test, audit, gate-policy]` — so reordering the list, or rewriting it as a block
+       * sequence, would have failed a workflow that was still correct, while `needs: [gate-policy]`
+       * written across two lines would have passed a workflow that was not. What matters is which
+       * job runs the check and whether the required aggregate depends on it, and both are
+       * properties of the document, not of its formatting.
+       */
+      const ci = parse(read(".github/workflows/verify.yml")) as {
+        jobs: Record<string, { needs?: string[]; steps?: { run?: string }[] }>;
+      };
+
+      const runsCheck = Object.entries(ci.jobs).filter(([, job]) =>
+        (job.steps ?? []).some((s) => s.run?.includes("portulan compile --check"))
+      );
+      expect(runsCheck).toHaveLength(1);
+
+      const [checkJob] = runsCheck[0];
+      // `verify` is the one context branch protection requires, so the merge gate covers the drift
+      // check only if the aggregate depends on the job that runs it.
+      expect(ci.jobs.verify.needs).toContain(checkJob);
+    });
   });
 });
 
