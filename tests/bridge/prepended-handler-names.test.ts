@@ -21,9 +21,26 @@ import { SHARED_HANDLER_FILES } from "../../src/bridge/applescript-runner.js";
 const BRIDGE = join(process.cwd(), "src/bridge");
 const DOMAINS = join(process.cwd(), "src/domains");
 
-/** Top-level `on someHandler(` declarations, which are the ones that collide. */
+/**
+ * Top-level handler declarations, in every form that can collide.
+ *
+ * Not just `on name(…)`. AppleScript's labelled-parameter forms take no parentheses at all, and
+ * they collide identically — measured, `on joinStrings given size:x` and `on joinStrings above x`
+ * each raise `-2752` against the prepended `on joinStrings(theList)`. Matching only the
+ * parenthesised form would have missed them.
+ *
+ * (The bare `on name` with no parameters at all, which prompted this widening, turns out not to be
+ * valid AppleScript: it raises `Expected "given", "into", "with", "without" or other parameter
+ * name`. The labelled forms that error message names are the real gap, and they are covered here.)
+ *
+ * Anchored to column 1, which is what keeps `on error` clauses out — they are inside handlers and
+ * therefore indented. `error` is excluded by name as well, so a top-level one could not be read as
+ * a declaration.
+ */
 function handlerNames(source: string): string[] {
-  return [...source.matchAll(/^on\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm)].map((m) => m[1]);
+  return [...source.matchAll(/^on\s+([A-Za-z_][A-Za-z0-9_]*)\b/gm)]
+    .map((m) => m[1])
+    .filter((name) => name !== "error");
 }
 
 function applescriptFiles(dir: string): string[] {
