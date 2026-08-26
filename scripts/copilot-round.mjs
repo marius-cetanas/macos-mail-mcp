@@ -350,6 +350,15 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
    *
    * Needs `pull-requests: write`, which the workflow grants. On a fork's pull request the token is
    * read-only regardless and this throws — `awaitRound` treats that as "wait anyway".
+   *
+   * **The Actions token can do this, and that was not obvious enough to assume.** A Copilot review
+   * request could plausibly have required a seat held by a person rather than an app installation,
+   * in which case all of the above would be an elaborate no-op in the only place it runs. Measured
+   * on this pull request's own check, run 32959250916 on head `9fe2c9a1`: the pending request was
+   * cleared before the job's first poll, and the job then logged
+   * `requested: no round was on order` while the timeline recorded
+   * `review_requested by github-actions[bot]`. It waited, correctly refused a round sitting on an
+   * earlier head, and exited 0 when the fresh one landed.
    */
   const requestRound = async () => {
     // Checked rather than parsed blind: on a 403 the body still parses, `node_id` is simply absent,
