@@ -8,8 +8,9 @@ at 1.3.2 — the fix this release exists for. `main` green: **576 tests across 2
 statements/branches/functions/lines on `src/`, 0 vulnerabilities. **No open issues and no open pull
 requests.**
 
-**Five merged** — #47 (CodeQL bump), #49 (the Copilot gate, closing #44), #48 (`escapeForJson`,
-closing #42), #50 (changelog for 1.3.3), on top of #46 from the previous session.
+**Four merged, all on 2026-08-26** — #47 (CodeQL bump), #49 (the Copilot gate, closing #44), #48
+(`escapeForJson`, closing #42) and #50 (the changelog for 1.3.3). #46 is in the range since v1.3.2
+but belongs to the previous session, having merged on 2026-08-22.
 
 ## The pattern, because it happened three times in one session
 
