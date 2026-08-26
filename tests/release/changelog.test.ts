@@ -38,13 +38,37 @@ describe("CHANGELOG.md", () => {
     }
   });
 
+  /**
+   * Compare two `major.minor.patch` triples. Positive when `a` is the newer version.
+   *
+   * Field by field, because comparing the parsed arrays directly is wrong in a way that passes
+   * today. `[1,10,0] > [1,9,0]` coerces both to strings and asks whether `"1,10,0" > "1,9,0"`,
+   * which is **false** — `"1"` sorts below `"9"` at the third character. Same for
+   * `[1,3,10] > [1,3,9]`. Every version this file currently holds happens to avoid both shapes, so
+   * the broken comparison was green and would have stayed green until 1.10.0 or 1.3.10, then
+   * failed on a correctly-ordered changelog. Raised by Copilot on #52.
+   */
+  const compare = (a: number[], b: number[]) =>
+    a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+
+  it("compares versions numerically, not by coercing arrays to strings", () => {
+    // The two cases the array comparison gets wrong, asserted directly so the comparator is pinned
+    // independently of whichever versions the file happens to contain.
+    expect(compare([1, 10, 0], [1, 9, 0])).toBeGreaterThan(0);
+    expect(compare([1, 3, 10], [1, 3, 9])).toBeGreaterThan(0);
+    expect(compare([2, 0, 0], [1, 10, 0])).toBeGreaterThan(0);
+    expect(compare([1, 3, 2], [1, 3, 3])).toBeLessThan(0);
+    expect(compare([1, 3, 3], [1, 3, 3])).toBe(0);
+  });
+
   it("orders released versions newest first", () => {
-    const versions = headings.slice(1).map((h) => h[1].split(".").map(Number));
+    const released = headings.slice(1);
+    const versions = released.map((h) => h[1].split(".").map(Number));
     for (let i = 1; i < versions.length; i += 1) {
       expect(
-        versions[i - 1] > versions[i],
-        `${headings[i][1]} should sort above ${headings[i + 1][1]}`
-      ).toBe(true);
+        compare(versions[i - 1], versions[i]),
+        `[${released[i - 1][1]}] should sort above [${released[i][1]}]`
+      ).toBeGreaterThan(0);
     }
   });
 
