@@ -109,9 +109,39 @@ name, so the check that exists to stop a stale verdict is itself the least const
 The policy declares it unpinned because that is what is live, not because it should stay that way;
 pinning it is a branch-protection change, which is Gated (`change-branch-protection`).
 
-The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset are a pair: the
-check waits for a round, the ruleset is what requests one. The payload is kept at
+The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset were a pair: the
+check waited for a round, the ruleset requested one. The payload is kept at
 `.github/rulesets/copilot-auto-review.json` so the dependency is reviewable rather than remembered.
+
+**The check no longer depends on that pairing, because the ruleset does not cover every pull request
+it gates (#44).** Two holes were measured, with different causes. The ruleset is conditioned on
+`~DEFAULT_BRANCH`, so a pull request opened against any other branch never draws a round — #41 burned
+three full budgets that way. And a **bot author** draws none either: #47 was opened by Dependabot
+against `main`, condition satisfied and not a draft, and got nothing in 16 hours, where #43, #45, #46
+and #48 were each requested one second after opening. Both holes present identically — a red
+required check that no push can turn green, reading as though the change were at fault.
+
+**Be careful what the second claim rests on.** Every Dependabot pull request in this repository's
+history — 18 of them — has drawn zero automatic rounds, but 17 predate the ruleset (created
+2026-08-20) and are therefore explained by its absence rather than by the author. **#47 is the only
+probative case**, with the human pull requests opened after that date as controls. An earlier draft
+of this paragraph said *ten*, which reproduces from no query at all; the figure that does reproduce
+is 18, and it is the weaker half of the argument rather than the stronger.
+
+So the check now requests the round itself when none is pending, which is why its workflow holds
+`pull-requests: write`. That is enforcement moving from a ruleset that decides which pull requests to
+notice, to a check that asks for what it is waiting on. The ruleset stays: it is faster on the common
+path, and the check asking is the floor beneath it rather than a replacement.
+
+**Requesting it takes GraphQL, and the REST spelling fails silently.**
+`POST /pulls/{n}/requested_reviewers` with `copilot-pull-request-reviewer[bot]` returns **201 Created
+and adds nobody** — measured on #48 on 2026-08-26. Copilot is a **Bot**, and that endpoint takes
+Users and Teams; a Bot matches neither, so it is accepted and dropped. (#44 recorded the status as
+200; either way it is a success code for an action that did not happen.) The working call is
+`requestReviews(input: {botIds: […], union: true})`, and `union` is what stops it evicting a human
+reviewer already on the pull request. A success status for an action that did not happen is exactly
+the failure *an error message that misleads costs more than one that is missing* names, so it is
+recorded in `scripts/copilot-round.mjs` beside the constant rather than left to be rediscovered.
 
 `verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix and the
 audit. It exists so branch protection has one stable context to require: matrix job names change
