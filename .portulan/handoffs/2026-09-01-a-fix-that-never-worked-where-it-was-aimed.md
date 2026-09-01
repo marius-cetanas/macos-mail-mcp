@@ -7,9 +7,11 @@ v4.37.9, both `init` and `analyze`, SHA-pinned), **#55** (`@types/node` 26.2.0 �
 `4997f61`, three commits past `0bfa963`, and green: **536 passed / 51 skipped across 29 files**, 100%
 statements/branches/functions/lines on `src/`, 0 vulnerabilities, `portulan compile --check` GREEN.
 The 51 skips are the macOS-only AppleScript tests, as always off a Mac. Verified locally per branch
-**and** on the three-way merge result before any of them landed. **No open pull requests.** One open
-issue: **#58**. Nothing consumer-facing shipped, so no release is owed — all three are `chore`, which
-the resolver types as no bump.
+**and** on the three-way merge result before any of them landed. **The Dependabot queue is empty.**
+Open at the time of writing: issue **#58**, and **#59** — the pull request carrying this file and the
+comment corrections it describes, green and unmerged. If you are reading this on `main`, #59 landed;
+if the corrections below are not in the tree you are looking at, it did not. Nothing consumer-facing
+shipped, so no release is owed — all three are `chore`, which the resolver types as no bump.
 
 **All three were blocked by the same thing, and it was not the change.** Every check green except
 `copilot-reviewed`, which is required, on all three, each burning the full 600s budget. That is the
