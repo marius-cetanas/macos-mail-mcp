@@ -71,7 +71,8 @@ which side GitHub keys on is *not established*. Recorded as unknown rather than 
   permissions rationale now also says the write scope is granted and insufficient, so nobody widens
   a scope that is already wide. The test file's `describe` comment now says what those assertions
   cover and what they cannot: injected I/O cannot observe a mutation that lies, which is why the
-  suite was green for a week while the thing it describes did not work.
+  suite was green for the six days between #49 merging and today while the thing it describes did
+  not work.
 
 **Open questions.** *(human-owned)*
 - Does GitHub key the refusal on the pull request's author or on the requesting actor? Settling it
