@@ -193,7 +193,8 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *
  * **Measured on 2026-09-01, that reasoning holds for the first hole and not the second.** The ask
  * is a silent no-op on a Dependabot pull request — see the section below. The claim that it "fixes
- * both" stood here for a week and was false the whole time; #58 carries the measurement.
+ * both" stood here from #49 (2026-08-26) to 2026-09-01 and was false throughout; #58 carries the
+ * measurement.
  *
  * Asked at most once per run, and only when nothing is pending — the ordinary case already has a
  * request in flight a second after opening, and a duplicate would be noise.

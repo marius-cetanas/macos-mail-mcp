@@ -202,7 +202,7 @@ describe("hasPendingRequest", () => {
  * These assertions cover the loop's decision to ask, which is all they ever covered. **They do not
  * establish that asking works**, and on a Dependabot pull request it does not: the mutation is
  * accepted and records nothing (#58). Injected I/O cannot see that, so nothing here fails when it
- * happens — which is why it took three red pull requests to notice.
+ * happens — which is why it took three red pull requests, six days after #49 merged, to notice.
  */
 describe("awaitRound requesting the round (#44)", () => {
   /** Serves the two endpoints the loop reads. Pending state is injected separately, as in the CLI. */
