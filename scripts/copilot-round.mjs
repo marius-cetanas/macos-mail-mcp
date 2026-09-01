@@ -187,8 +187,13 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * said "ten", which reproduces from no query at all.
  *
  * Both present identically: a red required check with no explanation, which reads as though the
- * change were at fault. Widening the ruleset's `ref_name` would fix only the first. Asking here
- * fixes both, because it stops depending on which pull requests the ruleset chooses to notice.
+ * change were at fault. Widening the ruleset's `ref_name` would fix only the first, so this asks
+ * instead, on the reasoning that asking stops depending on which pull requests the ruleset chooses
+ * to notice.
+ *
+ * **Measured on 2026-09-01, that reasoning holds for the first hole and not the second.** The ask
+ * is a silent no-op on a Dependabot pull request — see the section below. The claim that it "fixes
+ * both" stood here for a week and was false the whole time; #58 carries the measurement.
  *
  * Asked at most once per run, and only when nothing is pending — the ordinary case already has a
  * request in flight a second after opening, and a duplicate would be noise.
@@ -199,6 +204,24 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * every poll sees the request still on order, nothing re-asks, and the check expires red. That is
  * exactly the pre-#44 behaviour rather than a regression, but the log will say "requested already"
  * throughout, which is the opposite of a clue.
+ *
+ * **Worse, the ask itself can be accepted and do nothing, and the log then reads as a success.**
+ * On #55, #56 and #57 — Dependabot pull requests, 2026-09-01 — `requestReviews` resolved without
+ * throwing, so this logged `requested: no round was on order, asked … for one`, and no
+ * `review_requested` event was ever recorded on any of the three. All three expired red.
+ *
+ * It is not the token. That job's log reports `PullRequests: write` under `GITHUB_TOKEN
+ * Permissions`, with `Secret source: Dependabot` — the mutation was accepted with the scope it
+ * needed and recorded nothing. Nor is it Copilot declining Dependabot: requested under a
+ * user-scoped token, the same three pull requests drew a round on the same heads within five
+ * seconds, which is how they were unblocked. The same code path on a human-authored pull request
+ * (#49) does record `review_requested by github-actions[bot]`.
+ *
+ * So the failing combination is a bot-authored pull request asked by the Actions token, and which
+ * side GitHub keys on is not established. Until it is, a Dependabot pull request needs the round
+ * requested by hand and the job re-run. #58 has the controls and the suggested fix — re-checking
+ * `isRoundPending()` after the mutation returns, so a request that did not take says so instead of
+ * reporting success. That is a behaviour change to a required check, so it is not made here.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
