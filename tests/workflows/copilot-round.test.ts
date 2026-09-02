@@ -520,8 +520,13 @@ describe("awaitRound requesting the round (#44)", () => {
   });
 
   /*
-   * A round that reviewed nothing ends the wait as `not-owed` rather than burning the budget —
-   * the #54 half, exercised through the loop rather than only through the classifier.
+   * The #54 half through the loop rather than only through the classifier. A declined diff does
+   * **not** end the wait: the check stays `awaited` for a human review of that head and expires
+   * red without one, which is the point of it. What ends early is the asking — see below.
+   *
+   * _(This comment described the `not-owed` exemption an earlier revision of this branch had, and
+   * survived the switch to requiring a human review. Raised by Copilot on #61; a test read as a
+   * spec is exactly where a stale comment does its damage.)_
    */
   const DECLINED_ON_HEAD = {
     user: { login: "Copilot" },
