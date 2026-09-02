@@ -127,6 +127,16 @@ export const ERRORED = /unable to review/i;
  * catches the ones that carry a login and no type; and Copilot is checked by name because it
  * appears under four spellings, one of which — `Copilot` — has neither marker.
  *
+ * **`type` is accepted only as the literal `"User"`, not as "anything but `Bot`."** The set is open
+ * — REST also returns `Organization`, GraphQL adds `Mannequin` — so a not-`Bot` test reads every
+ * future member as a person by default, and this predicate is the whole gate on the declined-diff
+ * path. An unknown type is refused rather than waved through; the cost of being wrong that way is a
+ * review that has to be re-submitted, against a merge with nobody having looked. _(Raised by
+ * Copilot on #61.)_
+ *
+ * A **missing** `type` is still tolerated, because a trimmed payload carrying only a login is the
+ * ordinary shape in this repository's own fixtures, and the two name checks above still apply.
+ *
  * @param {unknown} user a review's `user` object
  */
 export function isHumanReviewer(user) {
@@ -134,7 +144,8 @@ export function isHumanReviewer(user) {
   if (typeof login !== "string" || login === "") return false;
   if (isCopilotLogin(login)) return false;
   if (login.toLowerCase().endsWith("[bot]")) return false;
-  return /** @type {any} */ (user)?.type !== "Bot";
+  const type = /** @type {any} */ (user)?.type;
+  return type === undefined || type === null ? true : type === "User";
 }
 
 /**
@@ -455,9 +466,9 @@ export async function describeRequest(isRoundPending) {
       return `requested: asked ${COPILOT_REVIEWER} for a round, and it is on order`;
     }
     return (
-      `requested ${COPILOT_REVIEWER} and the mutation succeeded, but nothing is on order a moment ` +
-      `later — either Copilot took it up already, or the request did not take (#58). If this run ` +
-      `expires red, it was the second.`
+      `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and nothing is on order a ` +
+      `moment later — either Copilot took it up already, or the request did not take (#58). If ` +
+      `this run expires red, it was the second.`
     );
   } catch (err) {
     return (

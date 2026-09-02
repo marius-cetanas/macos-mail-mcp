@@ -288,6 +288,23 @@ describe("isHumanReviewer", () => {
     expect(isHumanReviewer({ login: "Copilot" })).toBe(false);
   });
 
+  /*
+   * The account-type set is open — REST also returns `Organization`, GraphQL adds `Mannequin` — so
+   * "anything but Bot" would read every future member as a person. Refused by default instead.
+   * (Raised by Copilot on #61.)
+   */
+  it("accepts only the literal User when a type is present", () => {
+    expect(isHumanReviewer({ login: "someone", type: "User" })).toBe(true);
+    for (const type of ["Organization", "Mannequin", "EnterpriseUserAccount", "", "user"]) {
+      expect(isHumanReviewer({ login: "someone", type }), type).toBe(false);
+    }
+  });
+
+  it("still tolerates a payload trimmed to a login", () => {
+    expect(isHumanReviewer({ login: "someone", type: undefined })).toBe(true);
+    expect(isHumanReviewer({ login: "someone", type: null })).toBe(true);
+  });
+
   it("rejects a missing or malformed user rather than throwing", () => {
     expect(isHumanReviewer(undefined)).toBe(false);
     expect(isHumanReviewer(null)).toBe(false);
@@ -321,6 +338,18 @@ describe("describeRequest (#58)", () => {
     expect(line).toMatch(/could not confirm it landed \(GraphQL -> 403\)/);
     expect(line).not.toMatch(/did not take/);
     expect(line).not.toMatch(/on order/);
+  });
+
+  it("keeps the `requested:` prefix on every branch", async () => {
+    const lines = [
+      await describeRequest(async () => true),
+      await describeRequest(async () => false),
+      await describeRequest(async () => {
+        throw new Error("boom");
+      }),
+      await describeRequest(undefined),
+    ];
+    for (const line of lines) expect(line, line).toMatch(/^requested: /);
   });
 
   it("claims nothing when there is no way to check", async () => {
@@ -485,6 +514,9 @@ describe("awaitRound requesting the round (#44)", () => {
     });
     expect(s.asked).toBe(1);
     expect(s.lines.some((l) => /did not take \(#58\)/.test(l))).toBe(true);
+    // Every line this function emits shares the prefix, so prefix scanning stays meaningful.
+    // (Raised by Copilot on #61.)
+    expect(s.lines.every((l) => l.startsWith("requested:") || l.startsWith("waiting:"))).toBe(true);
   });
 
   /*
