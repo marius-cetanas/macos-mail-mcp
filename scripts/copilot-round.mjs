@@ -85,8 +85,88 @@ export function hasPendingRequest(nodes) {
 }
 
 /**
+ * Bodies that are a Copilot round arriving with **no review in it** (#54).
+ *
+ * A round is the gate's proxy for "somebody looked at this tree". Copilot submits a review in two
+ * cases where nobody looked, and `classifyRound` counted both as `landed` until now — so the merge
+ * gate was satisfied by the absence of a review, which is the thing it was built to prevent.
+ *
+ * The two are **not the same failure** and do not get the same answer, which is the half #54 did
+ * not have when it was filed:
+ *
+ *   * `DECLINED_DIFF` — *"Copilot wasn't able to review any files in this pull request."* Returned
+ *     for a diff Copilot will not read; measured on #55 and #56, both `package-lock.json`-only, and
+ *     both merged on it. **Re-requesting cannot fix this** — the diff will still be a lockfile — so
+ *     the round that is owed is a person's. Satisfied by a human review on the head, and `awaited`
+ *     until there is one. See `isHumanReviewer`.
+ *   * `ERRORED` — *"Copilot encountered an error and was unable to review this pull request."*
+ *     Transient; #53 got a real verdict from a re-request two minutes later. `awaited`, which is
+ *     also what makes `awaitRound` ask again.
+ *
+ * Matching a vendor's prose is brittle and is the right trade anyway: the alternative is a gate
+ * that silently accepts nothing. Loose enough to survive rewording, and the day a string changes
+ * the failure is a **red** gate rather than a green one, because an unmatched body falls through
+ * to `landed` only if it is a real round — and a reworded apology reaching `landed` is the
+ * behaviour we already had. Ordered specific-first: `DECLINED_DIFF` is checked before `ERRORED` so
+ * a future *"Copilot was unable to review any files"* lands in the right one.
+ */
+export const DECLINED_DIFF = /able to review any files/i;
+
+/** @see DECLINED_DIFF */
+export const ERRORED = /unable to review/i;
+
+/**
+ * Is this review a person's?
+ *
+ * Only consulted where Copilot has declined to read the diff, and there the whole gate rests on it:
+ * a bot slipping through this predicate would satisfy the check with nobody having looked, which is
+ * the defect #54 is about, one layer down.
+ *
+ * Three ways an account can fail to be a person, because one is not enough. `type` is what the API
+ * means to say and is trusted first; it is absent from trimmed payloads, so the `[bot]` suffix
+ * catches the ones that carry a login and no type; and Copilot is checked by name because it
+ * appears under four spellings, one of which — `Copilot` — has neither marker.
+ *
+ * **`type` is accepted only as the literal `"User"`, not as "anything but `Bot`."** The set is open
+ * — REST also returns `Organization`, GraphQL adds `Mannequin` — so a not-`Bot` test reads every
+ * future member as a person by default, and this predicate is the whole gate on the declined-diff
+ * path. An unknown type is refused rather than waved through; the cost of being wrong that way is a
+ * review that has to be re-submitted, against a merge with nobody having looked. _(Raised by
+ * Copilot on #61.)_
+ *
+ * A **missing** `type` is still tolerated, because a trimmed payload carrying only a login is the
+ * ordinary shape in this repository's own fixtures, and the two name checks above still apply.
+ *
+ * @param {unknown} user a review's `user` object
+ */
+export function isHumanReviewer(user) {
+  const login = /** @type {any} */ (user)?.login;
+  if (typeof login !== "string" || login === "") return false;
+  if (isCopilotLogin(login)) return false;
+  if (login.toLowerCase().endsWith("[bot]")) return false;
+  const type = /** @type {any} */ (user)?.type;
+  return type === undefined || type === null ? true : type === "User";
+}
+
+/**
+ * Does this round's body say Copilot did not review anything?
+ *
+ * Guards the type rather than assuming it: `body` is absent on some review payloads and `null` on
+ * others, and `String(null).match()` would happily test the text "null".
+ *
+ * @param {unknown} body
+ * @returns {"declined"|"errored"|null} null when the body reads as an actual review
+ */
+export function emptyRound(body) {
+  if (typeof body !== "string" || body === "") return null;
+  if (DECLINED_DIFF.test(body)) return "declined";
+  if (ERRORED.test(body)) return "errored";
+  return null;
+}
+
+/**
  * @param {{reviews: Array<object>, head: string, draft?: boolean}} input
- * @returns {{state: "landed"|"awaited"|"not-owed", reason: string}}
+ * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human"}}
  */
 export function classifyRound({ reviews, head, draft = false }) {
   if (draft) {
@@ -106,11 +186,60 @@ export function classifyRound({ reviews, head, draft = false }) {
   const byCopilot = list.filter((r) => isCopilotLogin(r?.user?.login));
   const onHead = byCopilot.filter((r) => r?.commit_id === head);
   const short = head.slice(0, 8);
+  // Every review describing the head, Copilot's and everyone else's — the declined branch below is
+  // the one place a non-Copilot review decides the answer.
+  const allOnHead = list.filter((r) => r?.commit_id === head);
+
+  /*
+   * A round that reviewed nothing does not count as one (#54). Split before deciding, and let a
+   * real round win over an empty one on the same head — that is #53's exact sequence, where an
+   * error round and the genuine verdict both carried `commit_id: 6313d73e`.
+   */
+  const real = onHead.filter((r) => emptyRound(r?.body) === null);
+  const declined = onHead.filter((r) => emptyRound(r?.body) === "declined");
+
+  if (real.length > 0) {
+    return {
+      state: "landed",
+      reason: `${real.length} Copilot round(s) on ${short}, the commit being merged`,
+    };
+  }
+
+  if (declined.length > 0) {
+    /*
+     * Copilot will not read this diff, so no re-request produces a round and the only reviewer
+     * left is a person. The gate holds rather than exempting the pull request: a lockfile is where
+     * a supply-chain change arrives, which is the diff least worth waving through.
+     *
+     * **Any human review on the head counts, not only an approval**, and that is a deadlock guard
+     * rather than laxity. GitHub forbids approving your own pull request, so an APPROVED-only rule
+     * would make a maintainer-authored lockfile change unmergeable by anyone — the sole maintainer
+     * cannot approve it and there is nobody else. A `COMMENTED` review is allowed on your own pull
+     * request, so the rule stays satisfiable in every case while still costing a person a look and
+     * a statement on the record against this exact tree.
+     */
+    const humans = allOnHead.filter((r) => isHumanReviewer(r?.user));
+    if (humans.length > 0) {
+      return {
+        state: "landed",
+        reason: `Copilot declined to read the diff on ${short}; ${humans.length} human review(s) on it`,
+      };
+    }
+    return {
+      state: "awaited",
+      // `human`, so the loop asks Copilot for nothing here — another round would arrive declining
+      // the same diff, and the log would name the wrong thing as missing.
+      awaiting: "human",
+      reason: `Copilot declined to read the diff on ${short} — waiting for a human review of it`,
+    };
+  }
 
   if (onHead.length > 0) {
     return {
-      state: "landed",
-      reason: `${onHead.length} Copilot round(s) on ${short}, the commit being merged`,
+      state: "awaited",
+      // The error case. Naming it separately is the point: a bare "no round yet" here would
+      // describe a round that arrived and said it had failed.
+      reason: `${onHead.length} Copilot round(s) on ${short}, all of them errors — waiting for a real one`,
     };
   }
 
@@ -220,9 +349,10 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *
  * So the failing combination is a bot-authored pull request asked by the Actions token, and which
  * side GitHub keys on is not established. Until it is, a Dependabot pull request needs the round
- * requested by hand and the job re-run. #58 has the controls and the suggested fix — re-checking
- * `isRoundPending()` after the mutation returns, so a request that did not take says so instead of
- * reporting success. That is a behaviour change to a required check, so it is not made here.
+ * requested by hand and the job re-run; #58 has the controls. The **diagnosis** is fixed — see
+ * `describeRequest`, which re-checks `isRoundPending()` after the mutation and refuses to call an
+ * unconfirmed request a success. The **mechanism** is not: this still cannot make GitHub honour the
+ * request, so #58 stays open and the manual step stands.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
@@ -250,7 +380,12 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
       return { ...result, polls };
     }
 
-    if (!asked && requestRound) {
+    /*
+     * Nothing to ask for when the missing reviewer is a person: another Copilot round would arrive
+     * declining the same diff, and the log would announce a request for the one thing already
+     * known not to be coming.
+     */
+    if (!asked && requestRound && result.awaiting !== "human") {
       asked = true;
 
       /*
@@ -278,7 +413,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         // right answer is the one the check always had: wait, and let the budget decide.
         try {
           await requestRound();
-          log(`requested: no round was on order, asked ${COPILOT_REVIEWER} for one`);
+          log(await describeRequest(isRoundPending));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
@@ -298,6 +433,48 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
     log(`waiting: ${result.reason}`);
     await sleep(pollMs);
     waited += pollMs;
+  }
+}
+
+/**
+ * What to log after a request that did not throw (#58).
+ *
+ * The old line said `requested: no round was on order, asked … for one` on any resolved mutation,
+ * and on a Dependabot pull request that is a lie: measured on #55, #56 and #57, `requestReviews`
+ * resolves, **no `review_requested` event is ever recorded**, and the check expires red ten
+ * minutes later with a success line at the top of the log. Not a permissions problem — that job's
+ * own log reports `PullRequests: write`. A success code for an action that did not happen is the
+ * failure this repository has a principle about, and it had reappeared inside the code written to
+ * fix it.
+ *
+ * So the request is checked rather than assumed. **The check is not conclusive and does not claim
+ * to be**: a request that Copilot picks up immediately also reads as "nothing pending" — measured
+ * on #49, where the pending request was cleared before the job's first poll. Both readings are in
+ * the line, with the one that matters attached to the outcome that distinguishes them, because a
+ * reader who is looking at this log at all is looking at a run that expired.
+ *
+ * A failure to check is not evidence either way and says so, rather than picking the reassuring
+ * reading.
+ *
+ * @param {(() => Promise<boolean>) | undefined} isRoundPending
+ * @returns {Promise<string>}
+ */
+export async function describeRequest(isRoundPending) {
+  if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;
+  try {
+    if (await isRoundPending()) {
+      return `requested: asked ${COPILOT_REVIEWER} for a round, and it is on order`;
+    }
+    return (
+      `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and nothing is on order a ` +
+      `moment later — either Copilot took it up already, or the request did not take (#58). If ` +
+      `this run expires red, it was the second.`
+    );
+  } catch (err) {
+    return (
+      `requested: asked ${COPILOT_REVIEWER} for a round, and could not confirm it landed ` +
+      `(${describeError(err)})`
+    );
   }
 }
 

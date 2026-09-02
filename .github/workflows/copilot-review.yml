@@ -28,7 +28,27 @@
 # `review_requested` event is ever recorded — so all three expired red and no push could have
 # changed that. Not a token problem; this job's own log reports `PullRequests: write`. Requested
 # under a user-scoped token the same three drew a round in five seconds. Until #58 settles the
-# mechanism, a Dependabot pull request needs the round requested by hand and this job re-run.
+# mechanism, a Dependabot pull request needs the round requested by hand and this job re-run. What
+# is fixed is the log: the job no longer calls an unconfirmed request a success.
+#
+# ## A round is not a review just because it arrived (#54)
+#
+# Copilot submits a review in two cases where nobody looked, and the check counted both. They get
+# different answers, because only one of them can be fixed by asking again:
+#
+#   * an error round is transient — the job keeps waiting, and asks again;
+#   * "wasn't able to review any files", what Copilot returns for a lockfile-only diff, is
+#     permanent for that diff. No round is coming, so the review that is owed is a person's: the
+#     job waits for a human review of that head and asks Copilot for nothing.
+#
+# So a Dependabot lockfile bump costs one human review per bump, deliberately. A lockfile is where
+# a supply-chain change arrives, which is the diff least worth waving through, and the alternative
+# considered — exempting it outright — is the same gate with nobody looking.
+#
+# **Any human review counts, not only an approval**, and that is a deadlock guard rather than
+# laxity: GitHub forbids approving your own pull request, so an APPROVED-only rule would make a
+# maintainer-authored lockfile change unmergeable by anyone here. A `COMMENTED` review is allowed
+# on your own pull request, so the rule stays satisfiable in every case.
 #
 # ## `pull_request_review` is deliberately not a trigger
 #
