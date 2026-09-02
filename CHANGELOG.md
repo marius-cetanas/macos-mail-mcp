@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-09-02
+
 ### Internal
 
 - `copilot-reviewed` no longer counts a Copilot round that contains no review as a review. Copilot
