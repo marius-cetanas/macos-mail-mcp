@@ -348,8 +348,45 @@ describe("describeRequest (#58)", () => {
         throw new Error("boom");
       }),
       await describeRequest(undefined),
+      await describeRequest(undefined, true),
+      await describeRequest(undefined, false),
     ];
     for (const line of lines) expect(line, line).toMatch(/^requested: /);
+  });
+
+  /*
+   * The mutation's own response is the post-mutation state, so it is not racing Copilot the way
+   * the poll below is. It wins wherever it exists.
+   */
+  it("prefers what the mutation reported over a later poll", async () => {
+    const contradicting = async () => false;
+    expect(await describeRequest(contradicting, true)).toMatch(/GitHub recorded it/);
+    const alsoContradicting = async () => true;
+    expect(await describeRequest(alsoContradicting, false)).toMatch(/did not take \(#58\)/);
+  });
+
+  /*
+   * Definite about what GitHub said, and deliberately not about what happens next. An earlier
+   * draft ended "the check will expire", which the loop does not guarantee: it keeps polling, and
+   * #58's own documented workaround — a user requesting the round by hand — lands inside that
+   * window and turns the check green. (Raised by Copilot on #63.)
+   */
+  it("is definite about GitHub's answer and not about the run's outcome", async () => {
+    const line = await describeRequest(undefined, false);
+    // Names the list it actually read — `reviewRequests`, not the reviews. (Raised by Copilot on #63.)
+    expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
+    expect(line).toMatch(/Nothing this job can do will produce a round/);
+    expect(line).toMatch(/still lands and still counts/);
+    expect(line).not.toMatch(/will expire/);
+    // No hedging on GitHub's answer, though — unlike the poll, that reading has no innocent one.
+    expect(line).not.toMatch(/took it up already/);
+  });
+
+  it("falls back to the poll when the mutation reported nothing either way", async () => {
+    for (const recorded of [null, undefined]) {
+      expect(await describeRequest(async () => true, recorded)).toMatch(/on order/);
+      expect(await describeRequest(async () => false, recorded)).toMatch(/took it up already/);
+    }
   });
 
   it("claims nothing when there is no way to check", async () => {
@@ -865,8 +902,21 @@ describe("makeGithubIo", () => {
     const BOT = { body: { node_id: "BOT_x" } };
     const PR_ID = { body: { data: { repository: { pullRequest: { id: "PR_x" } } } } };
 
+    /** The mutation's answer, shaped as GitHub returns it. */
+    const mutationSaying = (logins: string[]) => ({
+      body: {
+        data: {
+          requestReviews: {
+            pullRequest: {
+              reviewRequests: { nodes: logins.map((login) => ({ requestedReviewer: { login } })) },
+            },
+          },
+        },
+      },
+    });
+
     it("looks the bot up, then mutates with its node id", async () => {
-      const g = io([BOT, PR_ID, { body: { data: { requestReviews: { pullRequest: { id: "PR_x" } } } } }]);
+      const g = io([BOT, PR_ID, mutationSaying([COPILOT_BOT_LOGIN])]);
       await g.requestRound();
       expect(g.calls[0].url).toContain("/users/copilot-pull-request-reviewer%5Bbot%5D");
       const mutation = JSON.parse(g.calls[2].init?.body as string);
@@ -874,6 +924,47 @@ describe("makeGithubIo", () => {
       // `union` is what stops the call evicting a human reviewer already on the pull request.
       expect(mutation.query).toContain("union:true");
       expect(mutation.variables).toEqual({ pullRequestId: "PR_x", botIds: ["BOT_x"] });
+    });
+
+    /*
+     * #58 — the selection is the diagnosis. It used to ask for `pullRequest { id }`, the one field
+     * that comes back whether or not the mutation did anything, and discarded the response. So a
+     * mutation accepted-and-dropped looked exactly like one that worked.
+     */
+    it("asks the mutation to return the reviewers it just set", async () => {
+      const g = io([BOT, PR_ID, mutationSaying([COPILOT_BOT_LOGIN])]);
+      await g.requestRound();
+      const mutation = JSON.parse(g.calls[2].init?.body as string);
+      expect(mutation.query).toContain("reviewRequests");
+      expect(mutation.query).not.toMatch(/pullRequest\{\s*id\s*\}/);
+    });
+
+    it("reports recorded when GitHub's answer lists Copilot", async () => {
+      const g = io([BOT, PR_ID, mutationSaying([COPILOT_BOT_LOGIN])]);
+      await expect(g.requestRound()).resolves.toEqual({ recorded: true });
+    });
+
+    /*
+     * The measured Dependabot case: accepted, and Copilot is not in the resulting reviewer list.
+     * A human reviewer in that list must not be mistaken for the round having been requested.
+     */
+    it("reports not-recorded when the answer comes back without Copilot", async () => {
+      const g = io([BOT, PR_ID, mutationSaying([])]);
+      await expect(g.requestRound()).resolves.toEqual({ recorded: false });
+      const h = io([BOT, PR_ID, mutationSaying(["marius-cetanas"])]);
+      await expect(h.requestRound()).resolves.toEqual({ recorded: false });
+    });
+
+    /*
+     * `null`, not `false`: an absent field is "this response did not say", which is a different
+     * claim from "GitHub says Copilot is not requested". Collapsing them would report a defect on
+     * any future schema change.
+     */
+    it("reports unknown rather than not-recorded when the shape is unfamiliar", async () => {
+      for (const answer of [{ body: { data: {} } }, { body: { data: { requestReviews: null } } }]) {
+        const g = io([BOT, PR_ID, answer]);
+        await expect(g.requestRound()).resolves.toEqual({ recorded: null });
+      }
     });
 
     /**

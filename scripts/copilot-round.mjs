@@ -347,12 +347,31 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * seconds, which is how they were unblocked. The same code path on a human-authored pull request
  * (#49) does record `review_requested by github-actions[bot]`.
  *
- * So the failing combination is a bot-authored pull request asked by the Actions token, and which
- * side GitHub keys on is not established. Until it is, a Dependabot pull request needs the round
- * requested by hand and the job re-run; #58 has the controls. The **diagnosis** is fixed — see
- * `describeRequest`, which re-checks `isRoundPending()` after the mutation and refuses to call an
- * unconfirmed request a success. The **mechanism** is not: this still cannot make GitHub honour the
- * request, so #58 stays open and the manual step stands.
+ * **The mechanism is billing attribution, and it is documented** — neither the author nor the
+ * requester on its own, which is why the matrix looked contradictory. A Copilot review has to be
+ * charged to a Copilot-licensed account. *"If a review is manually requested by another user, the
+ * consumption is attributed to that user instead"* covers the two cells a human requested; a
+ * licensed human author covers the third. In the failing cell there is no such account — the
+ * requester is an app rather than a user, and the author is a bot. GitHub's 2026-08-27 changelog
+ * names exactly this case: *"When a pull request is authored by a bot and requested automatically,
+ * there's no Copilot-licensed account to attribute the review to"*, fixed by an organization
+ * policy on Copilot Business/Enterprise.
+ *
+ * **This repository is user-owned, so that policy does not exist for it.** The failure is
+ * structural rather than a bug, and no workflow rearrangement reaches it: `pull_request_target`
+ * changes the token and the secret source but **not the actor**, which stays `github-actions[bot]`
+ * — still not a user, still nothing to bill. Only a user-scoped token would work, and that means a
+ * stored credential, which is a gate-map decision rather than an implementation one. So a
+ * Dependabot pull request needs the round requested by hand and the job re-run; #58 carries the
+ * citations, and the caveat that GitHub documents the attribution rule without documenting that
+ * the request is then dropped with no `review_requested` event.
+ *
+ * The **diagnosis** is fixed — see `requestRound`, which asks the mutation to return the pull
+ * request's requested reviewers, and `describeRequest`, which reports what that answer said and
+ * falls back to polling `isRoundPending()` only when the mutation reported nothing either way.
+ * Neither calls an unconfirmed request a success. The **mechanism** is not fixed and cannot be
+ * fixed here: no workflow rearrangement supplies an account to bill, so #58 stays open and the
+ * manual step stands.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
@@ -412,8 +431,8 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         // read-only whatever the workflow asks for, so this is expected to fail there — and the
         // right answer is the one the check always had: wait, and let the budget decide.
         try {
-          await requestRound();
-          log(await describeRequest(isRoundPending));
+          const outcome = await requestRound();
+          log(await describeRequest(isRoundPending, outcome?.recorded));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
@@ -456,10 +475,36 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
  * A failure to check is not evidence either way and says so, rather than picking the reassuring
  * reading.
  *
+ * ## `recorded` outranks the poll, when there is one
+ *
+ * `requestRound` now asks the mutation to return the pull request's reviewers, so GitHub reports
+ * the post-mutation state **in the response to the mutation itself**. That answer is not racing
+ * anything and is preferred whenever it exists; the poll below stays as the fallback for a
+ * `requestRound` that does not report one, which every stub in the suite and any older caller is.
+ *
+ * **It is definite about what GitHub said and not about what happens next**, and the second half is
+ * a correction: an earlier draft ended *"the check will expire"*, which the loop does not
+ * guarantee. The job keeps polling for the rest of its budget, and the documented workaround for
+ * #58 — a user requesting the round by hand — lands inside that window and turns the check green.
+ * Predicting the expiry would have been a confident sentence about a run that had not finished.
+ * _(Raised by Copilot on #63.)_
+ *
  * @param {(() => Promise<boolean>) | undefined} isRoundPending
+ * @param {boolean | null} [recorded] what the mutation's own response said, if anything
  * @returns {Promise<string>}
  */
-export async function describeRequest(isRoundPending) {
+export async function describeRequest(isRoundPending, recorded) {
+  if (recorded === true) {
+    return `requested: asked ${COPILOT_REVIEWER} for a round, and GitHub recorded it`;
+  }
+  if (recorded === false) {
+    return (
+      `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
+      `does not list Copilot among the pull request's requested reviewers — the request did not ` +
+      `take (#58). Nothing this job can do will produce a round. It keeps waiting anyway: a round ` +
+      `requested from outside it, by a user, still lands and still counts.`
+    );
+  }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;
   try {
     if (await isRoundPending()) {
@@ -576,15 +621,40 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
     const { node_id: botId } = await res.json();
     if (!botId) throw new Error(`no node id in the response for ${COPILOT_REVIEWER}`);
 
+    /*
+     * The selection is the diagnosis (#58).
+     *
+     * This used to ask for `pullRequest { id }` — the one field guaranteed to come back whether or
+     * not the mutation did anything — and threw the response away. So a mutation that was accepted
+     * and recorded nothing was indistinguishable from one that worked, which is exactly what
+     * happens on a Dependabot pull request and cost #55, #56 and #57 a red required check each
+     * with a success line at the top of the log.
+     *
+     * Asking for `reviewRequests` back reads the **post-mutation state in the mutation's own
+     * response**, so GitHub answers the question directly rather than being asked again afterwards
+     * and racing Copilot for it.
+     */
     const { id } = await pullRequest("id");
-    return graphql(
+    const data = await graphql(
       `mutation($pullRequestId:ID!,$botIds:[ID!]){
          requestReviews(input:{pullRequestId:$pullRequestId,botIds:$botIds,union:true}){
-           pullRequest{ id }
+           pullRequest{
+             reviewRequests(first:${REVIEWER_PAGE}){
+               nodes{requestedReviewer{... on Bot{login} ... on User{login}}}
+             }
+           }
          }
        }`,
       { pullRequestId: id, botIds: [botId] }
     );
+
+    /*
+     * `null` rather than `false` when the shape is not what we expected: an absent field is "this
+     * response did not say", which is a different claim from "GitHub says Copilot is not
+     * requested", and collapsing the two would report a defect on any future schema change.
+     */
+    const nodes = data?.requestReviews?.pullRequest?.reviewRequests?.nodes;
+    return { recorded: Array.isArray(nodes) ? hasPendingRequest(nodes) : null };
   };
 
   return { api, graphql, isRoundPending, requestRound };
