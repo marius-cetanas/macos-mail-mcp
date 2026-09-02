@@ -99,11 +99,13 @@ exact gate I spent the session inside, and I met its failure mode twice and merg
 the open issues costs one call and would have changed what I looked at. _(The same shape as the
 handoff's own "no open pull requests", written from a listing that was true when it ran.)_
 
-**Next action.** #54 first, then #58 — the sequencing is on both threads. Nothing is blocked on it — Dependabot pull requests merge today
-via request-by-hand then re-run, which is written into the workflow header so the next person meets
-it before the red check rather than after.
+**Next action.** #54 first, then #58 — the sequencing argument is on both threads. Neither blocks
+work: a Dependabot pull request merges today by requesting the round by hand and re-running the job,
+which is written into the workflow header so the next person meets it before the red check rather
+than after.
 
-**Recoverability.** Nothing partial. The three branches were deleted by the squash-merges; `main` is
-green on `4997f61`; no tag was pushed and no release was run, so the published version is unchanged
-at 1.3.3. The only edits outside `main` are the comment corrections on this branch, which are
-documentation and carry no behaviour.
+**Recoverability.** Nothing partial. The three Dependabot branches were deleted by their
+squash-merges; no tag was pushed and no release was run, so the published version is unchanged at
+1.3.3. `main` was green at `4997f61` when this was written and has since taken #59 (the comment
+corrections and this file) and #60 (the amendment above), both documentation carrying no
+behaviour.
