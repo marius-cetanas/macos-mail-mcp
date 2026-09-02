@@ -275,6 +275,59 @@ describe("classifyRound on rounds that reviewed nothing (#54)", () => {
   });
 });
 
+describe("classifyRound when no round can be requested at all (#58)", () => {
+  const human = { user: { login: "marius-cetanas", type: "User" }, commit_id: HEAD, body: "lgtm" };
+
+  /*
+   * The generalisation of #61's ruling, not a return of the `not-owed` exemption it replaced. Two
+   * ways no round is coming — Copilot will not read the diff, or the request cannot be placed —
+   * and one answer to both: a person's review of this head.
+   */
+  it("waits for a human when the request could not be placed", () => {
+    const r = classifyRound({ reviews: [], head: HEAD, roundUnobtainable: true });
+    expect(r.state).toBe("awaited");
+    expect(r.awaiting).toBe("human");
+    expect(r.reason).toMatch(/no Copilot round can be requested/);
+  });
+
+  it("is satisfied by a human review of the same head", () => {
+    const r = classifyRound({ reviews: [human], head: HEAD, roundUnobtainable: true });
+    expect(r.state).toBe("landed");
+    expect(r.reason).toMatch(/1 human review\(s\)/);
+  });
+
+  /*
+   * The flag widens what satisfies the check; it must never narrow it. A round that arrives anyway
+   * — because a user requested one from outside the job, which is the documented workaround —
+   * still wins, and still wins over a human review.
+   */
+  it("never suppresses a Copilot round that arrives anyway", () => {
+    const r = classifyRound({
+      reviews: [round("Copilot", HEAD, REAL_BODY)],
+      head: HEAD,
+      roundUnobtainable: true,
+    });
+    expect(r.state).toBe("landed");
+    expect(r.reason).toMatch(/the commit being merged/);
+  });
+
+  it("does not accept a bot review, or a human review of an earlier commit", () => {
+    for (const review of [
+      { user: { login: "dependabot[bot]", type: "Bot" }, commit_id: HEAD, body: "x" },
+      { ...human, commit_id: OLDER },
+    ]) {
+      expect(classifyRound({ reviews: [review], head: HEAD, roundUnobtainable: true }).state).toBe(
+        "awaited"
+      );
+    }
+  });
+
+  /** Off by default, so nothing about an ordinary pull request changes. */
+  it("changes nothing when the flag is not set", () => {
+    expect(classifyRound({ reviews: [human], head: HEAD }).state).toBe("awaited");
+  });
+});
+
 describe("isHumanReviewer", () => {
   it("accepts a person", () => {
     expect(isHumanReviewer({ login: "marius-cetanas", type: "User" })).toBe(true);
@@ -375,7 +428,8 @@ describe("describeRequest (#58)", () => {
     const line = await describeRequest(undefined, false);
     // Names the list it actually read — `reviewRequests`, not the reviews. (Raised by Copilot on #63.)
     expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
-    expect(line).toMatch(/Nothing this job can do will produce a round/);
+    expect(line).toMatch(/No round is coming from this job/);
+    expect(line).toMatch(/a human review of this head now satisfies the check/);
     expect(line).toMatch(/still lands and still counts/);
     expect(line).not.toMatch(/will expire/);
     // No hedging on GitHub's answer, though — unlike the poll, that reading has no innocent one.
@@ -588,6 +642,42 @@ describe("awaitRound requesting the round (#44)", () => {
     expect(result.state).toBe("expired");
     expect(result.reason).toMatch(/waiting for a human review/);
     expect(s.asked).toBe(0);
+  });
+
+  /*
+   * The ceremony this removes: before it, a Dependabot lockfile bump took four manual steps —
+   * request the round by hand, wait for Copilot to decline it, review, re-run. The first two
+   * existed only to obtain a round already known to be empty, whose sole function was to reach the
+   * branch that then asked for the review. The review is unchanged; the two empty steps are gone.
+   */
+  it("accepts a human review once the ask reports the request did not take (#58)", async () => {
+    const s2 = spy();
+    const result = await awaitRound({
+      api: apiWith([{ user: { login: "marius-cetanas", type: "User" }, commit_id: HEAD, body: "ok" }]),
+      requestRound: async () => ({ recorded: false }),
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s2.log,
+    });
+    expect(result.state).toBe("landed");
+    // Same poll, not the next one: waiting would sit out a full interval before noticing a review
+    // already on the head, and on a nearly-spent budget could miss it entirely.
+    expect(result.polls).toBe(1);
+  });
+
+  it("still expires when the request did not take and nobody has reviewed", async () => {
+    const s2 = spy();
+    const result = await awaitRound({
+      api: apiWith([]),
+      requestRound: async () => ({ recorded: false }),
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s2.log,
+    });
+    expect(result.state).toBe("expired");
+    expect(result.reason).toMatch(/waiting for a human review/);
   });
 
   it("goes green the moment the human review of that head exists", async () => {

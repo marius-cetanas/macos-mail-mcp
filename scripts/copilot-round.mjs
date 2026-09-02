@@ -165,10 +165,14 @@ export function emptyRound(body) {
 }
 
 /**
- * @param {{reviews: Array<object>, head: string, draft?: boolean}} input
+ * @param {{reviews: Array<object>, head: string, draft?: boolean,
+ *          roundUnobtainable?: boolean}} input
+ *   `roundUnobtainable` is set by the loop once GitHub's own answer to the request said the round
+ *   was not recorded (#58). It never suppresses a Copilot round — one that arrives anyway, because
+ *   somebody requested it from outside the job, still wins — it only adds the human-review path.
  * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human"}}
  */
-export function classifyRound({ reviews, head, draft = false }) {
+export function classifyRound({ reviews, head, draft = false, roundUnobtainable = false }) {
   if (draft) {
     return {
       state: "not-owed",
@@ -205,32 +209,49 @@ export function classifyRound({ reviews, head, draft = false }) {
     };
   }
 
-  if (declined.length > 0) {
-    /*
-     * Copilot will not read this diff, so no re-request produces a round and the only reviewer
-     * left is a person. The gate holds rather than exempting the pull request: a lockfile is where
-     * a supply-chain change arrives, which is the diff least worth waving through.
-     *
-     * **Any human review on the head counts, not only an approval**, and that is a deadlock guard
-     * rather than laxity. GitHub forbids approving your own pull request, so an APPROVED-only rule
-     * would make a maintainer-authored lockfile change unmergeable by anyone — the sole maintainer
-     * cannot approve it and there is nobody else. A `COMMENTED` review is allowed on your own pull
-     * request, so the rule stays satisfiable in every case while still costing a person a look and
-     * a statement on the record against this exact tree.
-     */
+  /*
+   * Two ways no Copilot round is coming, and one answer to both: the review that is owed is a
+   * person's.
+   *
+   *   * **Copilot declined the diff** (#54) — it will not read a lockfile, and re-requesting does
+   *     not change the diff.
+   *   * **The request could not be placed at all** (#58) — GitHub's own response to the mutation
+   *     did not list Copilot, which on a Dependabot pull request here it never will: a review must
+   *     be billed to a Copilot-licensed account and this combination has none.
+   *
+   * The gate holds rather than exempting either: a lockfile is where a supply-chain change
+   * arrives, which is the diff least worth waving through.
+   *
+   * **Any human review on the head counts, not only an approval**, and that is a deadlock guard
+   * rather than laxity. GitHub forbids approving your own pull request, so an APPROVED-only rule
+   * would make a maintainer-authored lockfile change unmergeable by anyone — the sole maintainer
+   * cannot approve it and there is nobody else. A `COMMENTED` review is allowed on your own pull
+   * request, so the rule stays satisfiable in every case while still costing a person a look and
+   * a statement on the record against this exact tree.
+   *
+   * **What the second case removes is ceremony, not scrutiny.** Before it, a Dependabot lockfile
+   * bump took four manual steps: request the round by hand, wait for Copilot to decline it, review,
+   * re-run. The first two existed only to obtain a round already known to be empty, whose sole
+   * function was to reach this branch — which then asked for the review that was the real
+   * requirement all along. The human review is unchanged; the two steps that produced no
+   * information are gone.
+   */
+  if (declined.length > 0 || roundUnobtainable) {
+    const why =
+      declined.length > 0
+        ? `Copilot declined to read the diff on ${short}`
+        : `no Copilot round can be requested for ${short} (#58)`;
     const humans = allOnHead.filter((r) => isHumanReviewer(r?.user));
     if (humans.length > 0) {
-      return {
-        state: "landed",
-        reason: `Copilot declined to read the diff on ${short}; ${humans.length} human review(s) on it`,
-      };
+      return { state: "landed", reason: `${why}; ${humans.length} human review(s) on it` };
     }
     return {
       state: "awaited",
-      // `human`, so the loop asks Copilot for nothing here — another round would arrive declining
-      // the same diff, and the log would name the wrong thing as missing.
+      // `human`, so the loop asks Copilot for nothing here — a further request would either
+      // decline the same diff or fail the same way, and the log would name the wrong thing as
+      // missing.
       awaiting: "human",
-      reason: `Copilot declined to read the diff on ${short} — waiting for a human review of it`,
+      reason: `${why} — waiting for a human review of it`,
     };
   }
 
@@ -362,16 +383,22 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * changes the token and the secret source but **not the actor**, which stays `github-actions[bot]`
  * — still not a user, still nothing to bill. Only a user-scoped token would work, and that means a
  * stored credential, which is a gate-map decision rather than an implementation one. So a
- * Dependabot pull request needs the round requested by hand and the job re-run; #58 carries the
- * citations, and the caveat that GitHub documents the attribution rule without documenting that
- * the request is then dropped with no `review_requested` event.
+ * Dependabot pull request cannot draw a round from this job at all; #58 carries the citations, and
+ * the caveat that GitHub documents the attribution rule without documenting that the request is
+ * then dropped with no `review_requested` event.
+ *
+ * **So the gate stops asking for a round it cannot get, and asks for the review instead.** When
+ * the mutation's own answer says the request was not recorded, `classifyRound` takes the same path
+ * as a declined diff and waits for a human review of the head. That needs no credential, and it is
+ * why the four manual steps a Dependabot bump used to cost are now one.
  *
  * The **diagnosis** is fixed — see `requestRound`, which asks the mutation to return the pull
  * request's requested reviewers, and `describeRequest`, which reports what that answer said and
  * falls back to polling `isRoundPending()` only when the mutation reported nothing either way.
  * Neither calls an unconfirmed request a success. The **mechanism** is not fixed and cannot be
- * fixed here: no workflow rearrangement supplies an account to bill, so #58 stays open and the
- * manual step stands.
+ * fixed here: no workflow rearrangement supplies an account to bill. What is fixed is the cost of
+ * living with it — the gate now asks for the human review directly rather than for a round that
+ * cannot arrive.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
@@ -384,6 +411,13 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
   let waited = 0;
   let polls = 0;
   let asked = false;
+  /*
+   * Set once GitHub's own answer to the request says the round was not recorded (#58), and never
+   * cleared: the reason it failed does not go away inside one run. It only widens what satisfies
+   * the check — a Copilot round arriving anyway still wins, which matters because a user can
+   * request one from outside this job while it waits.
+   */
+  let roundUnobtainable = false;
 
   for (;;) {
     polls += 1;
@@ -393,6 +427,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
       reviews,
       head: pr?.head?.sha,
       draft: Boolean(pr?.draft),
+      roundUnobtainable,
     });
 
     if (result.state !== "awaited") {
@@ -432,11 +467,29 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         // right answer is the one the check always had: wait, and let the budget decide.
         try {
           const outcome = await requestRound();
+          if (outcome?.recorded === false) roundUnobtainable = true;
           log(await describeRequest(isRoundPending, outcome?.recorded));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
       }
+    }
+
+    /*
+     * Re-decide inside the same poll when the ask just told us no round is coming (#58). Waiting
+     * for the next one would sit out a full poll interval before noticing a human review that is
+     * already on the head — and on a run whose budget is nearly spent, could miss it entirely.
+     */
+    if (roundUnobtainable) {
+      const again = classifyRound({
+        reviews,
+        head: pr?.head?.sha,
+        draft: Boolean(pr?.draft),
+        roundUnobtainable,
+      });
+      if (again.state !== "awaited") return { ...again, polls };
+      result.reason = again.reason;
+      result.awaiting = again.awaiting;
     }
 
     if (waited >= budgetMs) {
@@ -501,8 +554,8 @@ export async function describeRequest(isRoundPending, recorded) {
     return (
       `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
       `does not list Copilot among the pull request's requested reviewers — the request did not ` +
-      `take (#58). Nothing this job can do will produce a round. It keeps waiting anyway: a round ` +
-      `requested from outside it, by a user, still lands and still counts.`
+      `take (#58). No round is coming from this job, so a human review of this head now satisfies ` +
+      `the check instead. A round requested from outside it, by a user, still lands and still counts.`
     );
   }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;

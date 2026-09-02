@@ -35,8 +35,13 @@
 # GitHub's fix for it is an organization policy on Copilot Business/Enterprise, and this repository
 # is user-owned, so it is not available here. `pull_request_target` does not help: it changes the
 # token, not the actor. Only a user-scoped token would, and that is a stored credential and a
-# gate-map decision. So a Dependabot pull request needs the round requested by hand and this job
-# re-run. See #58 for the citations.
+# gate-map decision.
+#
+# So the gate stops asking for a round it cannot get. When the mutation's own answer says the
+# request was not recorded, the job waits for a **human review of the head** instead — the same
+# answer it already gives a diff Copilot will not read. A Dependabot bump used to cost four manual
+# steps (hand-request the round, wait for it to be declined, review, re-run); the first two only
+# ever produced a round known to be empty, and are gone. See #58 for the citations.
 #
 # ## A round is not a review just because it arrived (#54)
 #
