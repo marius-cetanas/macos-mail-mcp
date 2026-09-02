@@ -5,6 +5,7 @@ import { parse } from "yaml";
 import {
   classifyRound,
   emptyRound,
+  isHumanReviewer,
   describeRequest,
   DECLINED_DIFF,
   ERRORED,
@@ -187,14 +188,60 @@ describe("classifyRound on rounds that reviewed nothing (#54)", () => {
   });
 
   /*
-   * `not-owed` rather than `awaited`, and the distinction is load-bearing: `copilot-reviewed` is a
-   * required check under `enforce_admins`, so waiting here would end red on every lockfile-only
-   * Dependabot bump with no way to merge it short of turning off branch protection.
+   * A diff Copilot will not read still owes a review — a person's. A lockfile is where a
+   * supply-chain change arrives, so it is the diff least worth waving through.
    */
-  it("treats a declined diff as no round being owed", () => {
+  it("waits for a human when Copilot declined the diff", () => {
     const result = classifyRound({ reviews: [round("Copilot", HEAD, DECLINED_BODY)], head: HEAD });
-    expect(result.state).toBe("not-owed");
-    expect(result.reason).toMatch(/declined to read the diff/);
+    expect(result.state).toBe("awaited");
+    expect(result.awaiting).toBe("human");
+    expect(result.reason).toMatch(/waiting for a human review/);
+  });
+
+  it("is satisfied by a human review of the same head", () => {
+    const result = classifyRound({
+      reviews: [
+        round("Copilot", HEAD, DECLINED_BODY),
+        { user: { login: "marius-cetanas", type: "User" }, commit_id: HEAD, body: "lgtm" },
+      ],
+      head: HEAD,
+    });
+    expect(result.state).toBe("landed");
+    expect(result.reason).toMatch(/1 human review\(s\)/);
+  });
+
+  it("does not accept a human review of an earlier commit", () => {
+    const result = classifyRound({
+      reviews: [
+        round("Copilot", HEAD, DECLINED_BODY),
+        { user: { login: "marius-cetanas", type: "User" }, commit_id: OLDER, body: "lgtm" },
+      ],
+      head: HEAD,
+    });
+    expect(result.state).toBe("awaited");
+    expect(result.awaiting).toBe("human");
+  });
+
+  /*
+   * The gate rests entirely on this predicate in the declined case, so a bot must not pass it.
+   * Dependabot authors the pull requests this branch exists for.
+   *
+   * Copilot is deliberately not in this list: a Copilot review with a real body on the head is a
+   * genuine round and *should* land, declined sibling or not. That it is not a human reviewer is
+   * asserted in `isHumanReviewer` instead, which is where the claim belongs.
+   */
+  it("does not accept a bot review as the human one", () => {
+    for (const user of [
+      { login: "dependabot[bot]", type: "Bot" },
+      { login: "some-app[bot]" },
+      { login: "renovate", type: "Bot" },
+    ]) {
+      const result = classifyRound({
+        reviews: [round("Copilot", HEAD, DECLINED_BODY), { user, commit_id: HEAD, body: "x" }],
+        head: HEAD,
+      });
+      expect(result.state, user.login).toBe("awaited");
+    }
   });
 
   /*
@@ -225,6 +272,28 @@ describe("classifyRound on rounds that reviewed nothing (#54)", () => {
       round("Copilot", HEAD, REAL_BODY),
     ];
     expect(classifyRound({ reviews, head: HEAD }).reason).toContain("2 Copilot round(s)");
+  });
+});
+
+describe("isHumanReviewer", () => {
+  it("accepts a person", () => {
+    expect(isHumanReviewer({ login: "marius-cetanas", type: "User" })).toBe(true);
+    expect(isHumanReviewer({ login: "marius-cetanas" })).toBe(true);
+  });
+
+  it("rejects a bot by type, by suffix, and by name", () => {
+    expect(isHumanReviewer({ login: "someone", type: "Bot" })).toBe(false);
+    expect(isHumanReviewer({ login: "dependabot[bot]" })).toBe(false);
+    // The spelling that carries neither marker, which is why the name check exists.
+    expect(isHumanReviewer({ login: "Copilot" })).toBe(false);
+  });
+
+  it("rejects a missing or malformed user rather than throwing", () => {
+    expect(isHumanReviewer(undefined)).toBe(false);
+    expect(isHumanReviewer(null)).toBe(false);
+    expect(isHumanReviewer({})).toBe(false);
+    expect(isHumanReviewer({ login: "" })).toBe(false);
+    expect(isHumanReviewer({ login: 42 })).toBe(false);
   });
 });
 
@@ -422,15 +491,37 @@ describe("awaitRound requesting the round (#44)", () => {
    * A round that reviewed nothing ends the wait as `not-owed` rather than burning the budget —
    * the #54 half, exercised through the loop rather than only through the classifier.
    */
-  it("stops on a declined diff instead of waiting for a round that cannot come", async () => {
+  const DECLINED_ON_HEAD = {
+    user: { login: "Copilot" },
+    commit_id: HEAD,
+    body: "Copilot wasn't able to review any files in this pull request.",
+  };
+
+  /*
+   * Asking again would request the one thing already known not to be coming, and would put
+   * "asked Copilot for a round" in a log whose actual problem is that no person has looked.
+   */
+  it("asks Copilot for nothing when the missing reviewer is a person", async () => {
+    const s = spy();
+    const result = await awaitRound({
+      api: apiWith([DECLINED_ON_HEAD]),
+      requestRound: s.requestRound,
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s.log,
+    });
+    expect(result.state).toBe("expired");
+    expect(result.reason).toMatch(/waiting for a human review/);
+    expect(s.asked).toBe(0);
+  });
+
+  it("goes green the moment the human review of that head exists", async () => {
     const s = spy();
     const result = await awaitRound({
       api: apiWith([
-        {
-          user: { login: "Copilot" },
-          commit_id: HEAD,
-          body: "Copilot wasn't able to review any files in this pull request.",
-        },
+        DECLINED_ON_HEAD,
+        { user: { login: "marius-cetanas", type: "User" }, commit_id: HEAD, body: "lgtm" },
       ]),
       requestRound: s.requestRound,
       isRoundPending: notPending,
@@ -438,7 +529,7 @@ describe("awaitRound requesting the round (#44)", () => {
       budgetMs: 0,
       log: s.log,
     });
-    expect(result.state).toBe("not-owed");
+    expect(result.state).toBe("landed");
     expect(result.polls).toBe(1);
     expect(s.asked).toBe(0);
   });

@@ -97,7 +97,8 @@ export function hasPendingRequest(nodes) {
  *   * `DECLINED_DIFF` — *"Copilot wasn't able to review any files in this pull request."* Returned
  *     for a diff Copilot will not read; measured on #55 and #56, both `package-lock.json`-only, and
  *     both merged on it. **Re-requesting cannot fix this** — the diff will still be a lockfile — so
- *     waiting would burn the budget and end red on every Dependabot bump, forever. `not-owed`.
+ *     the round that is owed is a person's. Satisfied by a human review on the head, and `awaited`
+ *     until there is one. See `isHumanReviewer`.
  *   * `ERRORED` — *"Copilot encountered an error and was unable to review this pull request."*
  *     Transient; #53 got a real verdict from a re-request two minutes later. `awaited`, which is
  *     also what makes `awaitRound` ask again.
@@ -113,6 +114,28 @@ export const DECLINED_DIFF = /able to review any files/i;
 
 /** @see DECLINED_DIFF */
 export const ERRORED = /unable to review/i;
+
+/**
+ * Is this review a person's?
+ *
+ * Only consulted where Copilot has declined to read the diff, and there the whole gate rests on it:
+ * a bot slipping through this predicate would satisfy the check with nobody having looked, which is
+ * the defect #54 is about, one layer down.
+ *
+ * Three ways an account can fail to be a person, because one is not enough. `type` is what the API
+ * means to say and is trusted first; it is absent from trimmed payloads, so the `[bot]` suffix
+ * catches the ones that carry a login and no type; and Copilot is checked by name because it
+ * appears under four spellings, one of which — `Copilot` — has neither marker.
+ *
+ * @param {unknown} user a review's `user` object
+ */
+export function isHumanReviewer(user) {
+  const login = /** @type {any} */ (user)?.login;
+  if (typeof login !== "string" || login === "") return false;
+  if (isCopilotLogin(login)) return false;
+  if (login.toLowerCase().endsWith("[bot]")) return false;
+  return /** @type {any} */ (user)?.type !== "Bot";
+}
 
 /**
  * Does this round's body say Copilot did not review anything?
@@ -132,7 +155,7 @@ export function emptyRound(body) {
 
 /**
  * @param {{reviews: Array<object>, head: string, draft?: boolean}} input
- * @returns {{state: "landed"|"awaited"|"not-owed", reason: string}}
+ * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human"}}
  */
 export function classifyRound({ reviews, head, draft = false }) {
   if (draft) {
@@ -152,6 +175,9 @@ export function classifyRound({ reviews, head, draft = false }) {
   const byCopilot = list.filter((r) => isCopilotLogin(r?.user?.login));
   const onHead = byCopilot.filter((r) => r?.commit_id === head);
   const short = head.slice(0, 8);
+  // Every review describing the head, Copilot's and everyone else's — the declined branch below is
+  // the one place a non-Copilot review decides the answer.
+  const allOnHead = list.filter((r) => r?.commit_id === head);
 
   /*
    * A round that reviewed nothing does not count as one (#54). Split before deciding, and let a
@@ -169,12 +195,31 @@ export function classifyRound({ reviews, head, draft = false }) {
   }
 
   if (declined.length > 0) {
+    /*
+     * Copilot will not read this diff, so no re-request produces a round and the only reviewer
+     * left is a person. The gate holds rather than exempting the pull request: a lockfile is where
+     * a supply-chain change arrives, which is the diff least worth waving through.
+     *
+     * **Any human review on the head counts, not only an approval**, and that is a deadlock guard
+     * rather than laxity. GitHub forbids approving your own pull request, so an APPROVED-only rule
+     * would make a maintainer-authored lockfile change unmergeable by anyone — the sole maintainer
+     * cannot approve it and there is nobody else. A `COMMENTED` review is allowed on your own pull
+     * request, so the rule stays satisfiable in every case while still costing a person a look and
+     * a statement on the record against this exact tree.
+     */
+    const humans = allOnHead.filter((r) => isHumanReviewer(r?.user));
+    if (humans.length > 0) {
+      return {
+        state: "landed",
+        reason: `Copilot declined to read the diff on ${short}; ${humans.length} human review(s) on it`,
+      };
+    }
     return {
-      state: "not-owed",
-      // Not `awaited`: no re-request changes the diff, so waiting here ends red on every
-      // lockfile-only pull request. Stated as an exemption rather than reached by accident,
-      // which is the difference from what this did before.
-      reason: `Copilot declined to read the diff on ${short} — no round is owed for it`,
+      state: "awaited",
+      // `human`, so the loop asks Copilot for nothing here — another round would arrive declining
+      // the same diff, and the log would name the wrong thing as missing.
+      awaiting: "human",
+      reason: `Copilot declined to read the diff on ${short} — waiting for a human review of it`,
     };
   }
 
@@ -324,7 +369,12 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
       return { ...result, polls };
     }
 
-    if (!asked && requestRound) {
+    /*
+     * Nothing to ask for when the missing reviewer is a person: another Copilot round would arrive
+     * declining the same diff, and the log would announce a request for the one thing already
+     * known not to be coming.
+     */
+    if (!asked && requestRound && result.awaiting !== "human") {
       asked = true;
 
       /*
