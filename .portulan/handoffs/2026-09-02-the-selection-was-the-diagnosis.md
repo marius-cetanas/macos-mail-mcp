@@ -32,7 +32,9 @@ mutation's own response**.
 The distinction that makes this worth more than the poll added earlier the same session: the poll
 asks again *afterwards* and races Copilot, so "nothing pending" has an innocent reading (Copilot
 already took it up, measured on #49) and the message has to hedge. The mutation's own answer has no
-innocent reading, so that line does not hedge and says the check will expire.
+innocent reading, so that line does not hedge **about what GitHub said** — while staying silent on
+what the run does next, which it cannot know: the job keeps polling, and a round requested by hand
+inside that window still lands and still counts.
 
 **This diagnoses #58; it does not fix it.** Nothing here makes GitHub honour the request. What it
 buys is that the next Dependabot pull request states the failure in one line, where establishing it
@@ -51,6 +53,22 @@ this session took timeline archaeology across four pull requests.
 - **Answered the stop-gate rather than working around it.** It asked for a handoff dated today and
   was right to: four of the session's merges carry this date and the series would have had nothing
   under it.
+
+## The mistake I made five times
+
+Worth recording because it is the session's only repeated one, and it is not a coding mistake.
+
+Every time behaviour changed here, a sentence describing the old behaviour survived the edit —
+`copilot-round.mjs` claiming the ask "fixes both" holes; a test comment describing the `not-owed`
+exemption two lines above assertions contradicting it; a heading scoping a cost to every pull
+request; a log line predicting an expiry the loop had stopped guaranteeing; and this file saying
+that line still predicts it. Copilot found all five. None was found by me re-reading the diff,
+because the sentences were true when written and I read them as ones I had already checked.
+
+The generalisable part: **prose is not covered by the tests that cover the code it describes**, so
+changing behaviour is exactly when its description is least trustworthy and most trusted. The
+cheap habit that would have caught all five is to grep the branch for the claim being invalidated
+rather than only the code, in the same commit that invalidates it.
 
 ## Open questions *(human-owned)*
 

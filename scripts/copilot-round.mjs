@@ -366,10 +366,12 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * citations, and the caveat that GitHub documents the attribution rule without documenting that
  * the request is then dropped with no `review_requested` event.
  *
- * The **diagnosis** is fixed — see
- * `describeRequest`, which re-checks `isRoundPending()` after the mutation and refuses to call an
- * unconfirmed request a success. The **mechanism** is not: this still cannot make GitHub honour the
- * request, so #58 stays open and the manual step stands.
+ * The **diagnosis** is fixed — see `requestRound`, which asks the mutation to return the pull
+ * request's requested reviewers, and `describeRequest`, which reports what that answer said and
+ * falls back to polling `isRoundPending()` only when the mutation reported nothing either way.
+ * Neither calls an unconfirmed request a success. The **mechanism** is not fixed and cannot be
+ * fixed here: no workflow rearrangement supplies an account to bill, so #58 stays open and the
+ * manual step stands.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
