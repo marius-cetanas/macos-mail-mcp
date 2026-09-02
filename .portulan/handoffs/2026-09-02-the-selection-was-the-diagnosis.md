@@ -12,8 +12,11 @@ version unchanged at **1.3.3**; the next derived release is **1.3.4**, a patch f
 subject for a change that ships nothing, `src/` being untouched — the wart `CLAUDE.md` names, with
 `bump` as the override. **Open: #58 only.**
 
-**In flight, committed and not pushed:** `ccd4793`, the #58 diagnosis below. A research agent was
-still running when this was written; its findings are not in here.
+Everything described below landed in **#63**, including the research findings — which were still
+being gathered when this file was first written, and which are now the section on the mechanism.
+_(The "in flight, not pushed" note this replaces is the sixth instance of the pattern recorded
+below, in the file recording it. Left as a correction rather than a silent edit, because the count
+is the evidence.)_
 
 ## What #58 turned out to need first
 
@@ -54,7 +57,7 @@ this session took timeline archaeology across four pull requests.
   was right to: four of the session's merges carry this date and the series would have had nothing
   under it.
 
-## The mistake I made five times
+## The mistake I made six times
 
 Worth recording because it is the session's only repeated one, and it is not a coding mistake.
 
@@ -62,8 +65,14 @@ Every time behaviour changed here, a sentence describing the old behaviour survi
 `copilot-round.mjs` claiming the ask "fixes both" holes; a test comment describing the `not-owed`
 exemption two lines above assertions contradicting it; a heading scoping a cost to every pull
 request; a log line predicting an expiry the loop had stopped guaranteeing; and this file saying
-that line still predicts it. Copilot found all five. None was found by me re-reading the diff,
+that line still predicts it; and this file's own "in flight, not pushed" note, still saying so
+after #63 merged it. Copilot found five of the six. None was found by me re-reading the diff,
 because the sentences were true when written and I read them as ones I had already checked.
+
+The sixth is the one worth keeping: it is in the paragraph naming the pattern, written by the
+person naming it, in the same commit. Knowing the failure mode and having just described it was
+not enough to avoid it once more — which is the argument for the grep habit below being a habit
+rather than a resolution.
 
 The generalisable part: **prose is not covered by the tests that cover the code it describes**, so
 changing behaviour is exactly when its description is least trustworthy and most trusted. The
