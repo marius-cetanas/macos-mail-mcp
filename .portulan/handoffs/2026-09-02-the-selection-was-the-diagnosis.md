@@ -57,7 +57,7 @@ this session took timeline archaeology across four pull requests.
   was right to: four of the session's merges carry this date and the series would have had nothing
   under it.
 
-## The mistake I made six times
+## The mistake I made seven times
 
 Worth recording because it is the session's only repeated one, and it is not a coding mistake.
 
@@ -65,14 +65,20 @@ Every time behaviour changed here, a sentence describing the old behaviour survi
 `copilot-round.mjs` claiming the ask "fixes both" holes; a test comment describing the `not-owed`
 exemption two lines above assertions contradicting it; a heading scoping a cost to every pull
 request; a log line predicting an expiry the loop had stopped guaranteeing; and this file saying
-that line still predicts it; and this file's own "in flight, not pushed" note, still saying so
-after #63 merged it. Copilot found five of the six. None was found by me re-reading the diff,
-because the sentences were true when written and I read them as ones I had already checked.
+that line still predicts it; this file's own "in flight, not pushed" note, still saying so after
+#63 merged it; and — in the commit fixing that one — its **Recoverability** paragraph, still
+saying the same commit was the only work not on `main`. Copilot found six of the seven. None was
+found by me re-reading the diff, because the sentences were true when written and I read them as
+ones I had already checked.
 
-The sixth is the one worth keeping: it is in the paragraph naming the pattern, written by the
-person naming it, in the same commit. Knowing the failure mode and having just described it was
-not enough to avoid it once more — which is the argument for the grep habit below being a habit
-rather than a resolution.
+The last two are the ones worth keeping. The sixth is in the paragraph naming the pattern, written
+by the person naming it, in the same commit. The seventh is in the commit that fixed the sixth: I
+corrected one sentence about where `ccd4793` was and left an identical claim eleven lines below,
+because I fixed what I was shown instead of grepping for the claim — the exact habit named below,
+skipped while writing it down.
+
+Knowing the failure mode, having just described it, and being mid-correction were each not enough.
+That is why the mitigation has to be mechanical.
 
 The generalisable part: **prose is not covered by the tests that cover the code it describes**, so
 changing behaviour is exactly when its description is least trustworthy and most trusted. The
@@ -115,7 +121,6 @@ provenance, and the docs-vs-inference split are on #58.
 **Next action.** #58 needs one decision — stored user token, or keep the manual step. Nothing else
 about it is open.
 
-**Recoverability.** Nothing partial on the remote: every merged pull request is squashed and its
-branch deleted, no tag was pushed, no release was run. The only work not on `main` is `ccd4793` on
-this branch, which is one commit, verified green, and carries no behaviour change beyond a log line
-and a GraphQL selection.
+**Recoverability.** Nothing partial. Every pull request this session opened is merged, squashed and
+its branch deleted; no tag was pushed and no release was run, so the published version is unchanged
+at 1.3.3. `main` carries every change described above.
