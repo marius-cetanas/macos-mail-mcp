@@ -99,7 +99,7 @@ exact gate I spent the session inside, and I met its failure mode twice and merg
 the open issues costs one call and would have changed what I looked at. _(The same shape as the
 handoff's own "no open pull requests", written from a listing that was true when it ran.)_
 
-## #54 is fixed (#61), and the gate now costs a review per bump
+## #54 is fixed (#61), and a diff Copilot will not read now costs a human review
 
 Done in the same session, after the sequencing argument above was written and accepted. The two
 empty bodies get different answers, which is the half #54 did not have when it was filed:
