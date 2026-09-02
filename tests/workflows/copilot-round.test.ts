@@ -365,12 +365,20 @@ describe("describeRequest (#58)", () => {
     expect(await describeRequest(alsoContradicting, false)).toMatch(/did not take \(#58\)/);
   });
 
-  it("says outright that the check will expire when GitHub did not record it", async () => {
+  /*
+   * Definite about what GitHub said, and deliberately not about what happens next. An earlier
+   * draft ended "the check will expire", which the loop does not guarantee: it keeps polling, and
+   * #58's own documented workaround — a user requesting the round by hand — lands inside that
+   * window and turns the check green. (Raised by Copilot on #63.)
+   */
+  it("is definite about GitHub's answer and not about the run's outcome", async () => {
     const line = await describeRequest(undefined, false);
     // Names the list it actually read — `reviewRequests`, not the reviews. (Raised by Copilot on #63.)
     expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
-    expect(line).toMatch(/the check will expire/);
-    // No hedging here — unlike the poll, this reading has no innocent explanation.
+    expect(line).toMatch(/Nothing this job can do will produce a round/);
+    expect(line).toMatch(/still lands and still counts/);
+    expect(line).not.toMatch(/will expire/);
+    // No hedging on GitHub's answer, though — unlike the poll, that reading has no innocent one.
     expect(line).not.toMatch(/took it up already/);
   });
 

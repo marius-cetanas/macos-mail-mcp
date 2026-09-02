@@ -480,6 +480,13 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
  * anything and is preferred whenever it exists; the poll below stays as the fallback for a
  * `requestRound` that does not report one, which every stub in the suite and any older caller is.
  *
+ * **It is definite about what GitHub said and not about what happens next**, and the second half is
+ * a correction: an earlier draft ended *"the check will expire"*, which the loop does not
+ * guarantee. The job keeps polling for the rest of its budget, and the documented workaround for
+ * #58 — a user requesting the round by hand — lands inside that window and turns the check green.
+ * Predicting the expiry would have been a confident sentence about a run that had not finished.
+ * _(Raised by Copilot on #63.)_
+ *
  * @param {(() => Promise<boolean>) | undefined} isRoundPending
  * @param {boolean | null} [recorded] what the mutation's own response said, if anything
  * @returns {Promise<string>}
@@ -492,7 +499,8 @@ export async function describeRequest(isRoundPending, recorded) {
     return (
       `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
       `does not list Copilot among the pull request's requested reviewers — the request did not ` +
-      `take (#58). Nothing this job can do will produce a round; the check will expire.`
+      `take (#58). Nothing this job can do will produce a round. It keeps waiting anyway: a round ` +
+      `requested from outside it, by a user, still lands and still counts.`
     );
   }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;
