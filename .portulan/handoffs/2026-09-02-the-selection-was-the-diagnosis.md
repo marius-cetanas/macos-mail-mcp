@@ -4,19 +4,23 @@ Continues [yesterday's handoff](2026-09-01-a-fix-that-never-worked-where-it-was-
 this session ran past midnight UTC. That file holds the measurements and the reasoning; this one
 holds what happened after them, and is deliberately short where it would otherwise repeat.
 
-**State.** `main` at `94f1c63`, green: **570 passed / 51 skipped across 29 files**, 100%
-statements/branches/functions/lines on `src/`, 0 vulnerabilities, `portulan compile --check` GREEN.
-Merged on this date: **#59** and **#60** (correcting claims the tree contradicted), **#61** (the
-`copilot-reviewed` fix, closing **#54**) and **#62** (the previous handoff's amendment). Published
-version unchanged at **1.3.3**; the next derived release is **1.3.4**, a patch from #61's `fix(ci):`
-subject for a change that ships nothing, `src/` being untouched — the wart `CLAUDE.md` names, with
-`bump` as the override. **Open: #58 only.**
+**State, at session close.** `main` at `8a2325b`, green: **577 passed / 51 skipped across 29
+files**, 100% statements/branches/functions/lines on `src/`, 0 vulnerabilities,
+`portulan compile --check` GREEN. **Nothing open — no pull requests, no issues.**
 
-Everything described below landed in **#63**, including the research findings — which were still
-being gathered when this file was first written, and which are now the section on the mechanism.
-_(The "in flight, not pushed" note this replaces is the sixth instance of the pattern recorded
-below, in the file recording it. Left as a correction rather than a silent edit, because the count
-is the evidence.)_
+Merged on this date, in order: **#59** and **#60** (claims the tree contradicted), **#61** (a
+Copilot round that reviewed nothing is not a review — closed **#54**), **#62** (the previous
+handoff's amendment), **#63** (the mutation reports whether GitHub recorded the request) and
+**#64** (the gate asks for the review directly when the round cannot be requested — closed
+**#58**). Published version unchanged at **1.3.3**; the next derived release is **1.3.4**, a patch
+from the `fix(ci):` subjects for changes that ship nothing, `src/` being untouched — the wart
+`CLAUDE.md` names, with `bump` as the override. The `[Unreleased]` changelog entry for #54, #58 and
+#61 is written, which is the half of a release that can only be done before the tag exists.
+
+_This paragraph is dated on purpose. Its predecessor was phrased as a live claim — "Open: #58 only"
+— and was false within the hour, which is the ninth instance of the pattern recorded below and the
+second in this section. A handoff's state is a snapshot by nature; what it must not do is read as
+though it were still current._
 
 ## What #58 turned out to need first
 
@@ -57,7 +61,7 @@ this session took timeline archaeology across four pull requests.
   was right to: four of the session's merges carry this date and the series would have had nothing
   under it.
 
-## The mistake I made eight times
+## The mistake I made nine times
 
 Worth recording because it is the session's only repeated one, and it is not a coding mistake.
 
@@ -67,13 +71,18 @@ exemption two lines above assertions contradicting it; a heading scoping a cost 
 request; a log line predicting an expiry the loop had stopped guaranteeing; and this file saying
 that line still predicts it; this file's own "in flight, not pushed" note, still saying so after
 #63 merged it; and — in the commit fixing that one — its **Recoverability** paragraph, still
-saying the same commit was the only work not on `main`; and #64's own description, still giving a
-count the commit it described had moved on from. Copilot found seven of the eight. None was found
-by me re-reading the diff, because the sentences were true when written and I read them as ones I
-had already checked.
+saying the same commit was the only work not on `main`; #64's own description, still giving a count
+the commit it described had moved on from; and this file's **State** paragraph, claiming #58 open
+after #64 closed it. Copilot found seven of the nine. Of the two it did not, one was caught by an
+assertion and one by grepping after a merge — which is to say the only two found without a reviewer
+were found by the two mechanical habits below, and none by me re-reading the diff. The sentences
+were true when written and I read them as ones I had already checked.
 
 The eighth is outside the tree entirely — a pull request description — which is the reminder that
-the pattern is not about code comments. Anything written *about* a change ages against it.
+the pattern is not about code comments. Anything written *about* a change ages against it. The
+ninth is the same paragraph shape as the seventh, in the same file, after I had fixed the seventh
+and said so: a state sentence phrased as a live claim rather than a dated one. Fixing an instance
+is not fixing the shape.
 
 The two before it are the ones worth keeping. The sixth is in the paragraph naming the pattern, written
 by the person naming it, in the same commit. The seventh is in the commit that fixed the sixth: I
