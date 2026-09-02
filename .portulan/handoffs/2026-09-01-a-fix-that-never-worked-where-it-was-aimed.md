@@ -99,13 +99,47 @@ exact gate I spent the session inside, and I met its failure mode twice and merg
 the open issues costs one call and would have changed what I looked at. _(The same shape as the
 handoff's own "no open pull requests", written from a listing that was true when it ran.)_
 
-**Next action.** #54 first, then #58 — the sequencing argument is on both threads. Neither blocks
-work: a Dependabot pull request merges today by requesting the round by hand and re-running the job,
-which is written into the workflow header so the next person meets it before the red check rather
-than after.
+## #54 is fixed (#61), and the gate now costs a review per bump
+
+Done in the same session, after the sequencing argument above was written and accepted. The two
+empty bodies get different answers, which is the half #54 did not have when it was filed:
+
+- **an error round** is transient — `awaited`, and the loop asks again. #53 got a real verdict two
+  minutes after a re-request. This is the fail-open that actually closes.
+- **"wasn't able to review any files"** is permanent for that diff, so no round is ever coming and
+  the review that is owed is a person's. `awaited` until a **human review of that head** exists,
+  and the loop asks Copilot for nothing — another round would decline the same diff and the log
+  would name the wrong thing as missing.
+
+**The exemption was implemented first and rejected.** `not-owed`, the way a draft is exempt, was
+the initial answer here and the maintainer's call overrode it: a lockfile is where a supply-chain
+change arrives, so it is the diff least worth waving through, and the cost — one human review per
+Dependabot bump, weekly — was judged worth paying. Recorded because the rejected branch is the one
+a future reader will otherwise re-propose.
+
+**Any human review counts, not only an approval**, and that is a deadlock guard. GitHub forbids
+approving your own pull request, so an APPROVED-only rule would leave a maintainer-authored
+lockfile change unmergeable by anyone here. A `COMMENTED` review is allowed on your own, so the
+rule stays satisfiable in every case.
+
+Copilot's round on #61 found three things and all three held: `isHumanReviewer` accepted any
+`type` that was not `Bot` — an open set, so `Organization` and `Mannequin` would have read as
+people on the one path where that predicate *is* the gate; one of four log branches broke the
+`requested:` prefix, on the line most likely to be grepped; and a test comment still described the
+`not-owed` exemption two lines above assertions that contradicted it.
+
+**#58 is not fixed and stays open.** #61 fixes the *diagnosis* — `describeRequest` re-checks
+`isRoundPending()` and refuses to call an unconfirmed request a success — not the mechanism. A
+Dependabot pull request still needs the round requested by hand.
+
+**Next action.** #58, whose open question is unchanged: does GitHub key the refusal on the pull
+request's author or on the requesting actor? Nothing is blocked on it — a Dependabot pull request
+merges today by requesting the round by hand, re-running the job, and now also reviewing it, all of
+which the workflow header states.
 
 **Recoverability.** Nothing partial. The three Dependabot branches were deleted by their
 squash-merges; no tag was pushed and no release was run, so the published version is unchanged at
-1.3.3. `main` was green at `4997f61` when this was written and has since taken #59 (the comment
-corrections and this file) and #60 (the amendment above), both documentation carrying no
-behaviour.
+1.3.3. `main` was green at `4997f61` when this was written and has since taken #59, #60 and #61.
+The first two are documentation; **#61 changes a required check**, and the next release derived
+from `main` is `1.3.4` (patch, from #61's `fix(ci):` subject) for a change that ships nothing —
+`src/` is untouched. That is the wart `CLAUDE.md` names, and `bump` is the override.
