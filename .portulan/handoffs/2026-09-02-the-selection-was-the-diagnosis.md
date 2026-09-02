@@ -57,7 +57,7 @@ this session took timeline archaeology across four pull requests.
   was right to: four of the session's merges carry this date and the series would have had nothing
   under it.
 
-## The mistake I made seven times
+## The mistake I made eight times
 
 Worth recording because it is the session's only repeated one, and it is not a coding mistake.
 
@@ -67,11 +67,15 @@ exemption two lines above assertions contradicting it; a heading scoping a cost 
 request; a log line predicting an expiry the loop had stopped guaranteeing; and this file saying
 that line still predicts it; this file's own "in flight, not pushed" note, still saying so after
 #63 merged it; and — in the commit fixing that one — its **Recoverability** paragraph, still
-saying the same commit was the only work not on `main`. Copilot found six of the seven. None was
-found by me re-reading the diff, because the sentences were true when written and I read them as
-ones I had already checked.
+saying the same commit was the only work not on `main`; and #64's own description, still giving a
+count the commit it described had moved on from. Copilot found seven of the eight. None was found
+by me re-reading the diff, because the sentences were true when written and I read them as ones I
+had already checked.
 
-The last two are the ones worth keeping. The sixth is in the paragraph naming the pattern, written
+The eighth is outside the tree entirely — a pull request description — which is the reminder that
+the pattern is not about code comments. Anything written *about* a change ages against it.
+
+The two before it are the ones worth keeping. The sixth is in the paragraph naming the pattern, written
 by the person naming it, in the same commit. The seventh is in the commit that fixed the sixth: I
 corrected one sentence about where `ccd4793` was and left an identical claim eleven lines below,
 because I fixed what I was shown instead of grepping for the claim — the exact habit named below,
@@ -82,8 +86,10 @@ That is why the mitigation has to be mechanical.
 
 The generalisable part: **prose is not covered by the tests that cover the code it describes**, so
 changing behaviour is exactly when its description is least trustworthy and most trusted. The
-cheap habit that would have caught all five is to grep the branch for the claim being invalidated
-rather than only the code, in the same commit that invalidates it.
+cheap habit that would have caught every one of them is to grep the branch for the claim being
+invalidated rather than only the code, in the same commit that invalidates it. Where a claim can be
+pinned by an assertion instead, it should be: the log line's wording is, and when this session
+changed it the suite failed rather than a reviewer noticing.
 
 ## Open questions *(human-owned)*
 
@@ -118,8 +124,33 @@ request with nothing to bill is dropped *silently*, with no `review_requested` e
 error. That half is still ours, measured and not confirmed by any source. The citations, their
 provenance, and the docs-vs-inference split are on #58.
 
-**Next action.** #58 needs one decision — stored user token, or keep the manual step. Nothing else
-about it is open.
+## What #58 turned out to allow after all, and its closure
+
+The decision above — stored token or manual step — was a false choice, and a second opinion found
+the third answer by reading the code rather than the issue.
+
+Since #61 the check already accepts **a human review of the head** — but only inside the
+declined-diff branch. So a Dependabot lockfile bump cost four manual steps: hand-request the round,
+wait for Copilot to decline it, review, re-run. **The first two existed only to obtain a round
+already known to be empty**, whose sole function was to reach the branch that then asked for the
+review — the real requirement all along.
+
+So the gate now takes that same path when the request provably could not be placed
+(`recorded === false`, which #63 made observable). Same ruling as #61, one more trigger; no
+credential, no exemption, and the human review unchanged. Two steps that produced no information
+are gone.
+
+It widens what satisfies the check and never narrows it: a Copilot round arriving anyway — because
+a user requested one from outside the job, the documented workaround — still wins, and the flag is
+off by default so nothing about an ordinary pull request changes.
+
+**#58 is closed on that**, with the caveat recorded rather than buried: the underlying mechanism is
+untouched and unreachable. GitHub will still not place the request, and only a stored user-scoped
+token would change that. What closed is the cost of living with it.
+
+**Next action.** Nothing outstanding. The first Dependabot batch after this is the first live
+reading of `recorded`, which no run has yet produced — #63's own check never called `requestRound`,
+the ruleset having already placed the request.
 
 **Recoverability.** Nothing partial. Every pull request this session opened is merged, squashed and
 its branch deleted; no tag was pushed and no release was run, so the published version is unchanged

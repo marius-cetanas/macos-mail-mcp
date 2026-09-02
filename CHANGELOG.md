@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- `copilot-reviewed` no longer counts a Copilot round that contains no review as a review. Copilot
+  submits one in two cases where nobody looked, and the check accepted both — so the merge gate was
+  satisfied by the absence of a review, which is what it exists to prevent. Measured twice: an error
+  round nearly merged #53, and two lockfile-only pull requests did merge on *"Copilot wasn't able to
+  review any files in this pull request"* (#54).
+
+  The two get different answers, because only one can be fixed by asking again. An error round is
+  transient, so the check keeps waiting and asks for another. A diff Copilot will not read — a
+  lockfile, which it excludes by documented policy — is permanent, so the review that is owed is a
+  person's: the check waits for a human review of the same head. Any human review counts rather than
+  only an approval, because GitHub forbids approving your own pull request and an approval-only rule
+  would leave a maintainer-authored lockfile change unmergeable by anyone here.
+
+- The check no longer reports a review request that GitHub silently discarded as a success. On a
+  Dependabot pull request the `requestReviews` mutation resolves, records nothing, and the check
+  used to expire red ten minutes later under a success line at the top of the log. The mutation now
+  returns the pull request's requested reviewers, so GitHub's own answer says whether the request
+  took (#58).
+
+  The cause is documented and structural rather than a defect here: a Copilot review must be billed
+  to a Copilot-licensed account, and where the author is a bot and the requester an app there is
+  none. GitHub's remedy is an organization policy unavailable to a user-owned repository, and no
+  workflow rearrangement reaches it — `pull_request_target` changes the token, not the actor.
+
+  So the gate stops asking for a round it cannot get and asks for the review instead: when the
+  request provably did not take, a human review of the head satisfies the check. A Dependabot bump
+  used to cost four manual steps — hand-request the round, wait for it to be declined, review,
+  re-run — of which the first two only ever produced a round already known to be empty.
+
 ## [1.3.3] - 2026-08-26
 
 ### Fixed
