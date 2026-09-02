@@ -8,10 +8,10 @@ v4.37.9, both `init` and `analyze`, SHA-pinned), **#55** (`@types/node` 26.2.0 �
 statements/branches/functions/lines on `src/`, 0 vulnerabilities, `portulan compile --check` GREEN.
 The 51 skips are the macOS-only AppleScript tests, as always off a Mac. Verified locally per branch
 **and** on the three-way merge result before any of them landed. **The Dependabot queue is empty.**
-Open at the time of writing: issue **#58**, and **#59** — the pull request carrying this file and the
-comment corrections it describes, green and unmerged. If you are reading this on `main`, #59 landed;
-if the corrections below are not in the tree you are looking at, it did not. Nothing consumer-facing
-shipped, so no release is owed — all three are `chore`, which the resolver types as no bump.
+Open issues: **#54** (already open, and it should have been read before this session touched the
+gate — see below) and **#58**, filed here. #59 carried this file and the comment corrections and has
+since merged. Nothing consumer-facing shipped, so no release is owed — all three are `chore`, which
+the resolver types as no bump.
 
 **All three were blocked by the same thing, and it was not the change.** Every check green except
 `copilot-reviewed`, which is required, on all three, each burning the full 600s budget. That is the
@@ -81,12 +81,25 @@ which side GitHub keys on is *not established*. Recorded as unknown rather than 
 - Should the check re-verify `isRoundPending()` after the mutation returns, so a request that did
   not take says so? It turns today's silent no-op loud — the first principle here — but it is a
   behaviour change to a required check, so it is proposed in #58 and not taken.
-- **A lockfile-only pull request satisfies this gate with a round that reviewed nothing.** Copilot
+- **A lockfile-only pull request satisfies this gate with a round that reviewed nothing** — and
+  this is **#54**, which was open before this session started and which I did not read. Copilot
   answered #55 and #56 with *"Copilot wasn't able to review any files in this pull request."* That
-  is a landed round on the head and the check counts it, correctly by its own definition. Whether
-  the definition is the wanted one is a question for whoever next touches the gate.
+  is a landed round on the head, the check counts it, and I merged both on it. #54 describes the
+  same fail-open with a different body (*"encountered an error and was unable to review"*) and
+  judges it rare, needing Copilot to fail. The lockfile body is not rare: it is deterministic, and
+  Dependabot produces it weekly. Measured today and written up on #54.
+- **The two issues interact, and the order matters.** #58 fails closed and #54 fails open, on the
+  same pull requests. Fixing #58 alone stops Dependabot bumps dying red and starts them sailing
+  through #54's hole instead — so #54's policy question (is a diff Copilot will not read `not-owed`,
+  or grounds for a human's yes?) wants settling first.
 
-**Next action.** #58 is the thread. Nothing is blocked on it — Dependabot pull requests merge today
+**The process note this session earns.** I listed open *pull requests* and reasoned as though that
+were the repository's open work. #54 was sitting in the issue list the whole time, describing the
+exact gate I spent the session inside, and I met its failure mode twice and merged on it. Reading
+the open issues costs one call and would have changed what I looked at. _(The same shape as the
+handoff's own "no open pull requests", written from a listing that was true when it ran.)_
+
+**Next action.** #54 first, then #58 — the sequencing is on both threads. Nothing is blocked on it — Dependabot pull requests merge today
 via request-by-hand then re-run, which is written into the workflow header so the next person meets
 it before the red check rather than after.
 
