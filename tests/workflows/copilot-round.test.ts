@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { parse } from "yaml";
 import {
   classifyRound,
+  emptyRound,
+  describeRequest,
+  DECLINED_DIFF,
+  ERRORED,
   isCopilotLogin,
   hasPendingRequest,
   describeError,
@@ -105,6 +109,154 @@ describe("classifyRound", () => {
       classifyRound({ reviews: undefined as unknown as [], head: HEAD }).state
     ).toBe("awaited");
     expect(classifyRound({ reviews: [{} as never], head: HEAD }).state).toBe("awaited");
+  });
+});
+
+/**
+ * #54 — a Copilot round that contains no review is not a review.
+ *
+ * The bodies are the ones GitHub actually sent, not paraphrases: the first was quoted on #54 from
+ * the round that satisfied the gate on #53, the second measured on #55 and #56, which merged on it.
+ * Paraphrasing them here would test the matcher against my memory of the string rather than the
+ * string, which is the whole defect one level up.
+ */
+const ERROR_BODY =
+  "Copilot encountered an error and was unable to review this pull request. " +
+  "You can try again by re-requesting a review.";
+const DECLINED_BODY = "Copilot wasn't able to review any files in this pull request.";
+const REAL_BODY = "### 🟢 Approval recommended\n\nThe change is a straightforward SHA-pin bump.";
+
+/** As `review`, plus the body — which is what decides whether a round is a review at all. */
+const round = (login: string, commit_id: string, body: string) => ({
+  user: { login },
+  commit_id,
+  body,
+});
+
+describe("emptyRound (#54)", () => {
+  it("names the declined-diff body, which no re-request can fix", () => {
+    expect(emptyRound(DECLINED_BODY)).toBe("declined");
+  });
+
+  it("names the error body, which a re-request can", () => {
+    expect(emptyRound(ERROR_BODY)).toBe("errored");
+  });
+
+  it("passes a real verdict through", () => {
+    expect(emptyRound(REAL_BODY)).toBe(null);
+  });
+
+  /*
+   * The two patterns must not both match one body, or the ordering in `classifyRound` decides the
+   * answer by accident. "wasn't able to review" does not contain "unable to review" — asserted
+   * rather than reasoned about, because that is a claim about a regex and regexes are checkable.
+   */
+  it("keeps the two patterns disjoint on the measured bodies", () => {
+    expect(ERRORED.test(DECLINED_BODY)).toBe(false);
+    expect(DECLINED_DIFF.test(ERROR_BODY)).toBe(false);
+  });
+
+  /*
+   * The specific-first ordering exists for a rewording that has not happened yet, so this is the
+   * only assertion here testing a string GitHub has never sent. It is worth its keep: it is what
+   * stops the ordering being silently rearranged.
+   */
+  it("reads a hypothetical 'was unable to review any files' as declined, not errored", () => {
+    expect(emptyRound("Copilot was unable to review any files in this pull request.")).toBe(
+      "declined"
+    );
+  });
+
+  it("treats a missing or empty body as a real round rather than throwing", () => {
+    expect(emptyRound(undefined)).toBe(null);
+    expect(emptyRound(null)).toBe(null);
+    expect(emptyRound("")).toBe(null);
+    expect(emptyRound(42)).toBe(null);
+  });
+});
+
+describe("classifyRound on rounds that reviewed nothing (#54)", () => {
+  /*
+   * The regression. Before this, `classifyRound` reported `landed` here and the gate went green
+   * over a pull request nothing had reviewed — measured on #53, where it nearly merged.
+   */
+  it("does not count an error round as landed", () => {
+    const result = classifyRound({ reviews: [round("Copilot", HEAD, ERROR_BODY)], head: HEAD });
+    expect(result.state).toBe("awaited");
+    expect(result.reason).toMatch(/all of them errors/);
+  });
+
+  /*
+   * `not-owed` rather than `awaited`, and the distinction is load-bearing: `copilot-reviewed` is a
+   * required check under `enforce_admins`, so waiting here would end red on every lockfile-only
+   * Dependabot bump with no way to merge it short of turning off branch protection.
+   */
+  it("treats a declined diff as no round being owed", () => {
+    const result = classifyRound({ reviews: [round("Copilot", HEAD, DECLINED_BODY)], head: HEAD });
+    expect(result.state).toBe("not-owed");
+    expect(result.reason).toMatch(/declined to read the diff/);
+  });
+
+  /*
+   * #53's exact sequence: Copilot errored at 17:00:46Z and delivered the real verdict at 18:53:00Z,
+   * both carrying `commit_id: 6313d73e`. The real one has to win regardless of order in the list.
+   */
+  it("lets a real round win over an empty one on the same head", () => {
+    for (const reviews of [
+      [round("Copilot", HEAD, ERROR_BODY), round("Copilot", HEAD, REAL_BODY)],
+      [round("Copilot", HEAD, REAL_BODY), round("Copilot", HEAD, ERROR_BODY)],
+    ]) {
+      const result = classifyRound({ reviews, head: HEAD });
+      expect(result.state).toBe("landed");
+      expect(result.reason).toMatch(/^1 Copilot round\(s\)/);
+    }
+  });
+
+  it("still ignores an empty round that describes an older commit", () => {
+    const result = classifyRound({ reviews: [round("Copilot", OLDER, DECLINED_BODY)], head: HEAD });
+    expect(result.state).toBe("awaited");
+    expect(result.reason).toMatch(/the branch moved/);
+  });
+
+  it("counts only the real rounds in the reason", () => {
+    const reviews = [
+      round("Copilot", HEAD, ERROR_BODY),
+      round("Copilot", HEAD, REAL_BODY),
+      round("Copilot", HEAD, REAL_BODY),
+    ];
+    expect(classifyRound({ reviews, head: HEAD }).reason).toContain("2 Copilot round(s)");
+  });
+});
+
+describe("describeRequest (#58)", () => {
+  it("says the round is on order when the request took", async () => {
+    expect(await describeRequest(async () => true)).toMatch(/on order/);
+  });
+
+  /*
+   * The line that exists for #58. It must name both readings — a request Copilot picked up
+   * instantly looks identical here (measured on #49) — and attach the one that matters to the
+   * outcome that separates them.
+   */
+  it("names both readings when nothing is on order afterwards", async () => {
+    const line = await describeRequest(async () => false);
+    expect(line).toMatch(/did not take \(#58\)/);
+    expect(line).toMatch(/took it up already/);
+    expect(line).toMatch(/expires red/);
+  });
+
+  it("reports a failed confirmation as unknown rather than as either answer", async () => {
+    const line = await describeRequest(async () => {
+      throw new Error("GraphQL -> 403");
+    });
+    expect(line).toMatch(/could not confirm it landed \(GraphQL -> 403\)/);
+    expect(line).not.toMatch(/did not take/);
+    expect(line).not.toMatch(/on order/);
+  });
+
+  it("claims nothing when there is no way to check", async () => {
+    const line = await describeRequest(undefined);
+    expect(line).toBe(`requested: asked ${COPILOT_REVIEWER} for a round`);
   });
 });
 
@@ -233,13 +385,62 @@ describe("awaitRound requesting the round (#44)", () => {
     await awaitRound({
       api: apiWith([]),
       requestRound: s.requestRound,
-      isRoundPending: notPending,
+      // Flips the way a request that takes does: nothing on order before the ask, on order after.
+      isRoundPending: (() => {
+        let asked = false;
+        return async () => (asked ? true : ((asked = true), false));
+      })(),
       sleep: noSleep,
       budgetMs: 0,
       log: s.log,
     });
     expect(s.asked).toBe(1);
     expect(s.lines.some((l) => l.startsWith("requested:"))).toBe(true);
+  });
+
+  /*
+   * #58 — the same call, on a pull request where the mutation resolves and records nothing.
+   * Measured on #55, #56 and #57. Before this the log read `requested: no round was on order,
+   * asked … for one` and the run then expired red ten minutes later with a success line at the
+   * top, which is the opposite of a clue.
+   */
+  it("says so when the request resolves and leaves nothing on order", async () => {
+    const s = spy();
+    await awaitRound({
+      api: apiWith([]),
+      requestRound: s.requestRound,
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s.log,
+    });
+    expect(s.asked).toBe(1);
+    expect(s.lines.some((l) => /did not take \(#58\)/.test(l))).toBe(true);
+  });
+
+  /*
+   * A round that reviewed nothing ends the wait as `not-owed` rather than burning the budget —
+   * the #54 half, exercised through the loop rather than only through the classifier.
+   */
+  it("stops on a declined diff instead of waiting for a round that cannot come", async () => {
+    const s = spy();
+    const result = await awaitRound({
+      api: apiWith([
+        {
+          user: { login: "Copilot" },
+          commit_id: HEAD,
+          body: "Copilot wasn't able to review any files in this pull request.",
+        },
+      ]),
+      requestRound: s.requestRound,
+      isRoundPending: notPending,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: s.log,
+    });
+    expect(result.state).toBe("not-owed");
+    expect(result.polls).toBe(1);
+    expect(s.asked).toBe(0);
   });
 
   // The ordinary case: the ruleset requested one a second after the pull request opened. Asking

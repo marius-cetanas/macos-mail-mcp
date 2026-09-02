@@ -28,7 +28,17 @@
 # `review_requested` event is ever recorded — so all three expired red and no push could have
 # changed that. Not a token problem; this job's own log reports `PullRequests: write`. Requested
 # under a user-scoped token the same three drew a round in five seconds. Until #58 settles the
-# mechanism, a Dependabot pull request needs the round requested by hand and this job re-run.
+# mechanism, a Dependabot pull request needs the round requested by hand and this job re-run. What
+# is fixed is the log: the job no longer calls an unconfirmed request a success.
+#
+# ## A round is not a review just because it arrived (#54)
+#
+# Copilot submits a review in two cases where nobody looked, and the check counted both. They get
+# different answers, because only one of them can be fixed by asking again: an error round is
+# transient and the job keeps waiting, while "wasn't able to review any files" — what Copilot
+# returns for a lockfile-only diff — is permanent for that diff and reports `not-owed`, the same
+# state as a draft. Waiting on it instead would end red on every Dependabot bump with no way to
+# merge, this check being required under `enforce_admins`.
 #
 # ## `pull_request_review` is deliberately not a trigger
 #

@@ -85,6 +85,52 @@ export function hasPendingRequest(nodes) {
 }
 
 /**
+ * Bodies that are a Copilot round arriving with **no review in it** (#54).
+ *
+ * A round is the gate's proxy for "somebody looked at this tree". Copilot submits a review in two
+ * cases where nobody looked, and `classifyRound` counted both as `landed` until now — so the merge
+ * gate was satisfied by the absence of a review, which is the thing it was built to prevent.
+ *
+ * The two are **not the same failure** and do not get the same answer, which is the half #54 did
+ * not have when it was filed:
+ *
+ *   * `DECLINED_DIFF` — *"Copilot wasn't able to review any files in this pull request."* Returned
+ *     for a diff Copilot will not read; measured on #55 and #56, both `package-lock.json`-only, and
+ *     both merged on it. **Re-requesting cannot fix this** — the diff will still be a lockfile — so
+ *     waiting would burn the budget and end red on every Dependabot bump, forever. `not-owed`.
+ *   * `ERRORED` — *"Copilot encountered an error and was unable to review this pull request."*
+ *     Transient; #53 got a real verdict from a re-request two minutes later. `awaited`, which is
+ *     also what makes `awaitRound` ask again.
+ *
+ * Matching a vendor's prose is brittle and is the right trade anyway: the alternative is a gate
+ * that silently accepts nothing. Loose enough to survive rewording, and the day a string changes
+ * the failure is a **red** gate rather than a green one, because an unmatched body falls through
+ * to `landed` only if it is a real round — and a reworded apology reaching `landed` is the
+ * behaviour we already had. Ordered specific-first: `DECLINED_DIFF` is checked before `ERRORED` so
+ * a future *"Copilot was unable to review any files"* lands in the right one.
+ */
+export const DECLINED_DIFF = /able to review any files/i;
+
+/** @see DECLINED_DIFF */
+export const ERRORED = /unable to review/i;
+
+/**
+ * Does this round's body say Copilot did not review anything?
+ *
+ * Guards the type rather than assuming it: `body` is absent on some review payloads and `null` on
+ * others, and `String(null).match()` would happily test the text "null".
+ *
+ * @param {unknown} body
+ * @returns {"declined"|"errored"|null} null when the body reads as an actual review
+ */
+export function emptyRound(body) {
+  if (typeof body !== "string" || body === "") return null;
+  if (DECLINED_DIFF.test(body)) return "declined";
+  if (ERRORED.test(body)) return "errored";
+  return null;
+}
+
+/**
  * @param {{reviews: Array<object>, head: string, draft?: boolean}} input
  * @returns {{state: "landed"|"awaited"|"not-owed", reason: string}}
  */
@@ -107,10 +153,37 @@ export function classifyRound({ reviews, head, draft = false }) {
   const onHead = byCopilot.filter((r) => r?.commit_id === head);
   const short = head.slice(0, 8);
 
-  if (onHead.length > 0) {
+  /*
+   * A round that reviewed nothing does not count as one (#54). Split before deciding, and let a
+   * real round win over an empty one on the same head — that is #53's exact sequence, where an
+   * error round and the genuine verdict both carried `commit_id: 6313d73e`.
+   */
+  const real = onHead.filter((r) => emptyRound(r?.body) === null);
+  const declined = onHead.filter((r) => emptyRound(r?.body) === "declined");
+
+  if (real.length > 0) {
     return {
       state: "landed",
-      reason: `${onHead.length} Copilot round(s) on ${short}, the commit being merged`,
+      reason: `${real.length} Copilot round(s) on ${short}, the commit being merged`,
+    };
+  }
+
+  if (declined.length > 0) {
+    return {
+      state: "not-owed",
+      // Not `awaited`: no re-request changes the diff, so waiting here ends red on every
+      // lockfile-only pull request. Stated as an exemption rather than reached by accident,
+      // which is the difference from what this did before.
+      reason: `Copilot declined to read the diff on ${short} — no round is owed for it`,
+    };
+  }
+
+  if (onHead.length > 0) {
+    return {
+      state: "awaited",
+      // The error case. Naming it separately is the point: a bare "no round yet" here would
+      // describe a round that arrived and said it had failed.
+      reason: `${onHead.length} Copilot round(s) on ${short}, all of them errors — waiting for a real one`,
     };
   }
 
@@ -220,9 +293,10 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *
  * So the failing combination is a bot-authored pull request asked by the Actions token, and which
  * side GitHub keys on is not established. Until it is, a Dependabot pull request needs the round
- * requested by hand and the job re-run. #58 has the controls and the suggested fix — re-checking
- * `isRoundPending()` after the mutation returns, so a request that did not take says so instead of
- * reporting success. That is a behaviour change to a required check, so it is not made here.
+ * requested by hand and the job re-run; #58 has the controls. The **diagnosis** is fixed — see
+ * `describeRequest`, which re-checks `isRoundPending()` after the mutation and refuses to call an
+ * unconfirmed request a success. The **mechanism** is not: this still cannot make GitHub honour the
+ * request, so #58 stays open and the manual step stands.
  *
  * I/O is injected so the loop is testable without a network or a clock.
  *
@@ -278,7 +352,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         // right answer is the one the check always had: wait, and let the budget decide.
         try {
           await requestRound();
-          log(`requested: no round was on order, asked ${COPILOT_REVIEWER} for one`);
+          log(await describeRequest(isRoundPending));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
@@ -298,6 +372,48 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
     log(`waiting: ${result.reason}`);
     await sleep(pollMs);
     waited += pollMs;
+  }
+}
+
+/**
+ * What to log after a request that did not throw (#58).
+ *
+ * The old line said `requested: no round was on order, asked … for one` on any resolved mutation,
+ * and on a Dependabot pull request that is a lie: measured on #55, #56 and #57, `requestReviews`
+ * resolves, **no `review_requested` event is ever recorded**, and the check expires red ten
+ * minutes later with a success line at the top of the log. Not a permissions problem — that job's
+ * own log reports `PullRequests: write`. A success code for an action that did not happen is the
+ * failure this repository has a principle about, and it had reappeared inside the code written to
+ * fix it.
+ *
+ * So the request is checked rather than assumed. **The check is not conclusive and does not claim
+ * to be**: a request that Copilot picks up immediately also reads as "nothing pending" — measured
+ * on #49, where the pending request was cleared before the job's first poll. Both readings are in
+ * the line, with the one that matters attached to the outcome that distinguishes them, because a
+ * reader who is looking at this log at all is looking at a run that expired.
+ *
+ * A failure to check is not evidence either way and says so, rather than picking the reassuring
+ * reading.
+ *
+ * @param {(() => Promise<boolean>) | undefined} isRoundPending
+ * @returns {Promise<string>}
+ */
+export async function describeRequest(isRoundPending) {
+  if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;
+  try {
+    if (await isRoundPending()) {
+      return `requested: asked ${COPILOT_REVIEWER} for a round, and it is on order`;
+    }
+    return (
+      `requested ${COPILOT_REVIEWER} and the mutation succeeded, but nothing is on order a moment ` +
+      `later — either Copilot took it up already, or the request did not take (#58). If this run ` +
+      `expires red, it was the second.`
+    );
+  } catch (err) {
+    return (
+      `requested: asked ${COPILOT_REVIEWER} for a round, and could not confirm it landed ` +
+      `(${describeError(err)})`
+    );
   }
 }
 
