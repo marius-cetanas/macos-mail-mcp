@@ -412,8 +412,8 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         // read-only whatever the workflow asks for, so this is expected to fail there — and the
         // right answer is the one the check always had: wait, and let the budget decide.
         try {
-          await requestRound();
-          log(await describeRequest(isRoundPending));
+          const outcome = await requestRound();
+          log(await describeRequest(isRoundPending, outcome?.recorded));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
         }
@@ -456,10 +456,28 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
  * A failure to check is not evidence either way and says so, rather than picking the reassuring
  * reading.
  *
+ * ## `recorded` outranks the poll, when there is one
+ *
+ * `requestRound` now asks the mutation to return the pull request's reviewers, so GitHub reports
+ * the post-mutation state **in the response to the mutation itself**. That answer is not racing
+ * anything and is preferred whenever it exists; the poll below stays as the fallback for a
+ * `requestRound` that does not report one, which every stub in the suite and any older caller is.
+ *
  * @param {(() => Promise<boolean>) | undefined} isRoundPending
+ * @param {boolean | null | undefined} recorded what the mutation's own response said, if anything
  * @returns {Promise<string>}
  */
-export async function describeRequest(isRoundPending) {
+export async function describeRequest(isRoundPending, recorded) {
+  if (recorded === true) {
+    return `requested: asked ${COPILOT_REVIEWER} for a round, and GitHub recorded it`;
+  }
+  if (recorded === false) {
+    return (
+      `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
+      `does not list Copilot among the reviewers — the request did not take (#58). Nothing this ` +
+      `job can do will produce a round; the check will expire.`
+    );
+  }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;
   try {
     if (await isRoundPending()) {
@@ -576,15 +594,40 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
     const { node_id: botId } = await res.json();
     if (!botId) throw new Error(`no node id in the response for ${COPILOT_REVIEWER}`);
 
+    /*
+     * The selection is the diagnosis (#58).
+     *
+     * This used to ask for `pullRequest { id }` — the one field guaranteed to come back whether or
+     * not the mutation did anything — and threw the response away. So a mutation that was accepted
+     * and recorded nothing was indistinguishable from one that worked, which is exactly what
+     * happens on a Dependabot pull request and cost #55, #56 and #57 a red required check each
+     * with a success line at the top of the log.
+     *
+     * Asking for `reviewRequests` back reads the **post-mutation state in the mutation's own
+     * response**, so GitHub answers the question directly rather than being asked again afterwards
+     * and racing Copilot for it.
+     */
     const { id } = await pullRequest("id");
-    return graphql(
+    const data = await graphql(
       `mutation($pullRequestId:ID!,$botIds:[ID!]){
          requestReviews(input:{pullRequestId:$pullRequestId,botIds:$botIds,union:true}){
-           pullRequest{ id }
+           pullRequest{
+             reviewRequests(first:${REVIEWER_PAGE}){
+               nodes{requestedReviewer{... on Bot{login} ... on User{login}}}
+             }
+           }
          }
        }`,
       { pullRequestId: id, botIds: [botId] }
     );
+
+    /*
+     * `null` rather than `false` when the shape is not what we expected: an absent field is "this
+     * response did not say", which is a different claim from "GitHub says Copilot is not
+     * requested", and collapsing the two would report a defect on any future schema change.
+     */
+    const nodes = data?.requestReviews?.pullRequest?.reviewRequests?.nodes;
+    return { recorded: Array.isArray(nodes) ? hasPendingRequest(nodes) : null };
   };
 
   return { api, graphql, isRoundPending, requestRound };
