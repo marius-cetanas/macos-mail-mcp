@@ -54,15 +54,39 @@ this session took timeline archaeology across four pull requests.
 
 ## Open questions *(human-owned)*
 
-- **#58's mechanism.** Measured, it fails only when the pull request's author **and** the requester
-  are both bots; each alone works. Whether GitHub keys on the author, the requesting actor, or the
-  Dependabot token context is not established. The instrumentation above turns the next Dependabot
-  pull request into the experiment, at no cost.
-- **Whether a stored PAT is acceptable** if the mechanism turns out to be requester-keyed. It is the
-  only fix that works under both hypotheses, and it is a real reversal of a stated design property.
+- **Whether a stored user token is acceptable.** Now the only question, and it is a real reversal of
+  a stated design property. See below — the mechanism is no longer open.
 
-**Next action.** Push `ccd4793` and open its pull request. Then #58 waits for the next Dependabot
-bump, which will now diagnose itself.
+## The mechanism is documented, and it is billing attribution
+
+Answered after the above was written, from GitHub's documentation rather than by experiment — so
+the "turns the next bump into the experiment" line above is superseded, and the instrumentation is
+now belt-and-braces rather than the plan.
+
+It is neither the author nor the requester alone, which is why the four-cell matrix looked
+contradictory. A Copilot review has to be **charged to a Copilot-licensed account**: a manual
+request by a *user* is attributed to that user, and a licensed human author covers the automatic
+case. In the failing cell there is no such account — the requester is an app rather than a user,
+and the author is a bot. GitHub's 2026-08-27 changelog names the case exactly, and its remedy is an
+**organization policy on Copilot Business/Enterprise**.
+
+**This repository is user-owned, so that policy does not exist for it.** Three consequences:
+
+- The failure is **structural, not a bug**. No amount of workflow engineering reaches it.
+- **`pull_request_target` would not have worked**, which was my leading candidate. It changes the
+  token and the secret source; it does **not** change the actor, which stays `github-actions[bot]`
+  — still not a user, still nothing to bill. Recorded because it is the plausible fix a future
+  session will otherwise spend a day on.
+- The only mechanism fix left is a **user-scoped token**, i.e. a stored credential, which the
+  release design is built to avoid. Gate-map decision, and the only open question on #58.
+
+Caveat kept deliberately: GitHub documents the attribution rule and does **not** document that a
+request with nothing to bill is dropped *silently*, with no `review_requested` event and no GraphQL
+error. That half is still ours, measured and not confirmed by any source. The citations, their
+provenance, and the docs-vs-inference split are on #58.
+
+**Next action.** #58 needs one decision — stored user token, or keep the manual step. Nothing else
+about it is open.
 
 **Recoverability.** Nothing partial on the remote: every merged pull request is squashed and its
 branch deleted, no tag was pushed, no release was run. The only work not on `main` is `ccd4793` on

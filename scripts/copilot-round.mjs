@@ -347,9 +347,26 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  * seconds, which is how they were unblocked. The same code path on a human-authored pull request
  * (#49) does record `review_requested by github-actions[bot]`.
  *
- * So the failing combination is a bot-authored pull request asked by the Actions token, and which
- * side GitHub keys on is not established. Until it is, a Dependabot pull request needs the round
- * requested by hand and the job re-run; #58 has the controls. The **diagnosis** is fixed — see
+ * **The mechanism is billing attribution, and it is documented** — neither the author nor the
+ * requester on its own, which is why the matrix looked contradictory. A Copilot review has to be
+ * charged to a Copilot-licensed account. *"If a review is manually requested by another user, the
+ * consumption is attributed to that user instead"* covers the two cells a human requested; a
+ * licensed human author covers the third. In the failing cell there is no such account — the
+ * requester is an app rather than a user, and the author is a bot. GitHub's 2026-08-27 changelog
+ * names exactly this case: *"When a pull request is authored by a bot and requested automatically,
+ * there's no Copilot-licensed account to attribute the review to"*, fixed by an organization
+ * policy on Copilot Business/Enterprise.
+ *
+ * **This repository is user-owned, so that policy does not exist for it.** The failure is
+ * structural rather than a bug, and no workflow rearrangement reaches it: `pull_request_target`
+ * changes the token and the secret source but **not the actor**, which stays `github-actions[bot]`
+ * — still not a user, still nothing to bill. Only a user-scoped token would work, and that means a
+ * stored credential, which is a gate-map decision rather than an implementation one. So a
+ * Dependabot pull request needs the round requested by hand and the job re-run; #58 carries the
+ * citations, and the caveat that GitHub documents the attribution rule without documenting that
+ * the request is then dropped with no `review_requested` event.
+ *
+ * The **diagnosis** is fixed — see
  * `describeRequest`, which re-checks `isRoundPending()` after the mutation and refuses to call an
  * unconfirmed request a success. The **mechanism** is not: this still cannot make GitHub honour the
  * request, so #58 stays open and the manual step stands.
@@ -464,7 +481,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
  * `requestRound` that does not report one, which every stub in the suite and any older caller is.
  *
  * @param {(() => Promise<boolean>) | undefined} isRoundPending
- * @param {boolean | null | undefined} recorded what the mutation's own response said, if anything
+ * @param {boolean | null} [recorded] what the mutation's own response said, if anything
  * @returns {Promise<string>}
  */
 export async function describeRequest(isRoundPending, recorded) {
@@ -474,8 +491,8 @@ export async function describeRequest(isRoundPending, recorded) {
   if (recorded === false) {
     return (
       `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
-      `does not list Copilot among the reviewers — the request did not take (#58). Nothing this ` +
-      `job can do will produce a round; the check will expire.`
+      `does not list Copilot among the pull request's requested reviewers — the request did not ` +
+      `take (#58). Nothing this job can do will produce a round; the check will expire.`
     );
   }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;

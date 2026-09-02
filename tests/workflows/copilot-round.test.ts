@@ -367,7 +367,8 @@ describe("describeRequest (#58)", () => {
 
   it("says outright that the check will expire when GitHub did not record it", async () => {
     const line = await describeRequest(undefined, false);
-    expect(line).toMatch(/does not list Copilot among the reviewers/);
+    // Names the list it actually read — `reviewRequests`, not the reviews. (Raised by Copilot on #63.)
+    expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
     expect(line).toMatch(/the check will expire/);
     // No hedging here — unlike the poll, this reading has no innocent explanation.
     expect(line).not.toMatch(/took it up already/);
