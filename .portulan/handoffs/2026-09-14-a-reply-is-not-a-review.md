@@ -3,8 +3,8 @@
 **State, at session close on 2026-09-14.** Pull request #82 from `claude/goofy-nash-ee3861`, rebased
 onto `main` after #81 merged. Merging it is Gated, as every merge here is. The branch keeps the
 change's history: the failing tests alone first, then the fix, the adjustments an independent review
-required, this handoff and its amendments, a fix for the one note in Copilot's round, and the change
-#81's paging called for. Verify recipe on the head: exit 0, 32 files / 698 tests, 100% statements,
+required, this handoff and its amendments, fixes for the notes in Copilot's rounds, and the change
+#81's paging called for. Verify recipe on the head: exit 0, 32 files / 699 tests, 100% statements,
 branches, functions and lines on `src/`, 0 vulnerabilities. No commit or base id appears in this
 paragraph: the branch has been rebased three times, and each time the ids a State paragraph named went
 stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes false on merge._
@@ -46,11 +46,13 @@ stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
   nothing here measures.
 - **The #58 log line now says which review satisfies the check**, because it prints on exactly the
   pull requests where a reply no longer does.
-- **Copilot's one note was right, and was fixed by wording rather than a new category.** The reason
-  called a refused review "only thread replies or empty", which misdescribes one holding malformed
-  comment entries. A separate count for those would add a branch for a shape no measured payload has
-  shown; naming what every refused review lacks — no verdict, no body beyond whitespace, no top-level
-  comment — is true of all three shapes at once, and the malformed-entry test now asserts it.
+- **Copilot's notes on the reason line were right, both times.** First, it called a refused review
+  "only thread replies or empty", which misdescribes one holding malformed comment entries, so the
+  line became what every refused review lacks — no verdict, no body beyond whitespace, no top-level
+  comment. Then it trailed every refused review with "a reply to a thread is not a review", which
+  still read as a diagnosis of an empty or malformed one. That hint is now said only of a review whose
+  comments are all replies — the shape all 54 of this repository's replies take — while malformed
+  entries still get no category of their own, being a shape no measured payload has shown.
 
 ## How it was verified
 
@@ -61,12 +63,12 @@ stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
   made fifteen mutations that each turned tests red, and replayed #73's reviews read-only through the
   script. On a second pass it confirmed the adjustments and the first rebase, leaving one adjustment:
   commit messages still carrying pre-rebase figures. Its verdict covers `git diff 878af79 7e2b30a`,
-  sha256 `b35c965b…`. **Two later commits were not re-reviewed locally**: the fix for Copilot's note,
+  sha256 `b35c965b…`. **Later commits were not re-reviewed locally**: the fixes for Copilot's notes,
   and the change #81's paging called for, which moved the comments read onto #81's `api`. Copilot's
   rounds on the heads after them are their review.
-- **Copilot's round on `0b94e85`**, the head before the second rebase: "Needs a closer look" — the
-  gate change warrants final human review — with no inline comments and one suppressed note, the
-  reason wording above.
+- **Copilot's rounds on `0b94e85` and `7151422`**, the heads before the second and third rebases:
+  "Needs a closer look" both times — the first adding that the gate change warrants final human
+  review — with no inline comments and one suppressed note each, both on the reason line above.
 - **The rebases moved no code of their own.** `main` gained #76, #78, #77, #80 and #81 during the
   session. Each time the rebased patches compared identical — `--full-index` on the first two,
   `git range-diff` on the third — except in `CHANGELOG.md`, which conflicted every time because #78,
