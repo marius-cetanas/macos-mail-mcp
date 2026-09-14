@@ -20,6 +20,8 @@ import {
   COPILOT_BOT_LOGIN,
   makeGithubIo,
   REVIEWER_PAGE,
+  REST_PAGE,
+  nextPageUrl,
 } from "../../scripts/copilot-round.mjs";
 
 const HEAD = "a".repeat(40);
@@ -896,8 +898,14 @@ describe("awaitRound requesting the round (#44)", () => {
  * runs something.
  */
 describe("makeGithubIo", () => {
-  /** A `fetch` that answers from a queue and records what it was asked. */
-  const fetchStub = (answers: Array<{ ok?: boolean; status?: number; body?: unknown }>) => {
+  /**
+   * A `fetch` that answers from a queue and records what it was asked. `link` becomes the answer's
+   * `Link` header, which is how a list says there is another page; a real `Response` always has
+   * `headers`, so every answer here does too.
+   */
+  const fetchStub = (
+    answers: Array<{ ok?: boolean; status?: number; body?: unknown; link?: string }>
+  ) => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const fetch = async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
@@ -905,6 +913,7 @@ describe("makeGithubIo", () => {
       return {
         ok: a.ok ?? true,
         status: a.status ?? 200,
+        headers: new Headers(a.link === undefined ? {} : { link: a.link }),
         json: async () => a.body ?? {},
       } as unknown as Response;
     };
@@ -934,8 +943,75 @@ describe("makeGithubIo", () => {
     it("sends the token and reads the pull request path", async () => {
       const g = io([{ body: { head: { sha: "abc" } } }]);
       await expect(g.api("")).resolves.toEqual({ head: { sha: "abc" } });
-      expect(g.calls[0].url).toBe("https://api.github.com/repos/o/r/pulls/7");
+      // `per_page` goes on every read, this one included. Measured, the single pull request
+      // endpoint ignores it: the object came back identical, and with no `Link` header.
+      expect(g.calls[0].url).toBe("https://api.github.com/repos/o/r/pulls/7?per_page=100");
+      expect(g.calls).toHaveLength(1);
       expect((g.calls[0].init?.headers as Record<string, string>).authorization).toBe("Bearer t");
+    });
+
+    /**
+     * A page link as GitHub writes it: under `/repositories/{id}/`, not the `/repos/{owner}/{name}/`
+     * path the first request used. The id is this repository's, from the measured headers below.
+     */
+    const page = (n: number, rel: string) =>
+      `<https://api.github.com/repositories/1191561833/pulls/7/reviews?per_page=100&page=${n}>; rel="${rel}"`;
+
+    /*
+     * Measured on 2026-09-14 on `GET /pulls/{n}/reviews`: 30 a page with no `per_page`, and
+     * `per_page=101` served 100 — so 100 is the most a page holds, and asking for more buys nothing.
+     */
+    it("asks a list for the largest page GitHub serves", async () => {
+      const g = io([{ body: [] }]);
+      await g.api("/reviews");
+      expect(REST_PAGE).toBe(100);
+      expect(g.calls[0].url).toBe("https://api.github.com/repos/o/r/pulls/7/reviews?per_page=100");
+    });
+
+    /*
+     * The defect. Reviews are listed oldest first by `submitted_at` — measured across all 511 on
+     * nodejs/node#22712, and on #24's 18 here — so the ones this check waits for are on the last
+     * page, and a read that stopped at the first never saw them.
+     */
+    it("reads every page of a list, in order", async () => {
+      const g = io([
+        { body: [{ id: 1 }, { id: 2 }], link: `${page(2, "next")}, ${page(3, "last")}` },
+        {
+          body: [{ id: 3 }],
+          link: `${page(1, "prev")}, ${page(3, "next")}, ${page(3, "last")}, ${page(1, "first")}`,
+        },
+        { body: [{ id: 4 }], link: `${page(2, "prev")}, ${page(1, "first")}` },
+      ]);
+      await expect(g.api("/reviews")).resolves.toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }]);
+      expect(g.calls).toHaveLength(3);
+    });
+
+    it("follows the link as given, with the token on every page", async () => {
+      const g = io([{ body: [{ id: 1 }], link: page(2, "next") }, { body: [{ id: 2 }] }]);
+      await g.api("/reviews");
+      expect(g.calls[1].url).toBe(
+        "https://api.github.com/repositories/1191561833/pulls/7/reviews?per_page=100&page=2"
+      );
+      for (const call of g.calls) {
+        expect((call.init?.headers as Record<string, string>).authorization).toBe("Bearer t");
+      }
+    });
+
+    it("names the page when a later one fails", async () => {
+      const g = io([{ body: [{ id: 1 }], link: page(2, "next") }, { ok: false, status: 502 }]);
+      await expect(g.api("/reviews")).rejects.toThrow("GET pulls/7/reviews (page 2) -> 502");
+    });
+
+    /*
+     * The token rides on every request, so a next page off api.github.com is refused before it is
+     * requested rather than after.
+     */
+    it("refuses to carry the token to a next page off api.github.com", async () => {
+      const g = io([{ body: [{ id: 1 }], link: '<https://example.com/reviews?page=2>; rel="next"' }]);
+      await expect(g.api("/reviews")).rejects.toThrow(
+        "GET pulls/7/reviews (page 2) -> not followed: https://example.com/reviews?page=2 is off api.github.com"
+      );
+      expect(g.calls).toHaveLength(1);
     });
   });
 
@@ -1073,6 +1149,140 @@ describe("makeGithubIo", () => {
       const g = io([{ body: {} }]);
       await expect(g.requestRound()).rejects.toThrow(/no node id in the response/);
     });
+  });
+});
+
+/**
+ * `Link` headers exactly as GitHub sent them for `GET /pulls/24/reviews?per_page=5` on this
+ * repository on 2026-09-14: the first page, a middle one, and the last, which names no `next`.
+ */
+const LINK_FIRST =
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=2>; rel="next", ' +
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=4>; rel="last"';
+const LINK_MIDDLE =
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="prev", ' +
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3>; rel="next", ' +
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=4>; rel="last", ' +
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="first"';
+const LINK_LAST =
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3>; rel="prev", ' +
+  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="first"';
+
+describe("nextPageUrl", () => {
+  it("reads the next page off the first page's header", () => {
+    expect(nextPageUrl(LINK_FIRST)).toBe(
+      "https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=2"
+    );
+  });
+
+  /*
+   * On a middle page `prev` comes first. A reader that took the first link would go from page 2
+   * back to page 1, whose first link is page 2 again — round and round, never reaching the last.
+   */
+  it("finds next by name, wherever it sits", () => {
+    expect(nextPageUrl(LINK_MIDDLE)).toBe(
+      "https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3"
+    );
+  });
+
+  it("is null on the last page, which names no next", () => {
+    expect(nextPageUrl(LINK_LAST)).toBe(null);
+  });
+
+  // A list that fits on one page sends no `Link` header at all — measured on #24's 18 reviews with
+  // no `per_page` — and neither does the single pull request endpoint.
+  it("is null when there is no header", () => {
+    expect(nextPageUrl(null)).toBe(null);
+    expect(nextPageUrl(undefined)).toBe(null);
+    expect(nextPageUrl("")).toBe(null);
+  });
+});
+
+/**
+ * `awaitRound` over the `api` that `makeGithubIo` builds — the pairing the CLI arm wires, which the
+ * suite cannot run — against a `fetch` that pages reviews the way GitHub was measured to.
+ *
+ * `api` used to read one page. Reviews come 30 a page by default, oldest first, so past 30 the
+ * newest — Copilot's round on the head, and any human review of it — went unread, `classifyRound`
+ * reported the head unreviewed, and the check would expire red with no push able to clear it. As of
+ * 2026-09-14 no pull request here had got there — 18 reviews, on #24, was the most — but every reply
+ * to a review thread is recorded as a review of its own (5198788557 on #73), and the maintainer had
+ * written 54 of those across the repository.
+ */
+describe("awaitRound over makeGithubIo when the round is past the first page", () => {
+  /**
+   * The pull request, and its reviews paged as measured on 2026-09-14: 30 a page with no `per_page`,
+   * never more than 100, and each next page named by a `Link` header under `/repositories/{id}/`,
+   * carrying `per_page` only when the request did.
+   */
+  const github = (reviews: object[]) => {
+    const urls: string[] = [];
+    const fetch = async (url: string) => {
+      urls.push(url);
+      const u = new URL(url);
+      const headers = new Headers();
+      if (!u.pathname.endsWith("/reviews")) {
+        return { ok: true, status: 200, headers, json: async () => ({ head: { sha: HEAD } }) };
+      }
+      const perPage = Math.min(Number(u.searchParams.get("per_page") ?? 30), 100);
+      const n = Number(u.searchParams.get("page") ?? 1);
+      const last = Math.max(1, Math.ceil(reviews.length / perPage));
+      const at = (p: number) =>
+        `<https://api.github.com/repositories/1191561833/pulls/7/reviews?${
+          u.searchParams.has("per_page") ? `per_page=${perPage}&` : ""
+        }page=${p}>`;
+      if (n < last) headers.set("link", `${at(n + 1)}; rel="next", ${at(last)}; rel="last"`);
+      return {
+        ok: true,
+        status: 200,
+        headers,
+        json: async () => reviews.slice((n - 1) * perPage, n * perPage),
+      };
+    };
+    return { urls, fetch: fetch as unknown as typeof globalThis.fetch };
+  };
+
+  const run = (gh: ReturnType<typeof github>) =>
+    awaitRound({
+      api: makeGithubIo({ fetch: gh.fetch, token: "t", repo: "o/r", pr: "7" }).api,
+      sleep: async () => {},
+      budgetMs: 0,
+    });
+
+  /** A thread reply as the reviews list shows one: `COMMENTED`, empty body — 5198788557 on #73. */
+  const reply = {
+    user: { login: "marius-cetanas", type: "User" },
+    commit_id: OLDER,
+    state: "COMMENTED",
+    body: "",
+  };
+
+  /** 130 reviews before anything on the head: a round on an earlier commit, then the conversation. */
+  const history = [round("Copilot", OLDER, REAL_BODY), ...Array.from({ length: 129 }, () => reply)];
+
+  it("finds Copilot's round on the head", async () => {
+    const gh = github([...history, round("Copilot", HEAD, REAL_BODY)]);
+    const result = await run(gh);
+    expect(result.state).toBe("landed");
+    expect(result.reason).toMatch(/the commit being merged/);
+    // 131 reviews at 100 a page is two reads. At the default 30 it would have been five.
+    expect(gh.urls.filter((u) => new URL(u).pathname.endsWith("/reviews"))).toHaveLength(2);
+  });
+
+  it("finds a human review of the head, where Copilot declined the diff", async () => {
+    const gh = github([
+      ...history,
+      round("Copilot", HEAD, DECLINED_BODY),
+      {
+        user: { login: "marius-cetanas", type: "User" },
+        commit_id: HEAD,
+        state: "COMMENTED",
+        body: "Read the lockfile diff; the bump is the one the title names.",
+      },
+    ]);
+    const result = await run(gh);
+    expect(result.state).toBe("landed");
+    expect(result.reason).toMatch(/1 human review\(s\) on it/);
   });
 });
 
