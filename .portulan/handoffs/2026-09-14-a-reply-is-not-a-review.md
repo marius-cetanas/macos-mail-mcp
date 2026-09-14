@@ -4,7 +4,7 @@
 onto `main` after #81 merged. Merging it is Gated, as every merge here is. The branch keeps the
 change's history: the failing tests alone first, then the fix, the adjustments an independent review
 required, this handoff and its amendments, fixes for the notes in Copilot's rounds, and the change
-#81's paging called for. Verify recipe on the head: exit 0, 32 files / 699 tests, 100% statements,
+#81's paging called for. Verify recipe on the head: exit 0, 32 files / 701 tests, 100% statements,
 branches, functions and lines on `src/`, 0 vulnerabilities. No commit or base id appears in this
 paragraph: the branch has been rebased three times, and each time the ids a State paragraph named went
 stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes false on merge._
@@ -35,15 +35,21 @@ stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
   found the rest, and that sentence never reached the tree — the same shape as the last handoff's nine
   stale sentences, caught this time by a reviewer before anything merged.
 - **Comments are read lazily, through the existing `api`**, which since #81 reads every page of a
-  list. `classifyRound` stays pure and names the reviews in `unread`; the loop reads those and decides
-  again, and never on the path that waits for Copilot. Not extending `makeGithubIo`, as suggested, is
-  deliberate: a new dependency would need wiring in the `c8 ignore`d CLI arm, where a forgotten wire
-  would silently refuse every body-less review with a top-level comment.
+  list. `classifyRound` stays pure and names the reviews in `unread`; the loop then reads the pull
+  request's review comments once and gives each named review its own, and never reads on the path
+  that waits for Copilot. Not extending `makeGithubIo`, as suggested, is deliberate: a new dependency
+  would need wiring in the `c8 ignore`d CLI arm, where a forgotten wire would silently refuse every
+  body-less review with a top-level comment.
 - **A failed read throws**, like the loop's two other reads, rather than waiting under a reason that
   names the wrong thing.
-- **Not taken: caching a refused review's comments across polls.** The GETs it saves are inside the
-  allowance, and the cache would rest on a submitted review never gaining a top-level comment, which
-  nothing here measures.
+- **One read of the pull request's comments, not one per review, and still no cache.** Read per
+  review, each poll cost a request for every review waiting to be read and repeated them all, which a
+  long conversation of replies on the head could turn into a spent allowance and a red check. An
+  earlier version of this bullet judged those reads to fit; Copilot's third round showed how they need
+  not. Grouping by `pull_request_review_id` was measured first: all 113 review comments here carry
+  one, and the 110 GraphQL was also asked about fall into exactly the reviews it puts them in. A cache
+  across polls is still not taken — it would rest on a submitted review never gaining a top-level
+  comment, which nothing here measures.
 - **The #58 log line now says which review satisfies the check**, because it prints on exactly the
   pull requests where a reply no longer does.
 - **Copilot's notes on the reason line were right, both times.** First, it called a refused review
@@ -53,6 +59,10 @@ stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
   still read as a diagnosis of an empty or malformed one. That hint is now said only of a review whose
   comments are all replies — the shape all 54 of this repository's replies take — while malformed
   entries still get no category of their own, being a shape no measured payload has shown.
+- **A top-level comment is an identified comment with no `in_reply_to_id` key at all.** An explicit
+  `null` used to count, and an id of `0` or below passed as one GitHub sent; both are now refused,
+  because absence is the one top-level shape measured — 58 of the 113 review comments here, with none
+  holding `null` — and GitHub's ids start at 1. Copilot's third round found both.
 
 ## How it was verified
 
@@ -66,9 +76,11 @@ stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
   sha256 `b35c965b…`. **Later commits were not re-reviewed locally**: the fixes for Copilot's notes,
   and the change #81's paging called for, which moved the comments read onto #81's `api`. Copilot's
   rounds on the heads after them are their review.
-- **Copilot's rounds on `0b94e85` and `7151422`**, the heads before the second and third rebases:
-  "Needs a closer look" both times — the first adding that the gate change warrants final human
-  review — with no inline comments and one suppressed note each, both on the reason line above.
+- **Copilot's rounds on `0b94e85`, `7151422` and `ded6fec`.** The first two said "Needs a closer look",
+  the first adding that the gate change warrants final human review, each with one suppressed note on
+  the reason line above. The third said "Changes recommended": of its four suppressed notes, two were
+  already fixed by the next head, and two were new — the id check and the per-review read — beside one
+  inline comment on the explicit `null`. Each new finding is fixed in its own commit.
 - **The rebases moved no code of their own.** `main` gained #76, #78, #77, #80 and #81 during the
   session. Each time the rebased patches compared identical — `--full-index` on the first two,
   `git range-diff` on the third — except in `CHANGELOG.md`, which conflicted every time because #78,
