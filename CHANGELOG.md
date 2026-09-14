@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that every tool belongs to exactly one domain and count the name twice, so a duplicate surfaced
   only as correct counts in the documents reported wrong. The check that a document leaves nothing
   out is now also run against documents that do, so a check that stopped looking would fail.
+- `copilot-reviewed` reads every page of a pull request's reviews, not only the first. GitHub
+  serves them 30 a page by default and oldest first, so past 30 the reviews the check waits for —
+  Copilot's round on the current head, and any human review of it — were on a page it never read,
+  and it would have expired red with no push able to clear it. The check now asks for 100 a page
+  and follows GitHub's `Link` header to the last. As of 2026-09-14 no pull request here had got
+  there — the most was 18 reviews, on #24 — but a reply in a review thread is recorded as a review
+  of its own, as all 54 in this repository were, so each reply in a long conversation adds one.
 
 ## [2.0.0] - 2026-09-14
 
