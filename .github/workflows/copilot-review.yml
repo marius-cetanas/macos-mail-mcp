@@ -57,10 +57,17 @@
 # a supply-chain change arrives, which is the diff least worth waving through, and the alternative
 # considered — exempting it outright — is the same gate with nobody looking.
 #
-# **Any human review counts, not only an approval**, and that is a deadlock guard rather than
+# **A `COMMENTED` review counts, not only an approval**, and that is a deadlock guard rather than
 # laxity: GitHub forbids approving your own pull request, so an APPROVED-only rule would make a
 # maintainer-authored lockfile change unmergeable by anyone here. A `COMMENTED` review is allowed
 # on your own pull request, so the rule stays satisfiable in every case.
+#
+# **But it has to say something.** GitHub records a reply to a review thread as a `COMMENTED`
+# review too — an empty body and nothing in it but the reply (measured on #73) — so while any
+# review by a person counted, a reply to any thread satisfied this gate with nobody having reviewed
+# anything. A person's review now counts when it carries a verdict, a body, or a top-level comment.
+# Telling a reply apart takes one more read, of that review's comments, made only where it decides
+# the answer. See `isHumanReview` in `scripts/copilot-round.mjs`.
 #
 # ## `pull_request_review` is deliberately not a trigger
 #

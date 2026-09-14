@@ -98,7 +98,7 @@ export function hasPendingRequest(nodes) {
  *     for a diff Copilot will not read; measured on #55 and #56, both `package-lock.json`-only, and
  *     both merged on it. **Re-requesting cannot fix this** — the diff will still be a lockfile — so
  *     the round that is owed is a person's. Satisfied by a human review on the head, and `awaited`
- *     until there is one. See `isHumanReviewer`.
+ *     until there is one. See `isHumanReview`.
  *   * `ERRORED` — *"Copilot encountered an error and was unable to review this pull request."*
  *     Transient; #53 got a real verdict from a re-request two minutes later. `awaited`, which is
  *     also what makes `awaitRound` ask again.
@@ -116,11 +116,12 @@ export const DECLINED_DIFF = /able to review any files/i;
 export const ERRORED = /unable to review/i;
 
 /**
- * Is this review a person's?
+ * Is this reviewer a person?
  *
- * Only consulted where Copilot has declined to read the diff, and there the whole gate rests on it:
- * a bot slipping through this predicate would satisfy the check with nobody having looked, which is
- * the defect #54 is about, one layer down.
+ * Only consulted where no Copilot round is coming — a declined diff (#54) or a request that did not
+ * take (#58) — and there the gate rests on it: a bot slipping through this predicate would satisfy
+ * the check with nobody having looked, which is the defect #54 is about, one layer down. It answers
+ * for the account alone; whether that person's review says anything is `isHumanReview`'s question.
  *
  * Three ways an account can fail to be a person, because one is not enough. `type` is what the API
  * means to say and is trusted first; it is absent from trimmed payloads, so the `[bot]` suffix
@@ -148,6 +149,107 @@ export function isHumanReviewer(user) {
   return type === undefined || type === null ? true : type === "User";
 }
 
+/** Review states that are a statement on their own, whatever else the review holds. */
+const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
+
+/**
+ * Does this comment start a thread, rather than answer one?
+ *
+ * Every comment GitHub returns carries a numeric `id`, so an entry without one is not taken for a
+ * top-level comment merely because it has no `in_reply_to_id` either. Why the key's absence is the
+ * test is in `isHumanReview`.
+ *
+ * @param {unknown} comment
+ */
+function isTopLevel(comment) {
+  const c = /** @type {any} */ (comment);
+  return Number.isSafeInteger(c?.id) && c.in_reply_to_id == null;
+}
+
+/**
+ * Is this review a person's, and does it say anything of its own?
+ *
+ * ## A reply to a thread is recorded as a review
+ *
+ * GitHub records a reply to a review thread as a pull request review of its own. Measured on #73:
+ * review 5198788557 is `COMMENTED`, has an empty body, carries the head it was posted against, and
+ * holds exactly one comment, 4006098256, whose `in_reply_to_id` is 4006046306. So while the check
+ * asked only whether a person had reviewed the head, a reply to any thread on the pull request,
+ * from any account that is not a bot, satisfied it wherever no Copilot round is coming — a
+ * Dependabot pull request among them, where the point of the gate is that a person reads the diff.
+ * Posting one takes no approval of any kind, and `.portulan/gate-map.md` lists replying to review
+ * feedback as a Propose-tier action: it is the reply an agent posts through the maintainer's
+ * credentials when it answers a review.
+ *
+ * ## What counts
+ *
+ * A person's review counts when it carries something a reply cannot:
+ *
+ *   * a verdict — `APPROVED` or `CHANGES_REQUESTED` — which needs nothing else;
+ *   * a body with something in it, whitespace not being a statement;
+ *   * a top-level comment.
+ *
+ * `COMMENTED` still counts — the deadlock guard in `classifyRound` depends on it — so this is #54's
+ * rule applied to people, not a narrowing to approvals: a review with nothing in it is not a
+ * review. A dismissed review counts for whatever it still says, since dismissal withdraws the
+ * verdict and leaves the rest.
+ *
+ * Anything else is refused, **including a review whose comments have not been read**, which has not
+ * shown that it says anything. `classifyRound` names those, so the loop can read them; see
+ * `readComments`.
+ *
+ * ## How a reply is told apart
+ *
+ * By `in_reply_to_id` on the review's comments, which the reviews list does not carry. Measured
+ * through the endpoint `readComments` reads, on 2026-09-14: on all 54 reviews by a person in this
+ * repository that held comments, every comment GraphQL reports as a reply carried a numeric
+ * `in_reply_to_id`; on twelve of Copilot's reviews, every comment starting a thread had **no such
+ * key at all**, rather than a null one. So a comment is top-level when the key is absent or null,
+ * and anything else there reads as a reply — the direction to be wrong in.
+ *
+ * @param {unknown} review a review as the reviews list returns it, with `comments` once read
+ */
+export function isHumanReview(review) {
+  const r = /** @type {any} */ (review);
+  if (!isHumanReviewer(r?.user)) return false;
+  if (VERDICTS.includes(r?.state)) return true;
+  if (typeof r?.body === "string" && r.body.trim() !== "") return true;
+  return Array.isArray(r?.comments) && r.comments.some(isTopLevel);
+}
+
+/**
+ * How many of a review's comments to read — the most GitHub serves on one page.
+ *
+ * Only that page is read, and that can only make the check refuse, never count: a page is a subset
+ * of the review's comments, so a top-level comment on it is one the review holds. A review with
+ * more comments than this and none on the first page top-level is refused.
+ */
+export const COMMENT_PAGE = 100;
+
+/**
+ * Attach its comments to each listed review, read from `GET /pulls/{n}/reviews/{id}/comments`.
+ *
+ * Read through the loop's own `api`, which already addresses every path under the pull request, so
+ * `makeGithubIo` needs nothing new and the CLI arm — the one part of this file the suite cannot run —
+ * has nothing new to wire. A read that fails throws, as the loop's other reads do: a check that
+ * could not see a review has not seen it say nothing. A payload that is not a list reads as no
+ * comments, so that review is refused rather than read again on every decision.
+ *
+ * @param {(path: string) => Promise<any>} api
+ * @param {Array<any>} reviews
+ * @param {number[]} ids which reviews to read — `classifyRound`'s `unread`
+ * @returns {Promise<Array<any>>} the same reviews, each one read carrying its `comments`
+ */
+export async function readComments(api, reviews, ids) {
+  return Promise.all(
+    reviews.map(async (r) => {
+      if (!ids.includes(r?.id)) return r;
+      const comments = await api(`/reviews/${r.id}/comments?per_page=${COMMENT_PAGE}`);
+      return { ...r, comments: Array.isArray(comments) ? comments : [] };
+    })
+  );
+}
+
 /**
  * Does this round's body say Copilot did not review anything?
  *
@@ -170,7 +272,11 @@ export function emptyRound(body) {
  *   `roundUnobtainable` is set by the loop once GitHub's own answer to the request said the round
  *   was not recorded (#58). It never suppresses a Copilot round — one that arrives anyway, because
  *   somebody requested it from outside the job, still wins — it only adds the human-review path.
- * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human"}}
+ * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human",
+ *            unread?: number[]}}
+ *   `unread` lists the reviews a person left on the head whose answer rests on comments nobody has
+ *   read yet. Present only while the check waits for a person, and only when there is something to
+ *   read: it is the loop's cue to read them and decide again, never a verdict on them.
  */
 export function classifyRound({ reviews, head, draft = false, roundUnobtainable = false }) {
   if (draft) {
@@ -222,12 +328,18 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
    * The gate holds rather than exempting either: a lockfile is where a supply-chain change
    * arrives, which is the diff least worth waving through.
    *
-   * **Any human review on the head counts, not only an approval**, and that is a deadlock guard
-   * rather than laxity. GitHub forbids approving your own pull request, so an APPROVED-only rule
-   * would make a maintainer-authored lockfile change unmergeable by anyone — the sole maintainer
-   * cannot approve it and there is nobody else. A `COMMENTED` review is allowed on your own pull
-   * request, so the rule stays satisfiable in every case while still costing a person a look and
-   * a statement on the record against this exact tree.
+   * **A person's `COMMENTED` review on the head counts, not only an approval**, and that is a
+   * deadlock guard rather than laxity. GitHub forbids approving your own pull request, so an
+   * APPROVED-only rule would make a maintainer-authored lockfile change unmergeable by anyone — the
+   * sole maintainer cannot approve it and there is nobody else. A `COMMENTED` review is allowed on
+   * your own pull request, so the rule stays satisfiable in every case while still costing a person
+   * a look and a statement on the record against this exact tree.
+   *
+   * **The statement has to be in it.** A reply to a review thread is recorded as a `COMMENTED`
+   * review too — an empty body and nothing in it but the reply — so while any review by a person
+   * counted, a reply to any thread on the pull request satisfied this branch with nobody having
+   * reviewed anything. A person's review now counts when it says something of its own; see
+   * `isHumanReview`.
    *
    * **What the second case removes is ceremony, not scrutiny.** Before it, a Dependabot lockfile
    * bump took four manual steps: request the round by hand, wait for Copilot to decline it, review,
@@ -241,17 +353,35 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
       declined.length > 0
         ? `Copilot declined to read the diff on ${short}`
         : `no Copilot round can be requested for ${short} (#58)`;
-    const humans = allOnHead.filter((r) => isHumanReviewer(r?.user));
+    const people = allOnHead.filter((r) => isHumanReviewer(r?.user));
+    const humans = people.filter(isHumanReview);
     if (humans.length > 0) {
       return { state: "landed", reason: `${why}; ${humans.length} human review(s) on it` };
     }
+
+    /*
+     * Nothing a person left on this head says anything of its own, as far as has been read. A
+     * review whose comments are unread is named in `unread`, for the loop to read and decide again,
+     * rather than refused for good. One already read is counted in the reason, because the person
+     * who replied on the head is exactly who reads this log, and "waiting for a human review" alone
+     * reads to them as a broken check. A review with no `id` can be neither read nor named.
+     */
+    const unread = people
+      .filter((r) => !Array.isArray(r?.comments) && Number.isSafeInteger(r?.id))
+      .map((r) => r.id);
+    const silent = people.filter((r) => Array.isArray(r?.comments)).length;
     return {
       state: "awaited",
       // `human`, so the loop asks Copilot for nothing here — a further request would either
       // decline the same diff or fail the same way, and the log would name the wrong thing as
       // missing.
       awaiting: "human",
-      reason: `${why} — waiting for a human review of it`,
+      reason:
+        `${why} — waiting for a human review of it` +
+        (silent > 0
+          ? `; ${silent} review(s) by a person on it are only thread replies or empty, and a reply is not a review`
+          : ""),
+      ...(unread.length > 0 ? { unread } : {}),
     };
   }
 
@@ -422,13 +552,28 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
   for (;;) {
     polls += 1;
     const pr = await api("");
-    const reviews = await api("/reviews");
-    const result = classifyRound({
-      reviews,
-      head: pr?.head?.sha,
-      draft: Boolean(pr?.draft),
-      roundUnobtainable,
-    });
+    let reviews = await api("/reviews");
+
+    /*
+     * Classify, reading a review's comments only where they decide the answer: `classifyRound`
+     * names those in `unread` once a person's review is what the check waits for, and on no other
+     * path. They are read into `reviews` itself, so the second decision a poll can make below reads
+     * nothing again.
+     */
+    const decide = async () => {
+      const input = () => ({
+        reviews,
+        head: pr?.head?.sha,
+        draft: Boolean(pr?.draft),
+        roundUnobtainable,
+      });
+      const first = classifyRound(input());
+      if (!first.unread) return first;
+      reviews = await readComments(api, reviews, first.unread);
+      return classifyRound(input());
+    };
+
+    const result = await decide();
 
     if (result.state !== "awaited") {
       return { ...result, polls };
@@ -481,12 +626,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
      * already on the head — and on a run whose budget is nearly spent, could miss it entirely.
      */
     if (roundUnobtainable) {
-      const again = classifyRound({
-        reviews,
-        head: pr?.head?.sha,
-        draft: Boolean(pr?.draft),
-        roundUnobtainable,
-      });
+      const again = await decide();
       if (again.state !== "awaited") return { ...again, polls };
       result.reason = again.reason;
       result.awaiting = again.awaiting;

@@ -6,6 +6,8 @@ import {
   classifyRound,
   emptyRound,
   isHumanReviewer,
+  isHumanReview,
+  readComments,
   describeRequest,
   DECLINED_DIFF,
   ERRORED,
@@ -22,6 +24,7 @@ import {
   REVIEWER_PAGE,
   REST_PAGE,
   nextPageUrl,
+  COMMENT_PAGE,
 } from "../../scripts/copilot-round.mjs";
 
 const HEAD = "a".repeat(40);
@@ -657,6 +660,84 @@ describe("isHumanReviewer", () => {
     expect(isHumanReviewer({})).toBe(false);
     expect(isHumanReviewer({ login: "" })).toBe(false);
     expect(isHumanReviewer({ login: 42 })).toBe(false);
+  });
+});
+
+describe("isHumanReview", () => {
+  it("requires a person before anything in the review counts", () => {
+    for (const user of [{ login: "dependabot[bot]", type: "Bot" }, { login: "Copilot" }, undefined]) {
+      const review = personReview({ user, state: "APPROVED", body: "lgtm", comments: [TOP_LEVEL] });
+      expect(isHumanReview(review), JSON.stringify(user)).toBe(false);
+    }
+  });
+
+  it("counts a verdict, a body, or a top-level comment, each on its own", () => {
+    expect(isHumanReview(personReview({ state: "APPROVED" }))).toBe(true);
+    expect(isHumanReview(personReview({ state: "CHANGES_REQUESTED" }))).toBe(true);
+    expect(isHumanReview(personReview({ body: "lgtm" }))).toBe(true);
+    expect(isHumanReview(personReview({ comments: [TOP_LEVEL] }))).toBe(true);
+  });
+
+  it("refuses a review holding only replies, holding nothing, or whose comments are unread", () => {
+    expect(isHumanReview(personReview({ comments: [REPLY] }))).toBe(false);
+    expect(isHumanReview(personReview({ comments: [] }))).toBe(false);
+    expect(isHumanReview(personReview())).toBe(false);
+  });
+
+  /*
+   * Only a key that is absent or null makes a comment top-level. Any other value reads as a reply,
+   * one that is not a number included — the direction to be wrong in.
+   */
+  it("reads any in_reply_to_id that is present and not null as a reply", () => {
+    for (const in_reply_to_id of [4006046306, "4006046306", 0, false]) {
+      const review = personReview({ comments: [{ id: 1, in_reply_to_id }] });
+      expect(isHumanReview(review), String(in_reply_to_id)).toBe(false);
+    }
+    expect(isHumanReview(personReview({ comments: [{ id: 1, in_reply_to_id: null }] }))).toBe(true);
+  });
+
+  it("takes only the two verdict states as a statement on their own, compared exactly", () => {
+    for (const state of ["COMMENTED", "DISMISSED", "PENDING", "approved", "", undefined]) {
+      expect(isHumanReview(personReview({ state })), String(state)).toBe(false);
+    }
+  });
+
+  it("refuses a malformed review rather than throwing", () => {
+    for (const review of [undefined, null, {}, { user: PERSON, comments: "x" }, { user: PERSON, body: 42 }]) {
+      expect(isHumanReview(review), JSON.stringify(review)).toBe(false);
+    }
+  });
+});
+
+describe("readComments", () => {
+  it("reads only the listed reviews, one page each, and hands the others back untouched", async () => {
+    const asked: string[] = [];
+    const api = async (suffix: string) => {
+      asked.push(suffix);
+      return [REPLY];
+    };
+    const other = personReview({ id: 2 });
+    const [read, untouched] = await readComments(api, [personReview(), other], [5198788557]);
+    expect(asked).toEqual([`/reviews/5198788557/comments?per_page=${COMMENT_PAGE}`]);
+    expect(read).toMatchObject({ id: 5198788557, comments: [REPLY] });
+    expect(untouched).toBe(other);
+  });
+
+  /** The largest page GitHub serves. A short page can only make the check refuse, never count. */
+  it("reads a hundred comments per page", () => {
+    expect(COMMENT_PAGE).toBe(100);
+  });
+
+  it("reads a payload that is not a list as no comments, so the review is refused, not re-read", async () => {
+    const [read] = await readComments(async () => ({ message: "odd" }), [personReview()], [5198788557]);
+    expect(read).toMatchObject({ comments: [] });
+    expect(isHumanReview(read)).toBe(false);
+  });
+
+  it("does not modify the reviews it was given", async () => {
+    const given = personReview();
+    await readComments(async () => [TOP_LEVEL], [given], [5198788557]);
+    expect(given).not.toHaveProperty("comments");
   });
 });
 
