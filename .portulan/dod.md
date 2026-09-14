@@ -2,7 +2,7 @@
 
 **type:** rule
 **scope:** repository — `marius-cetanas/macos-mail-mcp`
-**provenance:** `form=link` `href=https://github.com/sleepy-panda-works/portulan/blob/main/core/operating/verification.md`
+**provenance:** `form=link` `href=https://github.com/sleepy-panda-srl/portulan/blob/main/core/operating/verification.md`
 
 A change is done when every condition holds. Numbered so a review can cite one.
 

@@ -21,7 +21,7 @@ before the record lands, not raised inside it — once merged, it is in a series
 ## The thing to read first: a rebase invalidates the verdict
 
 The record `a-resolved-thread-is-not-a-verdict` says a verdict must post-date the head it judges. It
-is still a proposal on [portulan-internal#7](https://github.com/sleepy-panda-works/portulan-internal/pull/7)
+is still a proposal on [portulan-internal#7](https://github.com/sleepy-panda-srl/portulan-internal/pull/7)
 and not yet on `main`, so it is named rather than linked — a relative link here would be dead until
 that merges. I checked both merges against it *after* merging, which is already
 the wrong order.

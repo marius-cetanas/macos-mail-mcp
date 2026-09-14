@@ -2,7 +2,7 @@
 
 **type:** rule
 **scope:** repository — `marius-cetanas/macos-mail-mcp`
-**provenance:** `form=link` `href=https://github.com/sleepy-panda-works/portulan/blob/main/core/operating/autonomy.md`
+**provenance:** `form=link` `href=https://github.com/sleepy-panda-srl/portulan/blob/main/core/operating/autonomy.md`
 
 Which actions sit in which autonomy tier for this repository. The tier vocabulary is the engine's
 (`core/operating/autonomy.md`); which concrete action lands in which tier is this workspace's answer,
