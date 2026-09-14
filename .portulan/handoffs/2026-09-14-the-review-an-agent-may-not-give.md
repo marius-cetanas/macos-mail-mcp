@@ -61,10 +61,10 @@ so `npm audit` could not see it; GHSA-58mr-gqgx-xq4g affects exactly 3.1.6, whic
 consumer installs comes from the package's dependency ranges, and those already admitted the fixed
 releases: `ajv@8.18.0` takes `fast-uri ^3.0.1`, `express@5.2.1` and `body-parser@2.3.0` take
 `qs ^6.14.0` / `^6.15.2`, the SDK takes `hono ^4.11.4`. That is not the same as consumers never being
-exposed: an install resolved before a fix was published — `fast-uri` 3.1.7 on 2026-09-02 — could get
-an affected version, and an existing install or a consumer's own lockfile keeps what it resolved until
-it is refreshed. What the bumps fixed is this repository's own CI and development tree, which is why
-they needed no release.
+exposed. Every `fast-uri` 3.x below 3.1.7 is affected by GHSA-qw65-cvwx-89v3, and 3.1.7 was published
+on 2026-09-02, so an install that resolved `fast-uri` before then holds an affected version — and an
+existing install or a consumer's own lockfile keeps what it resolved until it is refreshed. What the
+bumps fixed is this repository's own CI and development tree, which is why they needed no release.
 
 ## The first live reading of `recorded`
 
@@ -82,17 +82,25 @@ the ten-minute budget, one re-run of the check.
 The maintainer approved "all PRs and changes" in chat and asked for them to be merged. Posting that
 approval as a review of #67 from their account was **refused by Claude Code's auto-mode classifier as
 `[Self-Approval]`**, and so was a read-only `git grep` in the very next Bash call; the call after that
-ran normally. That is the gate doing what `copilot-review.yml` says it is for — a person reads the
-supply-chain diff — and it held against the maintainer's own instruction relayed through the agent.
-A session asked to handle Dependabot pull requests can verify, sequence, rebase and merge; the review
-of each head is the maintainer's click.
+ran normally.
+
+Two different mechanisms met here, and they should not be read as one. The classifier acted first, in
+the agent's own tooling, before any review existed. `copilot-reviewed` only evaluates reviews already
+recorded on the head, and what it requires is a qualifying human review there — not proof that anyone
+read the diff, which the next paragraph shows it cannot give. What they share is the intent
+`copilot-review.yml` states, that a person looks at a supply-chain change, and the classifier held to
+it against the maintainer's own instruction relayed through the agent. A session asked to handle
+Dependabot pull requests can verify, sequence, rebase and merge; the review of each head is the
+maintainer's click.
 
 **A thread reply reaches the same state by another route.** Measured on #73: review `5198788557` is
 `COMMENTED`, empty-bodied, and holds only the reply `4006098256` — GitHub records a reply to a review
-thread as a review. `classifyRound` counts any non-bot review on the head when the round is declined or
-unobtainable, so on a Dependabot pull request a bare reply from the maintainer's account would satisfy
-`copilot-reviewed`. Nothing here used it: no reply was posted on a Dependabot pull request. Handed to a
-separate session rather than fixed here.
+thread as a review. When the round is declined or unobtainable, `classifyRound` accepts a review on the
+head from any account `isHumanReviewer` qualifies — not Copilot, not a `[bot]`, and of type `User`
+where the payload reports one — and does not look at what the review contains. So on a Dependabot pull
+request a bare reply from the maintainer's account would satisfy `copilot-reviewed`. Nothing here used
+it: no reply was posted on a Dependabot pull request. Handed to a separate session rather than fixed
+here.
 
 ## The order reviews are asked in
 
