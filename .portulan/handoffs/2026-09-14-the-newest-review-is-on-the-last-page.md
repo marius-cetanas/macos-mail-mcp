@@ -2,8 +2,8 @@
 
 **State, dated 2026-09-14, when the pull request was opened.** Branch
 `claude/serene-hodgkin-24709a`, rebased onto `main` at `878af79`, pushed and opened as a pull
-request titled `fix(ci): copilot-reviewed reads every page of a pull request's reviews`;
-**not merged**, which is Gated. The verify recipe at `824975e`, the head before this file was added:
+request titled `fix(ci): copilot-reviewed reads every page of a pull request's reviews`. The verify
+recipe at `824975e`, the head before this file was added:
 exit 0, **665 passed across 32 files** with none skipped, 100% statements (263/263), branches
 (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
 `npx portulan compile --check` GREEN. Every local run was on macOS under Node 26.8.1, so neither of
@@ -20,7 +20,10 @@ Auto-fix then reported a conflict with `main`, which had gained #80: an `[Unrele
 entry where this branch's sat. `origin/main` at `f220fed` was merged in as `ef5732b` rather than
 rebased onto, keeping both entries with #80's first. The verify recipe at `ef5732b`: exit 0,
 **666 passed across 32 files**, the same 100% on `src/`, 0 vulnerabilities; `compile --check` GREEN.
-The merge moved the head, so a new Copilot round is owed.
+The merge moved the head. Copilot's round on `82e40f1` again recommended approval, with no inline
+comments, and every required check passed there. The maintainer then approved the merge; before it,
+this paragraph and the closing lines were reworded to say nothing a merge makes false, the defect
+#80 corrected in #77's handoff.
 
 ## The defect
 
@@ -123,8 +126,7 @@ version is sometimes backfilled on purpose, as 1.3.1's was — so it is left as 
 - Whether the origin check on `next` is wanted. It is defensive, and it turns a `Link` off
   api.github.com into a red run.
 
-**Next action.** The pull request awaits Copilot's round on its head and the maintainer's review;
-merging is Gated.
+**Next action.** Nothing outstanding from this change; the open questions above are the maintainer's.
 
-**Recoverability.** Nothing partial: every change is on the pushed branch, and no tag, release or
-publish was touched.
+**Recoverability.** Nothing partial: every change is in #81, and no tag, release or publish was
+touched.
