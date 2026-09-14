@@ -226,11 +226,13 @@ function isReply(comment) {
  *
  * ## How a reply is told apart
  *
- * By `in_reply_to_id` on the review's comments, which the reviews list does not carry. Measured
- * through the endpoint `readComments` reads, on 2026-09-14: on all 54 reviews by a person in this
- * repository that held comments, every comment GraphQL reports as a reply carried a numeric
- * `in_reply_to_id`; on twelve of Copilot's reviews, every comment starting a thread had **no such
- * key at all**, rather than a null one. So a comment is top-level only when the key is absent. A key
+ * By `in_reply_to_id` on the review's comments, which the reviews list does not carry. Measured on
+ * 2026-09-14, first through `GET /pulls/{n}/reviews/{id}/comments`: on all 54 reviews by a person in
+ * this repository that held comments, every comment GraphQL reports as a reply carried a numeric
+ * `in_reply_to_id`, and on twelve of Copilot's reviews every comment starting a thread had **no such
+ * key at all**, rather than a null one. Then through `GET /pulls/{n}/comments`, which `readComments`
+ * reads: of the 113 review comments on this repository's pull requests that day, 58 had no such key
+ * and 55 a number, and none held `null`. So a comment is top-level only when the key is absent. A key
  * that is present reads as not top-level whatever it holds, `null` included: absence is the shape
  * measured, and an unmeasured one is refused rather than counted — the direction to be wrong in.
  *
@@ -245,28 +247,36 @@ export function isHumanReview(review) {
 }
 
 /**
- * Attach its comments to each listed review, read from `GET /pulls/{n}/reviews/{id}/comments`.
+ * Attach its comments to each listed review, from one read of `GET /pulls/{n}/comments`.
  *
- * Read through the loop's own `api`, which already addresses every path under the pull request, so
- * `makeGithubIo` needs nothing new and the CLI arm — the one part of this file the suite cannot run —
- * has nothing new to wire. That `api` also reads every page of a list (#81), so a review's comments
- * arrive whole, and a top-level comment past the first hundred still counts. A read that fails
- * throws, as the loop's other reads do: a check that could not see a review has not seen it say
- * nothing. A payload that is not a list reads as no comments, so that review is refused rather than
- * read again on every decision.
+ * One read of the pull request's review comments, grouped by `pull_request_review_id`, rather than
+ * one read per review. Read per review, a poll cost a request for every review waiting to be read,
+ * and every poll repeated them, so a long conversation of replies on the head could spend the
+ * token's allowance and turn the check red. (Raised by Copilot on #82.) One list costs a request per
+ * hundred comments, however many reviews it answers for. The grouping was measured before relying on
+ * it, on 2026-09-14: all 113 review comments on this repository's pull requests carried a positive
+ * `pull_request_review_id`, and the 110 on pull requests GraphQL was also asked about fell into
+ * exactly the reviews GraphQL puts them in.
+ *
+ * Read through the loop's own `api`, which already addresses every path under the pull request and
+ * reads every page of a list (#81), so `makeGithubIo` needs nothing new and the CLI arm — the one
+ * part of this file the suite cannot run — has nothing new to wire. A read that fails throws, as the
+ * loop's other reads do: a check that could not see a review has not seen it say nothing. A payload
+ * that is not a list reads as no comments, and a comment naming no review answers for none, so both
+ * fail closed.
  *
  * @param {(path: string) => Promise<any>} api
  * @param {Array<any>} reviews
  * @param {number[]} ids which reviews to read — `classifyRound`'s `unread`
- * @returns {Promise<Array<any>>} the same reviews, each one read carrying its `comments`
+ * @returns {Promise<Array<any>>} the same reviews, each one listed carrying its `comments`
  */
 export async function readComments(api, reviews, ids) {
-  return Promise.all(
-    reviews.map(async (r) => {
-      if (!ids.includes(r?.id)) return r;
-      const comments = await api(`/reviews/${r.id}/comments`);
-      return { ...r, comments: Array.isArray(comments) ? comments : [] };
-    })
+  const all = await api("/comments");
+  const list = Array.isArray(all) ? all : [];
+  return reviews.map((r) =>
+    ids.includes(r?.id)
+      ? { ...r, comments: list.filter((c) => c?.pull_request_review_id === r.id) }
+      : r
   );
 }
 

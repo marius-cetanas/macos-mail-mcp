@@ -552,7 +552,7 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
 
 describe("awaitRound reading a person's review before counting it", () => {
   const noSleep = async () => {};
-  const COMMENTS = "/reviews/5198788557/comments";
+  const COMMENTS = "/comments";
 
   /** Serves the pull request, its reviews and any review's comments; records every path asked for. */
   const serving = (reviews: object[], comments: Record<string, unknown> = {}) => {
@@ -571,6 +571,23 @@ describe("awaitRound reading a person's review before counting it", () => {
     const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [REPLY] });
     await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
     expect(s.asked).toContain(COMMENTS);
+  });
+
+  /*
+   * One read of the pull request's review comments answers for every review waiting on them. Read
+   * per review, each poll cost a request for every such review and repeated them all. (Raised by
+   * Copilot on #82.)
+   */
+  it("reads the pull request's comments once, however many reviews wait on them", async () => {
+    const replyInAnother = { id: 4006098257, pull_request_review_id: 5198788558, in_reply_to_id: 4006046306 };
+    const s = serving([DECLINED_ROUND, personReview(), personReview({ id: 5198788558 })], {
+      [COMMENTS]: [REPLY, replyInAnother],
+    });
+    const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(s.reads()).toBe(1);
+    expect(result.reason).toMatch(
+      /; 2 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 2 of them only replies to threads/
+    );
   });
 
   it("keeps waiting, and expires, when that review holds only replies", async () => {
@@ -633,9 +650,9 @@ describe("awaitRound reading a person's review before counting it", () => {
   /*
    * Through `makeGithubIo`'s own `api`, which is all the workflow passes: the read needs nothing the
    * CLI arm would have to wire, and that arm is the one part of the script the suite cannot run.
-   * That `api` reads every page of a list (#81), so this fake pages a review's comments the way the
-   * reviews fake beside #81's tests pages reviews — a `Link` header naming the next page — and a
-   * top-level comment on the second page has to count.
+   * That `api` reads every page of a list (#81), so this fake pages the pull request's review
+   * comments the way the reviews fake beside #81's tests pages reviews — a `Link` header naming the
+   * next page — and a top-level comment on the second page has to count.
    */
   const githubWithComments = (pages: object[][]) => {
     const urls: string[] = [];
@@ -649,7 +666,7 @@ describe("awaitRound reading a person's review before counting it", () => {
         if (n < pages.length) {
           headers.set(
             "link",
-            `<https://api.github.com/repositories/1191561833/pulls/7/reviews/5198788557/comments?per_page=100&page=${n + 1}>; rel="next"`
+            `<https://api.github.com/repositories/1191561833/pulls/7/comments?per_page=100&page=${n + 1}>; rel="next"`
           );
         }
         return answer(pages[n - 1] ?? []);
@@ -668,12 +685,10 @@ describe("awaitRound reading a person's review before counting it", () => {
       budgetMs: 0,
     });
 
-  it("asks GitHub for a review's comments through the api the workflow already passes", async () => {
+  it("asks GitHub for the pull request's review comments through the api the workflow passes", async () => {
     const gh = githubWithComments([[REPLY]]);
     const result = await throughGithubIo(gh);
-    expect(gh.urls).toContain(
-      "https://api.github.com/repos/o/r/pulls/7/reviews/5198788557/comments?per_page=100"
-    );
+    expect(gh.urls).toContain("https://api.github.com/repos/o/r/pulls/7/comments?per_page=100");
     expect(result.state).toBe("expired");
   });
 
@@ -779,17 +794,24 @@ describe("isHumanReview", () => {
 });
 
 describe("readComments", () => {
-  it("reads only the listed reviews, one read each, and hands the others back untouched", async () => {
+  it("reads the pull request's comments once and gives each listed review its own", async () => {
     const asked: string[] = [];
+    const replyInReview2 = { id: 4006098257, pull_request_review_id: 2, in_reply_to_id: 4006046306 };
     const api = async (suffix: string) => {
       asked.push(suffix);
-      return [REPLY];
+      return [REPLY, replyInReview2, { id: 4006098258 }];
     };
-    const other = personReview({ id: 2 });
-    const [read, untouched] = await readComments(api, [personReview(), other], [5198788557]);
-    expect(asked).toEqual(["/reviews/5198788557/comments"]);
-    expect(read).toMatchObject({ id: 5198788557, comments: [REPLY] });
-    expect(untouched).toBe(other);
+    const unlisted = personReview({ id: 3 });
+    const [first, second, untouched] = await readComments(
+      api,
+      [personReview(), personReview({ id: 2 }), unlisted],
+      [5198788557, 2]
+    );
+    expect(asked).toEqual(["/comments"]);
+    expect(first).toMatchObject({ id: 5198788557, comments: [REPLY] });
+    // A comment naming no review is given to none of them.
+    expect(second).toMatchObject({ id: 2, comments: [replyInReview2] });
+    expect(untouched).toBe(unlisted);
   });
 
   it("reads a payload that is not a list as no comments, so the review is refused, not re-read", async () => {

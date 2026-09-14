@@ -35,7 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own pull request and an approval-only rule would leave a sole maintainer unable to satisfy the
   check; on a pull request of your own that Copilot declines, that means submitting a review with a
   body or an inline comment rather than replying to a thread. Telling a reply apart takes one more
-  read, of that review's comments, which the check makes only where they decide the answer.
+  read, of the pull request's review comments, which the check makes only where they decide the
+  answer.
 
   That rule refuses more than replies. Each of these used to count and no longer does, failing
   closed: a review with no verdict, no body beyond whitespace and no comments at all, such as an
@@ -43,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not come back as a list, or that has no id to read them by. A read that fails outright now ends
   the run red, where the review used to count. The only reviews of those shapes in this repository's
   history are two empty dismissed reviews, on #69 and #70, neither on its pull request's final head.
-  A review's comments are read whole, every page, by the same reader #81 gave the reviews.
+  They are read whole, every page, by the same reader #81 gave the reviews, as one list for the
+  pull request rather than one read per review.
 
 ## [2.0.0] - 2026-09-14
 
