@@ -30,7 +30,7 @@ checks that the required status check `verify` is one a workflow here actually r
 
 ## Tech Stack
 
-- **Runtime:** Node.js 20+ (`engines` floor; CI builds and tests on 20, 22 and 24)
+- **Runtime:** Node.js 22.12+ (`engines` floor; CI builds and tests on 22 and 24)
 - **Language:** TypeScript (ES2022, Node16 module resolution)
 - **MCP SDK:** `@modelcontextprotocol/sdk` v1.x (stdio transport)
 - **Mail integration:** AppleScript via `osascript` (execFile, not exec — prevents shell injection)

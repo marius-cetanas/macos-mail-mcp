@@ -12,7 +12,7 @@ npm run build
 npm test
 ```
 
-**Requirements:** macOS with Mail.app, Node.js 20+.
+**Requirements:** macOS with Mail.app, Node.js 22.12+.
 
 ## Project Structure
 

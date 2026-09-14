@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** Node.js 22.12 or later is now required. `engines.node` moves from `>=20.0.0` to
+  `>=22.12.0`, and CI no longer tests on Node 20. The cause is the test suite, not the server:
+  Vitest 5 does not support Node 20, so a floor of 20 would have been a claim nothing here tests.
+  The server's own code is unchanged, and npm warns rather than refuses on an engines mismatch by
+  default, so an install on Node 20 may still run — but it is no longer supported. Node 20 has been
+  end-of-life since 2026-04-30.
+
+### Internal
+
+- Vitest 4 → 5, with `@vitest/coverage-v8` moved alongside it. Dependabot's #71 bumped `vitest`
+  alone, which cannot install: the coverage provider peers on the exact `vitest` version, so
+  `npm ci` failed on ERESOLVE. `dependabot.yml` now groups the pair, so a major moves both, and
+  `tests/workflows/dependabot.test.ts` asserts that no group can take half of it.
+- `tests/workflows/node-support.test.ts` holds the supported Node version in agreement across
+  `package.json`, the CI matrix and every tracked Markdown file except this changelog and the
+  session handoffs, which record changes rather than state what is supported.
+
 ## [1.3.4] - 2026-09-02
 
 ### Internal

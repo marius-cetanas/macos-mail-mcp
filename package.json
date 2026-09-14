@@ -24,7 +24,7 @@
     "model-context-protocol"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.12.0"
   },
   "bin": {
     "macos-mail-mcp": "build/index.js"
@@ -48,9 +48,9 @@
   "devDependencies": {
     "@sleepy_panda_srl/portulan": "^0.1.2",
     "@types/node": "^26.2.0",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
+    "vitest": "^5.0.0",
     "yaml": "^2.9.0"
   }
 }
