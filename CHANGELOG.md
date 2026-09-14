@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/workflows/node-support.test.ts` holds the supported Node version in agreement across
   `package.json`, the CI matrix and every tracked Markdown file except this changelog and the
   session handoffs, which record changes rather than state what is supported.
+- `CONTRIBUTING.md`'s project tree said mailboxes had 2 tools and messages 7 + 4 — the figures of
+  1.0.0, which v1.1.0's two new tools made stale — and now says 3 and 8 + 4.
+  `tests/domains/tool-counts.test.ts` derives every tool count from what the server registers and
+  holds the same documents to it, a set `tests/helpers/documents.ts` now defines once for both
+  checks.
 
 ## [1.3.4] - 2026-09-02
 

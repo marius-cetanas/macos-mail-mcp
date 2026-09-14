@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { documents } from "../helpers/documents.js";
 
 /**
  * The Node versions this package supports are decided by `engines.node` in `package.json`, and
@@ -44,18 +44,6 @@ function spoken(list: string[]): string {
 }
 
 const floor = floorOf(engines);
-
-/**
- * Every tracked Markdown file except the two that record rather than state. `CHANGELOG.md` records
- * changes, and an entry for a change to the floor has to name the floor it replaces — this change's
- * own entry does — whether or not it has shipped yet, so the file is excluded whole, `[Unreleased]`
- * included. The handoffs record sessions.
- */
-function documents(): string[] {
-  return execFileSync("git", ["ls-files", "*.md"], { cwd: root, encoding: "utf8" })
-    .split("\n")
-    .filter((f) => f !== "" && f !== "CHANGELOG.md" && !f.startsWith(".portulan/handoffs/"));
-}
 
 /**
  * The ways a document states a floor: `Node.js 22.12+`; `Node 22.12 or later` (or newer, above,
