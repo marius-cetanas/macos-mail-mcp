@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Internal
+
+- The tool-count check now fails when a tool name is registered twice. It used to pass the check
+  that every tool belongs to exactly one domain and count the name twice, so a duplicate surfaced
+  only as correct counts in the documents reported wrong. The check that a document leaves nothing
+  out is now also run against documents that do, so a check that stopped looking would fail.
+
 ## [2.0.0] - 2026-09-14
 
 ### Changed
