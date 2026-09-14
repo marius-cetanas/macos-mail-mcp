@@ -1,13 +1,13 @@
 # Handoff — a reply is not a review
 
 **State, at session close on 2026-09-14.** Pull request #82 from `claude/goofy-nash-ee3861`, rebased
-onto `f220fed` (#80) and **not merged** — merge is Gated. Six commits: the failing tests alone; the
-fix; the adjustments an independent review required; this handoff; a fix for the one note in
-Copilot's round; and this amendment. Verify recipe on the head: exit 0, 32 files / 687 tests,
-100% statements, branches, functions and lines on `src/`, 0 vulnerabilities. Commit ids are kept out
-of this paragraph on purpose: the branch has been rebased twice, and each time every id a State
-paragraph named went stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes
-false on merge._
+onto `main` after #81 merged. Merging it is Gated, as every merge here is. The branch keeps the
+change's history: the failing tests alone first, then the fix, the adjustments an independent review
+required, this handoff and its amendments, a fix for the one note in Copilot's round, and the change
+#81's paging called for. Verify recipe on the head: exit 0, 32 files / 698 tests, 100% statements,
+branches, functions and lines on `src/`, 0 vulnerabilities. No commit or base id appears in this
+paragraph: the branch has been rebased three times, and each time the ids a State paragraph named went
+stale. _Dated for the reason #65 recorded: a state sentence phrased as live goes false on merge._
 
 ## What was measured
 
@@ -28,17 +28,17 @@ false on merge._
   with an empty body and replies — would wave through a review whose `state` is missing or new, the
   reasoning that already has `isHumanReviewer` accept only the literal `User`.
 - **It refuses more than replies, and the changelog says so**: an empty or whitespace-only review in
-  any state but a verdict, a dismissed approval among them; a review whose top-level comment sits past
-  its first hundred comments; one whose comments are unreadable or which has no id; and a read that
-  fails outright ends the run red. My first draft of this file called the dismissed approval *the one*
-  change outside replies. The independent review found the rest, and that sentence never reached the
-  tree — the same shape as the last handoff's nine stale sentences, caught this time by a reviewer
-  before anything merged.
-- **Comments are read lazily, through the existing `api`.** `classifyRound` stays pure and names the
-  reviews in `unread`; the loop reads those and decides again, and never on the path that waits for
-  Copilot. Not extending `makeGithubIo`, as suggested, is deliberate: a new dependency would need
-  wiring in the `c8 ignore`d CLI arm, where a forgotten wire would silently refuse every body-less
-  review with a top-level comment.
+  any state but a verdict, a dismissed approval among them; one whose comments are unreadable or which
+  has no id; and a read that fails outright ends the run red. A fourth — a top-level comment past a
+  review's first hundred comments — went away when #81 made `api` read every page. My first draft of
+  this file called the dismissed approval *the one* change outside replies. The independent review
+  found the rest, and that sentence never reached the tree — the same shape as the last handoff's nine
+  stale sentences, caught this time by a reviewer before anything merged.
+- **Comments are read lazily, through the existing `api`**, which since #81 reads every page of a
+  list. `classifyRound` stays pure and names the reviews in `unread`; the loop reads those and decides
+  again, and never on the path that waits for Copilot. Not extending `makeGithubIo`, as suggested, is
+  deliberate: a new dependency would need wiring in the `c8 ignore`d CLI arm, where a forgotten wire
+  would silently refuse every body-less review with a top-level comment.
 - **A failed read throws**, like the loop's two other reads, rather than waiting under a reason that
   names the wrong thing.
 - **Not taken: caching a refused review's comments across polls.** The GETs it saves are inside the
@@ -61,16 +61,18 @@ false on merge._
   made fifteen mutations that each turned tests red, and replayed #73's reviews read-only through the
   script. On a second pass it confirmed the adjustments and the first rebase, leaving one adjustment:
   commit messages still carrying pre-rebase figures. Its verdict covers `git diff 878af79 7e2b30a`,
-  sha256 `b35c965b…`, and the code it judged is byte-identical through both rebases. **The commit for
-  Copilot's note came after it and was not re-reviewed locally** — Copilot's round on the new head is
-  its review.
+  sha256 `b35c965b…`. **Two later commits were not re-reviewed locally**: the fix for Copilot's note,
+  and the change #81's paging called for, which moved the comments read onto #81's `api`. Copilot's
+  rounds on the heads after them are their review.
 - **Copilot's round on `0b94e85`**, the head before the second rebase: "Needs a closer look" — the
   gate change warrants final human review — with no inline comments and one suppressed note, the
   reason wording above.
-- **The rebases moved no code.** `main` gained #76, #78, #77 and then #80 during the session. The code
-  patches are byte-identical before and after each. `CHANGELOG.md` conflicted both times — first
-  because #78 inserted `[2.0.0]` below `[Unreleased]`, then because #80 opened `[Unreleased]`'s
-  Internal list — and the entry now follows #80's there.
+- **The rebases moved no code of their own.** `main` gained #76, #78, #77, #80 and #81 during the
+  session. Each time the rebased patches compared identical — `--full-index` on the first two,
+  `git range-diff` on the third — except in `CHANGELOG.md`, which conflicted every time because #78,
+  #80 and #81 each touched `[Unreleased]`, and, on the third, the test file's import list, where #81's
+  `REST_PAGE` and `nextPageUrl` met this change's `COMMENT_PAGE`. The entry now follows #80's and
+  #81's under `[Unreleased]` → Internal.
 
 ## Worth knowing next time
 
@@ -80,17 +82,22 @@ false on merge._
   transcript — wait for the completion notice instead.
 - **A rebase carries commit messages that state figures, and they go false with it** — here twice: a
   test count, and a diff hash taken against the old base. Both times `git commit-tree` reworded them on
-  identical trees; the second time each figure names the commit and base it was measured on, which no
-  later rebase can falsify.
+  identical trees; since then each figure names the commit and base it was measured on, which no later
+  rebase can falsify.
+- **A rebase over a change to the same code can apply cleanly and still leave claims false.** #81 made
+  `api` read every page of a list, and this change's comments read goes through `api`, so its refusal
+  of a top-level comment past the first hundred became untrue in a doc comment, the changelog, this
+  file and two test names. Of all that, only a test whose fake `fetch` no longer matched turned red.
+  `git range-diff` shows what a rebase did to each commit; only reading the merged docs against the
+  merged code shows what it did to the claims.
 
 ## Next action
 
-Merge on approval, once `copilot-reviewed` has a round on the new head. Two follow-ups were raised as
-tasks and started in separate sessions on 2026-09-14: reading every page of `api("/reviews")`, which
-edits `scripts/copilot-round.mjs`, so whichever of it and #82 merges second will need a rebase; and
-correcting `.github/rulesets/README.md`, which says no round is requested without the ruleset — false
-since #44.
+Nothing outstanding from this change; merging it is the maintainer's decision. Of the two follow-ups
+raised as tasks on 2026-09-14, paginating the reviews read merged as #81, which this change now builds
+on, and correcting `.github/rulesets/README.md` — which says no round is requested without the ruleset,
+false since #44 — was started in a separate session.
 
 ## Recoverability
 
-Nothing partial. The work is on the branch and #82; no tag was pushed and no release run.
+Nothing partial: every change is in #82, and no tag, release or publish was touched.
