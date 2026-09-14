@@ -52,8 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name a failed request in its log, and which corrected the gate map but not the README. The README
   now says what the ruleset still buys — a request within a second of opening and on every push —
   and what the check does without it, for a person's pull request, a Dependabot one and a fork's.
-  `tests/workflows/copilot-ruleset.test.ts` holds each of those claims to `awaitRound`, to the
-  ruleset payload and to the gate map it quotes, so changing any of them fails on the README.
+  `tests/workflows/copilot-ruleset.test.ts` holds what the README says the check does to
+  `awaitRound`, what it says of the ruleset to the payload, and what it quotes to the gate map, so a
+  change to any of those fails on the README. What GitHub does with each request — how soon the
+  ruleset asks, whether a request records — is measured rather than tested, and can change without
+  failing it. The gate map no longer calls the payload a dependency of the check.
 
 ## [2.0.0] - 2026-09-14
 
