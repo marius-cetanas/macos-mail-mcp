@@ -27,9 +27,9 @@ before any of them: **`main` was red on its own default recipe without a commit.
 (GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp) reached the audit
 database between #67's CI run (2026-09-03 02:47 UTC, `audit` green) and #70's (2026-09-08 17:24 UTC,
 `audit` red). `main`'s last CI run was 2026-09-02, green, and nothing re-runs it without a push. So
-every pull request opened in that window inherited a red `audit` and `verify` that no push to the pull
-request could fix, while `main` itself showed green. Dependabot alerts #21–#29 were the only standing
-signal.
+every pull request opened in that window inherited a red `audit` and `verify` from its base rather than
+from its change: no re-run could clear it, nor any push short of one carrying the `fast-uri` fix
+itself, while `main` itself showed green. Dependabot alerts #21–#29 were the only standing signal.
 
 ## The pull requests
 
@@ -193,7 +193,8 @@ Both started by the maintainer from this session's suggestions:
 - `CONTRIBUTING.md`'s per-domain tool counts, which summed to 18 against the 20 the README states —
   merged as #77, which also moved `node-support.test.ts`'s document set into
   `tests/helpers/documents.ts` and filed its entry under 2.0.0.
-- Thread replies satisfying `copilot-reviewed`, above — no pull request open when this was written.
+- Thread replies satisfying `copilot-reviewed`, above — #82, open and not yet merged when this was
+  last revised.
 
 ## Open questions *(human-owned)*
 
@@ -207,9 +208,9 @@ Both started by the maintainer from this session's suggestions:
 
 ## Next action
 
-Answer the approval question above, and pick up the thread-reply session's change when it lands.
-Apart from merging the pull request that carries this file, nothing this session started is
-outstanding: 2.0.0 is published, and every other pull request it opened is merged or closed.
+Answer the approval question above, and review #82, the thread-reply session's change. Apart from
+merging the pull request that carries this file, nothing this session started is outstanding: 2.0.0 is
+published, and every other pull request it opened is merged or closed.
 
 ## Recoverability
 
