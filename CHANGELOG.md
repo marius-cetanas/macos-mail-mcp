@@ -20,11 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- The lockfile no longer carries the advisories in `fast-uri` (four high), `qs` (two moderate) and
-  `hono` (three moderate), and `npm audit` reports 0 vulnerabilities (#67, #68, #72). The published
-  package ships no lockfile and its dependency ranges already admitted the patched versions, so a
-  fresh install was never exposed through this repository; what moved is this repository's own CI
-  and development tree.
+- The lockfile no longer carries the advisories in `fast-uri` (five high), `qs` (two moderate) and
+  `hono` (three moderate), and `npm audit` reports 0 vulnerabilities (#67, #68, #72). `npm audit`
+  reported four of the five `fast-uri` advisories; the fifth, GHSA-qw65-cvwx-89v3, is a repository
+  advisory fast-uri published, which GitHub's global advisory database did not carry on 2026-09-14.
+  3.1.7 also fixes GHSA-58mr-gqgx-xq4g, which affected only 3.1.6, a version this lockfile never
+  held. The published package ships no lockfile and its dependency ranges already admitted the
+  patched versions, so a fresh install was never exposed through this repository; what moved is
+  this repository's own CI and development tree.
 
 ### Internal
 
