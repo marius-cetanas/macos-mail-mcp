@@ -3,10 +3,12 @@
 **State, dated 2026-09-14 at 15:35 UTC — a snapshot, not a live claim.** `main` at `878af79`, and
 **2.0.0 is published** from it. Release run 34862520007 published at 15:31 UTC after a green dry-run
 on the same commit: npm `latest` is 2.0.0, with `engines.node` `>=22.12.0` and an SLSA provenance
-attestation; the annotated tag `v2.0.0` points at `878af79`; the GitHub release is marked latest. The
-verify recipe ran green on that commit inside the release run, and again locally: `test:coverage` 32
-files and 654 tests at 100%, `npm audit --audit-level=high` 0 vulnerabilities, `portulan compile
---check` green. No pull request was open.
+attestation; the annotated tag `v2.0.0` points at `878af79`; the GitHub release is marked latest.
+Three separate runs verified that commit, and they checked different things. `main`'s CI run
+34862265569 passed `test` on Node 22 and 24, `audit`, `gate-policy` and the `verify` aggregate. The
+release run built it and ran `test:coverage` and `npm audit --audit-level=high` on Node 24 only, with
+the version applied. Locally, on Node 26: `test:coverage` 32 files and 654 tests at 100%, 0
+vulnerabilities, `portulan compile --check` green. No pull request was open.
 
 Merged on this date, in order: #67 (`fast-uri`), #68 (`qs`), #72 (`hono`), #73 (Vitest 5 and the
 Node 22.12 floor), #69 (`@types/node`), #75 (`zod`), #76 (`codeql-action`), #78 (the 2.0.0 changelog
@@ -74,10 +76,10 @@ the ten-minute budget, one re-run of the check.
 
 ## The review an agent may not give
 
-The maintainer approved every pull request in the session and asked for all of them to be merged.
-Posting the approving review from their account was **refused by Claude Code's auto-mode classifier
-as `[Self-Approval]`**, and so was a read-only `git grep` in the very next Bash call; the call after
-that ran normally. That is the gate doing what `copilot-review.yml` says it is for — a person reads the
+The maintainer approved "all PRs and changes" in chat and asked for them to be merged. Posting that
+approval as a review of #67 from their account was **refused by Claude Code's auto-mode classifier as
+`[Self-Approval]`**, and so was a read-only `git grep` in the very next Bash call; the call after that
+ran normally. That is the gate doing what `copilot-review.yml` says it is for — a person reads the
 supply-chain diff — and it held against the maintainer's own instruction relayed through the agent.
 A session asked to handle Dependabot pull requests can verify, sequence, rebase and merge; the review
 of each head is the maintainer's click.
@@ -106,12 +108,15 @@ every head.
 **What the rebase did to those approvals was not uniform.** On #69 and #70, GitHub dismissed them. On
 #68 and #72 it carried them to the new heads: #68's approval, submitted at 14:22:38 on `39866cf9`, now
 reads `commit_id` `43d6d290`, a head Dependabot pushed after the rebase requests at 14:29, and #72's
-moved the same way. Those two rebases changed no lockfile entry while #69's and #70's did, so GitHub
-appears to keep an approval across a push that leaves the diff unchanged — inferred from these four
-cases, not from its documentation. `copilot-reviewed` accepted the carried approvals, and #68 and #72
-merged on them. Nothing unreviewed went in, since the rebased diffs were re-verified entry by entry, but
-it means the check's `commit_id === head` does not prove what DoD 7 asks for: a verdict that
-post-dates the head it judges.
+moved the same way. Those two rebases left the pull request's diff as it was, while #69's and #70's
+changed it, so GitHub appears to keep an approval across a push that leaves the diff unchanged —
+inferred from these four cases, not from its documentation. `copilot-reviewed` accepted the carried
+approvals, and #68 and #72 merged on them, **so those two merges did not meet DoD 7**: no verdict
+post-dated the heads that merged. A separate fact limits what that cost without standing in for the
+condition: each rebased commit changed exactly the lockfile entries the approved commit had, identical
+in every field — measured afterwards, by comparing each commit against its own parent. That comparison
+was mine, not a review. The gap it exposes is in the check, whose `commit_id === head` does not prove
+what DoD 7 asks for.
 
 And a Dependabot rebase is not only a new head. #69 came back as `@types/node` 26.5.1 rather than
 26.4.1, and a minute after #73 changed `dependabot.yml`, Dependabot closed #70 and opened #75 at
@@ -182,9 +187,10 @@ Both started by the maintainer from this session's suggestions:
 ## Open questions *(human-owned)*
 
 - **Whether an approval GitHub carries across a content-identical rebase should satisfy
-  `copilot-reviewed`.** It did twice today, on #68 and #72. The semantics are defensible — the diff the
-  maintainer read is the diff that merged — but the check does not say that is what it accepts, and DoD 7
-  says a verdict must post-date its head. One of the two should change so that they agree.
+  `copilot-reviewed`.** It did twice today, on #68 and #72. The semantics are defensible — measured,
+  the change the maintainer approved is the change that merged — but the check does not say that is
+  what it accepts, and DoD 7 says a verdict must post-date its head. One of the two should change so
+  that they agree.
 - **Whether `main` should re-run its audit on a schedule**, so a newly published advisory turns `main`
   red where someone looks, rather than inside the next unrelated pull request.
 
