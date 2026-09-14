@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-14
+
 ### Changed
 
 - **Breaking:** Node.js 22.12 or later is now required. `engines.node` moves from `>=20.0.0` to
@@ -15,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The server's own code is unchanged, and npm warns rather than refuses on an engines mismatch by
   default, so an install on Node 20 may still run — but it is no longer supported. Node 20 has been
   end-of-life since 2026-04-30.
+
+### Security
+
+- The lockfile no longer carries the advisories in `fast-uri` (five high), `qs` (two moderate) and
+  `hono` (three moderate), and `npm audit` reports 0 vulnerabilities (#67, #68, #72). `npm audit`
+  reported four of the five `fast-uri` advisories; the fifth, GHSA-qw65-cvwx-89v3, is a repository
+  advisory fast-uri published, which GitHub's global advisory database did not carry on 2026-09-14.
+  3.1.7 also fixes GHSA-58mr-gqgx-xq4g, which affected only 3.1.6, a version this lockfile never
+  held. The published package ships no lockfile and its dependency ranges already admitted the
+  patched versions, so a fresh install was never exposed through this repository; what moved is
+  this repository's own CI and development tree.
 
 ### Internal
 
