@@ -9,7 +9,7 @@ consumed via `npx -y macos-mail-mcp@latest`.
 
 One maintainer, working with coding agents. This is a **personal** repository, not a Sleepy Panda
 product — it is governed here rather than by the Sleepy Panda portfolio workspace, which is what
-[proposal 0017](https://github.com/sleepy-panda-works/portulan/blob/main/.portulan/proposals/0017-one-repository-one-governing-workspace.md)
+[proposal 0017](https://github.com/sleepy-panda-srl/portulan/blob/main/.portulan/proposals/0017-one-repository-one-governing-workspace.md)
 means by one repository, one governing workspace.
 
 ## Stack
