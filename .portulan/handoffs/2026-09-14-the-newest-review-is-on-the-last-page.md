@@ -1,14 +1,26 @@
 # Handoff — the newest review is on the last page
 
-**State, dated 2026-09-14 at session close.** Branch `claude/serene-hodgkin-24709a`, rebased onto
-`main` at `878af79`, pushed and opened as a pull request titled `fix(ci): copilot-reviewed reads every
-page of a pull request's reviews`; **not merged**, which is Gated. The verify recipe at `824975e`, the
-head before this file was added: exit 0, **665 passed across 32 files** with none skipped, 100%
-statements (263/263), branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0
-vulnerabilities; `npx portulan compile --check` GREEN. Every local run was on macOS under Node
-26.8.1, so neither of CI's Node versions, 22 and 24, was exercised here. `src/` is untouched: a
-release cut from this alone would derive a patch from the `fix(ci):` subject for a change the
-published server does not contain, which is the wart `CLAUDE.md` names and `bump` overrides.
+**State, dated 2026-09-14, when the pull request was opened.** Branch
+`claude/serene-hodgkin-24709a`, rebased onto `main` at `878af79`, pushed and opened as a pull
+request titled `fix(ci): copilot-reviewed reads every page of a pull request's reviews`;
+**not merged**, which is Gated. The verify recipe at `824975e`, the head before this file was added:
+exit 0, **665 passed across 32 files** with none skipped, 100% statements (263/263), branches
+(100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
+`npx portulan compile --check` GREEN. Every local run was on macOS under Node 26.8.1, so neither of
+CI's Node versions, 22 and 24, was exercised here. `src/` is untouched: a release cut from this alone
+would derive a patch from the `fix(ci):` subject for a change the published server does not contain,
+which is the wart `CLAUDE.md` names and `bump` overrides.
+
+**Amended later the same day — the session went on past the paragraph above.** Copilot's round on
+`d9a1cb6` recommended approval with no comments, and `copilot-reviewed` landed on it in run
+34864503913, the changed script's first live run. Auto-fix was switched on for the pull request;
+auto-merge was asked for too and refused, because the repository does not allow it
+(`allow_auto_merge: false`), and turning that on is a repository-wide decision for the maintainer.
+Auto-fix then reported a conflict with `main`, which had gained #80: an `[Unreleased]` → Internal
+entry where this branch's sat. `origin/main` at `f220fed` was merged in as `ef5732b` rather than
+rebased onto, keeping both entries with #80's first. The verify recipe at `ef5732b`: exit 0,
+**666 passed across 32 files**, the same 100% on `src/`, 0 vulnerabilities; `compile --check` GREEN.
+The merge moved the head, so a new Copilot round is owed.
 
 ## The defect
 
