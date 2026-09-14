@@ -21,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vitest 4 → 5, with `@vitest/coverage-v8` moved alongside it. Dependabot's #71 bumped `vitest`
   alone, which cannot install: the coverage provider peers on the exact `vitest` version, so
   `npm ci` failed on ERESOLVE. `dependabot.yml` now groups the pair, so a major moves both.
-- The supported Node version is stated in `package.json`, the CI matrix, the README, `CLAUDE.md` and
-  the workspace identity; `tests/workflows/node-support.test.ts` now holds them in agreement.
+- `tests/workflows/node-support.test.ts` holds the supported Node version in agreement across
+  `package.json`, the CI matrix and every tracked Markdown file.
 
 ## [1.3.4] - 2026-09-02
 
