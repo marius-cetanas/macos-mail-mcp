@@ -57,11 +57,14 @@ fast-uri's release notes. Measured against the lockfile's 3.1.5, it was five: GH
 affects `>= 3.0.0, < 3.1.7` but is a repository advisory that GitHub's global database did not carry,
 so `npm audit` could not see it; GHSA-58mr-gqgx-xq4g affects exactly 3.1.6, which the bump skipped.
 
-**Consumers were never exposed through this repository.** The tarball ships no lockfile, and the
-ranges already admitted the fixes: `ajv@8.18.0` takes `fast-uri ^3.0.1`, `express@5.2.1` and
-`body-parser@2.3.0` take `qs ^6.14.0` / `^6.15.2`, the SDK takes `hono ^4.11.4`. A fresh `npx`
-install resolved the patched versions on its own. The lockfile bumps fixed CI and development here and
-needed no release.
+**What the lockfile bumps changed for consumers: nothing.** The tarball ships no lockfile, so what a
+consumer installs comes from the package's dependency ranges, and those already admitted the fixed
+releases: `ajv@8.18.0` takes `fast-uri ^3.0.1`, `express@5.2.1` and `body-parser@2.3.0` take
+`qs ^6.14.0` / `^6.15.2`, the SDK takes `hono ^4.11.4`. That is not the same as consumers never being
+exposed: an install resolved before a fix was published — `fast-uri` 3.1.7 on 2026-09-02 — could get
+an affected version, and an existing install or a consumer's own lockfile keeps what it resolved until
+it is refreshed. What the bumps fixed is this repository's own CI and development tree, which is why
+they needed no release.
 
 ## The first live reading of `recorded`
 
@@ -197,8 +200,8 @@ Both started by the maintainer from this session's suggestions:
 ## Next action
 
 Answer the approval question above, and pick up the thread-reply session's change when it lands.
-Nothing this session started is outstanding: 2.0.0 is published, and every pull request it opened is
-merged or closed.
+Apart from merging the pull request that carries this file, nothing this session started is
+outstanding: 2.0.0 is published, and every other pull request it opened is merged or closed.
 
 ## Recoverability
 
