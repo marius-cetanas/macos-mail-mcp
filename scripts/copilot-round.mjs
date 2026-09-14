@@ -694,8 +694,10 @@ export async function describeRequest(isRoundPending, recorded) {
     return (
       `requested: asked ${COPILOT_REVIEWER}, the mutation succeeded, and GitHub's own response ` +
       `does not list Copilot among the pull request's requested reviewers — the request did not ` +
-      `take (#58). No round is coming from this job, so a human review of this head now satisfies ` +
-      `the check instead. A round requested from outside it, by a user, still lands and still counts.`
+      `take (#58). No round is coming from this job, so a person's review of this head now satisfies ` +
+      `the check instead — one with a verdict, a body or a top-level comment, since a reply to a ` +
+      `thread is not a review. A round requested from outside it, by a user, still lands and still ` +
+      `counts.`
     );
   }
   if (!isRoundPending) return `requested: asked ${COPILOT_REVIEWER} for a round`;

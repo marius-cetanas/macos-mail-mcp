@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   body or an inline comment rather than replying to a thread. Telling a reply apart takes one more
   read, of that review's comments, which the check makes only where they decide the answer.
 
+  That rule refuses more than replies. Each of these used to count and no longer does, failing
+  closed: a review with no verdict, no body beyond whitespace and no comments at all, such as an
+  empty dismissed approval; a review whose only body is whitespace; a review of more than a hundred
+  comments whose top-level comment is not among the first hundred; and a review whose comments do not
+  come back as a list, or that has no id to read them by. A read that fails outright now ends the run
+  red, where the review used to count. The only reviews of those shapes in this repository's history
+  are two empty dismissed reviews, on #69 and #70, neither on its pull request's final head.
+
 ## [2.0.0] - 2026-09-14
 
 ### Changed
