@@ -218,22 +218,15 @@ export function isHumanReview(review) {
 }
 
 /**
- * How many of a review's comments to read — the most GitHub serves on one page.
- *
- * Only that page is read, and that can only make the check refuse, never count: a page is a subset
- * of the review's comments, so a top-level comment on it is one the review holds. A review with
- * more comments than this and none on the first page top-level is refused.
- */
-export const COMMENT_PAGE = 100;
-
-/**
  * Attach its comments to each listed review, read from `GET /pulls/{n}/reviews/{id}/comments`.
  *
  * Read through the loop's own `api`, which already addresses every path under the pull request, so
  * `makeGithubIo` needs nothing new and the CLI arm — the one part of this file the suite cannot run —
- * has nothing new to wire. A read that fails throws, as the loop's other reads do: a check that
- * could not see a review has not seen it say nothing. A payload that is not a list reads as no
- * comments, so that review is refused rather than read again on every decision.
+ * has nothing new to wire. That `api` also reads every page of a list (#81), so a review's comments
+ * arrive whole, and a top-level comment past the first hundred still counts. A read that fails
+ * throws, as the loop's other reads do: a check that could not see a review has not seen it say
+ * nothing. A payload that is not a list reads as no comments, so that review is refused rather than
+ * read again on every decision.
  *
  * @param {(path: string) => Promise<any>} api
  * @param {Array<any>} reviews
@@ -244,7 +237,7 @@ export async function readComments(api, reviews, ids) {
   return Promise.all(
     reviews.map(async (r) => {
       if (!ids.includes(r?.id)) return r;
-      const comments = await api(`/reviews/${r.id}/comments?per_page=${COMMENT_PAGE}`);
+      const comments = await api(`/reviews/${r.id}/comments`);
       return { ...r, comments: Array.isArray(comments) ? comments : [] };
     })
   );

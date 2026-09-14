@@ -24,7 +24,6 @@ import {
   REVIEWER_PAGE,
   REST_PAGE,
   nextPageUrl,
-  COMMENT_PAGE,
 } from "../../scripts/copilot-round.mjs";
 
 const HEAD = "a".repeat(40);
@@ -522,7 +521,7 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
 
 describe("awaitRound reading a person's review before counting it", () => {
   const noSleep = async () => {};
-  const COMMENTS = "/reviews/5198788557/comments?per_page=100";
+  const COMMENTS = "/reviews/5198788557/comments";
 
   /** Serves the pull request, its reviews and any review's comments; records every path asked for. */
   const serving = (reviews: object[], comments: Record<string, unknown> = {}) => {
@@ -537,7 +536,7 @@ describe("awaitRound reading a person's review before counting it", () => {
     return { api, asked, reads: () => asked.filter((s) => s.includes("/comments")).length };
   };
 
-  it("reads the comments of a person's review whose answer rests on them, a hundred at a time", async () => {
+  it("reads the comments of a person's review whose answer rests on them", async () => {
     const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [REPLY] });
     await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
     expect(s.asked).toContain(COMMENTS);
@@ -603,32 +602,55 @@ describe("awaitRound reading a person's review before counting it", () => {
   /*
    * Through `makeGithubIo`'s own `api`, which is all the workflow passes: the read needs nothing the
    * CLI arm would have to wire, and that arm is the one part of the script the suite cannot run.
+   * That `api` reads every page of a list (#81), so this fake pages a review's comments the way the
+   * reviews fake beside #81's tests pages reviews — a `Link` header naming the next page — and a
+   * top-level comment on the second page has to count.
    */
-  it("asks GitHub for that page through the api the workflow already passes", async () => {
-    const base = "https://api.github.com/repos/o/r/pulls/7";
-    const served: Record<string, unknown> = {
-      [base]: { head: { sha: HEAD } },
-      [`${base}/reviews`]: [DECLINED_ROUND, personReview()],
-      [`${base}${COMMENTS}`]: [REPLY],
-    };
+  const githubWithComments = (pages: object[][]) => {
     const urls: string[] = [];
     const fetch = async (url: string) => {
       urls.push(url);
-      return {
-        ok: url in served,
-        status: url in served ? 200 : 404,
-        json: async () => served[url],
-      } as unknown as Response;
+      const u = new URL(url);
+      const headers = new Headers();
+      const answer = (body: unknown) => ({ ok: true, status: 200, headers, json: async () => body });
+      if (u.pathname.endsWith("/comments")) {
+        const n = Number(u.searchParams.get("page") ?? 1);
+        if (n < pages.length) {
+          headers.set(
+            "link",
+            `<https://api.github.com/repositories/1191561833/pulls/7/reviews/5198788557/comments?per_page=100&page=${n + 1}>; rel="next"`
+          );
+        }
+        return answer(pages[n - 1] ?? []);
+      }
+      if (u.pathname.endsWith("/reviews")) return answer([DECLINED_ROUND, personReview()]);
+      if (url === "https://api.github.com/repos/o/r/pulls/7?per_page=100") return answer({ head: { sha: HEAD } });
+      return { ok: false, status: 404, headers, json: async () => ({}) };
     };
-    const { api } = makeGithubIo({
-      fetch: fetch as unknown as typeof globalThis.fetch,
-      token: "t",
-      repo: "o/r",
-      pr: "7",
+    return { urls, fetch: fetch as unknown as typeof globalThis.fetch };
+  };
+
+  const throughGithubIo = (gh: ReturnType<typeof githubWithComments>) =>
+    awaitRound({
+      api: makeGithubIo({ fetch: gh.fetch, token: "t", repo: "o/r", pr: "7" }).api,
+      sleep: noSleep,
+      budgetMs: 0,
     });
-    const result = await awaitRound({ api, sleep: noSleep, budgetMs: 0 });
-    expect(urls).toContain(`${base}${COMMENTS}`);
+
+  it("asks GitHub for a review's comments through the api the workflow already passes", async () => {
+    const gh = githubWithComments([[REPLY]]);
+    const result = await throughGithubIo(gh);
+    expect(gh.urls).toContain(
+      "https://api.github.com/repos/o/r/pulls/7/reviews/5198788557/comments?per_page=100"
+    );
     expect(result.state).toBe("expired");
+  });
+
+  it("reads every page of those comments, so a top-level comment past the first page counts", async () => {
+    const gh = githubWithComments([[REPLY], [TOP_LEVEL]]);
+    const result = await throughGithubIo(gh);
+    expect(result).toMatchObject({ state: "landed", polls: 1 });
+    expect(gh.urls.filter((u) => new URL(u).pathname.endsWith("/comments"))).toHaveLength(2);
   });
 });
 
@@ -718,7 +740,7 @@ describe("isHumanReview", () => {
 });
 
 describe("readComments", () => {
-  it("reads only the listed reviews, one page each, and hands the others back untouched", async () => {
+  it("reads only the listed reviews, one read each, and hands the others back untouched", async () => {
     const asked: string[] = [];
     const api = async (suffix: string) => {
       asked.push(suffix);
@@ -726,14 +748,9 @@ describe("readComments", () => {
     };
     const other = personReview({ id: 2 });
     const [read, untouched] = await readComments(api, [personReview(), other], [5198788557]);
-    expect(asked).toEqual([`/reviews/5198788557/comments?per_page=${COMMENT_PAGE}`]);
+    expect(asked).toEqual(["/reviews/5198788557/comments"]);
     expect(read).toMatchObject({ id: 5198788557, comments: [REPLY] });
     expect(untouched).toBe(other);
-  });
-
-  /** The largest page GitHub serves. A short page can only make the check refuse, never count. */
-  it("reads a hundred comments per page", () => {
-    expect(COMMENT_PAGE).toBe(100);
   });
 
   it("reads a payload that is not a list as no comments, so the review is refused, not re-read", async () => {
