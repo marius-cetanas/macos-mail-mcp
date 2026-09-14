@@ -460,6 +460,12 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
         head: HEAD,
       });
       expect(r.state, JSON.stringify(comment)).toBe("awaited");
+      // Nor diagnosed as a reply: the reason names what the review lacks, which is as true of a
+      // malformed entry as of a reply. (Raised by Copilot on #82.)
+      expect(r.reason, JSON.stringify(comment)).toMatch(
+        /no verdict, no body beyond whitespace and no top-level comment/
+      );
+      expect(r.reason, JSON.stringify(comment)).not.toMatch(/thread replies/);
     }
   });
 
@@ -503,7 +509,7 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
       head: HEAD,
     });
     expect(r.reason).toMatch(
-      /waiting for a human review of it; 1 review\(s\) by a person on it are only thread replies or empty, and a reply is not a review$/
+      /waiting for a human review of it; 1 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review$/
     );
   });
 
@@ -541,7 +547,9 @@ describe("awaitRound reading a person's review before counting it", () => {
     const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [REPLY] });
     const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
     expect(result.state).toBe("expired");
-    expect(result.reason).toMatch(/are only thread replies or empty, and a reply is not a review/);
+    expect(result.reason).toMatch(
+      /have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review/
+    );
   });
 
   it("lands in the same poll when the review holds a top-level comment", async () => {

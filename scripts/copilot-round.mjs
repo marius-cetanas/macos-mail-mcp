@@ -365,6 +365,10 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
      * rather than refused for good. One already read is counted in the reason, because the person
      * who replied on the head is exactly who reads this log, and "waiting for a human review" alone
      * reads to them as a broken check. A review with no `id` can be neither read nor named.
+     *
+     * The reason names what such a review lacks rather than what it holds. It may hold replies,
+     * nothing, or entries too malformed to be either, and only the lack is true of all three; an
+     * earlier wording called every one "only thread replies or empty". (Raised by Copilot on #82.)
      */
     const unread = people
       .filter((r) => !Array.isArray(r?.comments) && Number.isSafeInteger(r?.id))
@@ -379,7 +383,7 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
       reason:
         `${why} — waiting for a human review of it` +
         (silent > 0
-          ? `; ${silent} review(s) by a person on it are only thread replies or empty, and a reply is not a review`
+          ? `; ${silent} review(s) by a person on it have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review`
           : ""),
       ...(unread.length > 0 ? { unread } : {}),
     };
