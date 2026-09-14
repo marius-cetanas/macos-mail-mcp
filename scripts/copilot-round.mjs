@@ -167,6 +167,18 @@ function isTopLevel(comment) {
 }
 
 /**
+ * Does this comment answer a thread? The other half of `isTopLevel` among the comments GitHub
+ * identifies. An entry with no numeric `id` is neither, which is what lets `classifyRound` tell a
+ * review of replies from a malformed one when it says why the check is still waiting.
+ *
+ * @param {unknown} comment
+ */
+function isReply(comment) {
+  const c = /** @type {any} */ (comment);
+  return Number.isSafeInteger(c?.id) && c.in_reply_to_id != null;
+}
+
+/**
  * Is this review a person's, and does it say anything of its own?
  *
  * ## A reply to a thread is recorded as a review
@@ -359,14 +371,18 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
      * who replied on the head is exactly who reads this log, and "waiting for a human review" alone
      * reads to them as a broken check. A review with no `id` can be neither read nor named.
      *
-     * The reason names what such a review lacks rather than what it holds. It may hold replies,
-     * nothing, or entries too malformed to be either, and only the lack is true of all three; an
-     * earlier wording called every one "only thread replies or empty". (Raised by Copilot on #82.)
+     * The reason names what such a review lacks, which is true of every one of them: it may hold
+     * replies, nothing, or entries too malformed to be either. Only a review whose comments are all
+     * replies is told that a reply is not a review — the likeliest case for whoever reads this.
+     * Said of every refused review, that line read as a diagnosis of an empty or malformed one too.
+     * (Raised by Copilot on #82, twice: against "only thread replies or empty", then against the
+     * reply line trailing every refused review.)
      */
     const unread = people
       .filter((r) => !Array.isArray(r?.comments) && Number.isSafeInteger(r?.id))
       .map((r) => r.id);
-    const silent = people.filter((r) => Array.isArray(r?.comments)).length;
+    const read = people.filter((r) => Array.isArray(r?.comments));
+    const replyOnly = read.filter((r) => r.comments.length > 0 && r.comments.every(isReply)).length;
     return {
       state: "awaited",
       // `human`, so the loop asks Copilot for nothing here — a further request would either
@@ -375,9 +391,10 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
       awaiting: "human",
       reason:
         `${why} — waiting for a human review of it` +
-        (silent > 0
-          ? `; ${silent} review(s) by a person on it have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review`
-          : ""),
+        (read.length > 0
+          ? `; ${read.length} review(s) by a person on it have no verdict, no body beyond whitespace and no top-level comment`
+          : "") +
+        (replyOnly > 0 ? `, ${replyOnly} of them only replies to threads — a reply is not a review` : ""),
       ...(unread.length > 0 ? { unread } : {}),
     };
   }

@@ -459,12 +459,12 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
         head: HEAD,
       });
       expect(r.state, JSON.stringify(comment)).toBe("awaited");
-      // Nor diagnosed as a reply: the reason names what the review lacks, which is as true of a
-      // malformed entry as of a reply. (Raised by Copilot on #82.)
+      // Nor diagnosed as a reply: the reason names what the review lacks, and says nothing of
+      // replies unless its comments are replies. (Raised by Copilot on #82, twice.)
       expect(r.reason, JSON.stringify(comment)).toMatch(
-        /no verdict, no body beyond whitespace and no top-level comment/
+        /no verdict, no body beyond whitespace and no top-level comment$/
       );
-      expect(r.reason, JSON.stringify(comment)).not.toMatch(/thread replies/);
+      expect(r.reason, JSON.stringify(comment)).not.toMatch(/repl/);
     }
   });
 
@@ -508,7 +508,24 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
       head: HEAD,
     });
     expect(r.reason).toMatch(
-      /waiting for a human review of it; 1 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review$/
+      /waiting for a human review of it; 1 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 1 of them only replies to threads — a reply is not a review$/
+    );
+  });
+
+  /*
+   * Told of every refused review, "a reply is not a review" read as a diagnosis of an empty or
+   * malformed one too. It is said only of a review whose comments are all replies, counted apart
+   * from the rest. (Raised by Copilot on #82.)
+   */
+  it("says a reply is not a review only of reviews whose comments are all replies", () => {
+    const reason = (...reviews: object[]) =>
+      classifyRound({ reviews: [DECLINED_ROUND, ...reviews], head: HEAD }).reason;
+    expect(reason(personReview({ comments: [] }))).not.toMatch(/repl/);
+    expect(reason(personReview({ comments: [REPLY, {}] }))).not.toMatch(/repl/);
+    expect(
+      reason(personReview({ id: 11, comments: [REPLY] }), personReview({ id: 12, comments: [] }))
+    ).toMatch(
+      /; 2 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 1 of them only replies to threads — a reply is not a review$/
     );
   });
 
@@ -547,7 +564,7 @@ describe("awaitRound reading a person's review before counting it", () => {
     const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
     expect(result.state).toBe("expired");
     expect(result.reason).toMatch(
-      /have no verdict, no body beyond whitespace and no top-level comment — a reply to a thread is not a review/
+      /no top-level comment, 1 of them only replies to threads — a reply is not a review/
     );
   });
 
