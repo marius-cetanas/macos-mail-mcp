@@ -81,6 +81,10 @@ const groups = new Set(registered.map((tool) => tool.group));
 const groupsOf = (domain: string) =>
   new Set(registered.filter((tool) => tool.domain === domain).map((tool) => tool.group));
 
+/** Every name that appears more than once, each reported once. */
+const duplicates = (names: string[]) =>
+  [...new Set(names.filter((name, index) => names.indexOf(name) !== index))];
+
 interface Claim {
   line: number;
   stated: number;
@@ -163,7 +167,43 @@ const subject = ({ of, domain, group }: Claim) =>
     ? "domains"
     : [group && `the ${group} group`, domain && `${domain}/`].filter(Boolean).join(" in ") || "tools";
 
-const claims = documents().flatMap((doc) => claimsIn(read(doc)).map((claim) => ({ doc, ...claim })));
+/** A document's claims, each carrying the document's name. */
+const claimsOf = (doc: string, text: string) => claimsIn(text).map((claim) => ({ doc, ...claim }));
+
+const claims = documents().flatMap((doc) => claimsOf(doc, read(doc)));
+
+/**
+ * What documents that count one by one leave out. A count can be right and still mislead by what it
+ * omits: a tree listing four of five domains says nothing false on any line, and neither does
+ * `messages/  # 8 message tools`. So a document that counts domain by domain counts every domain, one
+ * that counts group by group counts every group, and a domain line split by group counts every group
+ * in its domain.
+ */
+function omissionsIn(claimed: Array<Claim & { doc: string }>): string[] {
+  const omitted: string[] = [];
+  const check = (where: string, by: string, counted: Set<string>, all: Iterable<string>) => {
+    if (counted.size === 0) return;
+    for (const name of all) {
+      if (!counted.has(name)) omitted.push(`${where} counts by ${by} but leaves out ${name}`);
+    }
+  };
+  for (const doc of new Set(claimed.map((claim) => claim.doc))) {
+    const own = claimed.filter((claim) => claim.doc === doc);
+    check(doc, "domain", new Set(own.flatMap((c) => (c.domain ? [c.domain] : []))), domains.keys());
+    check(doc, "group", new Set(own.flatMap((c) => (c.group && !c.domain ? [c.group] : []))), groups);
+
+    const splits = new Map<string, typeof own>();
+    for (const claim of own.filter((c) => c.domain && c.group)) {
+      const key = `${claim.line} ${claim.domain}`;
+      splits.set(key, [...(splits.get(key) ?? []), claim]);
+    }
+    for (const split of splits.values()) {
+      const { line, domain } = split[0];
+      check(`${doc}:${line}`, `group in ${domain}/`, new Set(split.map((c) => c.group!)), groupsOf(domain!));
+    }
+  }
+  return omitted;
+}
 
 describe("the tool counts the documents state", () => {
   it("reads each shape of claim the way the documents write it", () => {
@@ -195,6 +235,15 @@ describe("the tool counts the documents state", () => {
 
   it("attributes every tool the entry point registers to exactly one domain", () => {
     expect(exposed.length).toBeGreaterThan(0);
+    // Sorted lists compare as multisets: a name two domains both registered would appear twice on each
+    // side, match, and pass, while every total counted it twice. So the names must be unique before
+    // they are compared — and the finder is pinned, because one that found nothing would pass as well.
+    expect(duplicates(["a", "b", "a", "a"])).toEqual(["a"]);
+    expect(duplicates(exposed), "registered more than once through the entry point").toEqual([]);
+    expect(
+      duplicates(registered.map((tool) => tool.name)),
+      "registered by more than one domain"
+    ).toEqual([]);
     expect(registered.map((tool) => tool.name).sort()).toEqual([...exposed].sort());
   });
 
@@ -218,35 +267,36 @@ describe("the tool counts the documents state", () => {
     expect(contradicted).toEqual([]);
   });
 
-  /**
-   * A count can be right and still mislead by what it leaves out: a tree listing four of five domains
-   * says nothing false on any line, and neither does `messages/  # 8 message tools`. So a document
-   * that counts domain by domain counts every domain, one that counts group by group counts every
-   * group, and a domain line split by group counts every group in its domain.
-   */
   it("leaves nothing out of a document that counts one by one", () => {
-    const omitted: string[] = [];
-    const check = (where: string, by: string, counted: Set<string>, all: Iterable<string>) => {
-      if (counted.size === 0) return;
-      for (const name of all) {
-        if (!counted.has(name)) omitted.push(`${where} counts by ${by} but leaves out ${name}`);
-      }
-    };
-    for (const doc of new Set(claims.map((claim) => claim.doc))) {
-      const own = claims.filter((claim) => claim.doc === doc);
-      check(doc, "domain", new Set(own.flatMap((c) => (c.domain ? [c.domain] : []))), domains.keys());
-      check(doc, "group", new Set(own.flatMap((c) => (c.group && !c.domain ? [c.group] : []))), groups);
+    expect(omissionsIn(claims)).toEqual([]);
+  });
 
-      const splits = new Map<string, typeof own>();
-      for (const claim of own.filter((c) => c.domain && c.group)) {
-        const key = `${claim.line} ${claim.domain}`;
-        splits.set(key, [...(splits.get(key) ?? []), claim]);
-      }
-      for (const split of splits.values()) {
-        const { line, domain } = split[0];
-        check(`${doc}:${line}`, `group in ${domain}/`, new Set(split.map((c) => c.group!)), groupsOf(domain!));
-      }
-    }
-    expect(omitted).toEqual([]);
+  // Against the documents as they stand, the check above has only ever passed, and a check that stopped
+  // looking would pass the same way. These are the omissions it exists to catch. Only what a document
+  // names matters to it, so every count below is 1.
+  it("reports what a document that counts one by one leaves out", () => {
+    const names = [...domains.keys()];
+    const tree = (line: (domain: string) => string) => names.map(line).join("\n");
+    const split = names.find((domain) => groupsOf(domain).size > 1);
+    expect(split, "no domain whose tools the documents split into groups").toBeDefined();
+    const [kept, ...dropped] = groupsOf(split!);
+    const [firstGroup, ...otherGroups] = groups;
+
+    expect(omissionsIn(claimsOf("whole.md", tree((d) => `    ${d}/  # 1 tools`)))).toEqual([]);
+
+    expect(
+      omissionsIn(claimsOf("tree.md", names.slice(1).map((d) => `    ${d}/  # 1 tools`).join("\n")))
+    ).toEqual([`tree.md counts by domain but leaves out ${names[0]}`]);
+
+    expect(
+      omissionsIn(claimsOf("headings.md", otherGroups.map((g) => `### ${g} (1)`).join("\n\n")))
+    ).toEqual([`headings.md counts by group but leaves out ${firstGroup}`]);
+
+    const splitTree = tree((d) => (d === split ? `    ${d}/  # 1 ${kept} tools` : `    ${d}/  # 1 tools`));
+    expect(omissionsIn(claimsOf("split.md", splitTree))).toEqual(
+      dropped.map(
+        (group) => `split.md:${names.indexOf(split!) + 1} counts by group in ${split}/ but leaves out ${group}`
+      )
+    );
   });
 });
