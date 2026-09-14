@@ -14,7 +14,7 @@ means by one repository, one governing workspace.
 
 ## Stack
 
-TypeScript on Node 20+, ES2022, Node16 module resolution. `@modelcontextprotocol/sdk` over stdio,
+TypeScript on Node 22.12+, ES2022, Node16 module resolution. `@modelcontextprotocol/sdk` over stdio,
 Zod on every tool input. Mail is driven by `osascript` through `execFile` — never a shell, which is
 what keeps shell metacharacters inert. Vitest for tests.
 

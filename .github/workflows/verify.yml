@@ -20,7 +20,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ["20", "22", "24"]
+        # The lowest entry is the major line of the `engines.node` floor in package.json;
+        # tests/workflows/node-support.test.ts holds the two in agreement.
+        node: ["22", "24"]
     steps:
       # Actions are pinned to a commit SHA: a mutable tag like @v5 can be
       # repointed at arbitrary code by anyone who can push to that repo.

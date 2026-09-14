@@ -8,9 +8,21 @@ updates:
       interval: weekly
     open-pull-requests-limit: 5
     groups:
+      # `@vitest/coverage-v8` peers on the exact `vitest` version, so the two only
+      # install as a pair. `dev-dependencies` takes minor and patch updates, which
+      # let a major arrive as `vitest` alone and fail `npm ci` on ERESOLVE (#71).
+      # This group takes every update type for the pair, and `dev-dependencies`
+      # excludes it, so a version update always moves both.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       dev-dependencies:
         dependency-type: development
         update-types: [minor, patch]
+        exclude-patterns:
+          - "vitest"
+          - "@vitest/*"
 
   # Workflow actions are pinned to commit SHAs; without this they would never
   # be updated, and a pinned SHA does not receive security fixes on its own.
