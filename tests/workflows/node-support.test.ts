@@ -14,10 +14,12 @@ import { parse } from "yaml";
  * all of them at once, which is precisely the edit where a sentence describing the old floor
  * survives.
  *
- * It did survive. The first version of this test named the documents it checked, `CONTRIBUTING.md`
- * was not among them, and "Node.js 20+" stood in the one file nobody listed while this passed. A
- * hand-written list is the same failure one level up, so the documents are now every tracked
- * Markdown file rather than a selection of them. (Raised by Copilot on #73.)
+ * It did survive, and review found the two ways this test could miss it. The first version named
+ * the documents it checked, `CONTRIBUTING.md` was not among them, and "Node.js 20+" stood in the one
+ * file nobody listed while this passed — so the documents are every tracked Markdown file rather
+ * than a selection. The second read only the `20+` spelling, so "Node.js 20 or later" would have
+ * been invisible — so it reads each way a document states a floor, pinned case by case below.
+ * (Both raised by Copilot on #73.)
  */
 const root = process.cwd();
 const read = (file: string) => readFileSync(join(root, file), "utf8");
@@ -25,9 +27,14 @@ const read = (file: string) => readFileSync(join(root, file), "utf8");
 const engines: string = JSON.parse(read("package.json")).engines.node;
 const matrix: string[] = parse(read(".github/workflows/verify.yml")).jobs.test.strategy.matrix.node;
 
-/** `>=22.12.0` → `22.12`, and `>=24.0.0` → `24`: the floor as the documents write it. */
+/** `22.12.0` → `22.12`, and `24.0.0` → `24`: a version as the documents write it. */
+function normalize(version: string): string {
+  return version.replace(/(\.0)+$/, "");
+}
+
+/** `>=22.12.0` → `22.12`: the floor as the documents write it. */
 function floorOf(range: string): string {
-  return range.replace(/^>=/, "").replace(/(\.0)+$/, "");
+  return normalize(range.replace(/^>=/, ""));
 }
 
 /** `["22", "24"]` → `22 and 24`, and `["20", "22", "24"]` → `20, 22 and 24`. */
@@ -39,9 +46,10 @@ function spoken(list: string[]): string {
 const floor = floorOf(engines);
 
 /**
- * Every tracked Markdown file except the two kinds that are history rather than claims:
- * `CHANGELOG.md` records floors that were true when they shipped, and the handoffs record sessions.
- * Both may name a Node version this package no longer supports.
+ * Every tracked Markdown file except the two that record rather than state. `CHANGELOG.md` records
+ * changes, and an entry for a change to the floor has to name the floor it replaces — this change's
+ * own entry does — whether or not it has shipped yet, so the file is excluded whole, `[Unreleased]`
+ * included. The handoffs record sessions.
  */
 function documents(): string[] {
   return execFileSync("git", ["ls-files", "*.md"], { cwd: root, encoding: "utf8" })
@@ -50,26 +58,48 @@ function documents(): string[] {
 }
 
 /**
- * Every Node version a document states — `Node.js 22.12+`, `Node 22.12+`, or the shields.io badge's
- * `node-%3E%3D22.12` — and every one, not the first, so a stale claim further down cannot hide
- * behind a current one above it.
+ * The ways a document states a floor: `Node.js 22.12+`; `Node 22.12 or later` (or newer, above,
+ * higher); `Node.js >= 22.12` or `≥ 22.12`; each with an optional `v`; and the shields.io badge's
+ * `node-%3E%3D22.12`. A version named without a floor — "tested on Node 24" — claims none and is
+ * deliberately not read as one, and neither is TypeScript's `Node16` module mode.
  */
+const FLOOR_CLAIMS = [
+  /\bNode(?:\.js)?\s+v?(\d+(?:\.\d+)*)(?:\+|\s+or\s+(?:later|newer|above|higher))/g,
+  /\bNode(?:\.js)?\s*(?:>=|≥)\s*v?(\d+(?:\.\d+)*)/g,
+  /badge\/node-%3E%3D(\d+(?:\.\d+)*)-/g,
+];
+
+/** Every floor a text states, not the first, so a stale one cannot hide behind a current one. */
 function claimsIn(text: string): string[] {
-  const patterns = [/\bNode(?:\.js)? (\d+(?:\.\d+)*)\+/g, /badge\/node-%3E%3D(\d+(?:\.\d+)*)-/g];
-  return patterns.flatMap((pattern) => [...text.matchAll(pattern)].map((m) => m[1]));
+  return FLOOR_CLAIMS.flatMap((pattern) => [...text.matchAll(pattern)].map((m) => normalize(m[1])));
 }
 
 describe("supported Node versions", () => {
-  it("reads the helpers the way the documents are written", () => {
+  it("reads versions and lists the way the documents write them", () => {
     expect(floorOf(">=22.12.0")).toBe("22.12");
     expect(floorOf(">=24.0.0")).toBe("24");
+    expect(normalize("22.10")).toBe("22.10");
     expect(spoken(["22", "24"])).toBe("22 and 24");
     expect(spoken(["20", "22", "24"])).toBe("20, 22 and 24");
-    expect(claimsIn("Node.js 22.12+ and Node 24+, badge/node-%3E%3D22.12-green")).toEqual([
-      "22.12",
-      "24",
-      "22.12",
-    ]);
+  });
+
+  it.each([
+    ["Node.js 22.12+", "22.12"],
+    ["Node 22.12+", "22.12"],
+    ["Node.js 20 or later", "20"],
+    ["Node v20 or newer", "20"],
+    ["Node.js 24 or above", "24"],
+    ["Node 24 or higher", "24"],
+    ["Node.js >=20", "20"],
+    ["Node.js >= 22.12.0", "22.12"],
+    ["Node ≥ 24", "24"],
+    ["[![Node.js](https://img.shields.io/badge/node-%3E%3D22.12-brightgreen.svg)]", "22.12"],
+  ])("reads %j as a floor of %s", (text, version) => {
+    expect(claimsIn(text)).toEqual([version]);
+  });
+
+  it("does not read a version named without a floor, or TypeScript's Node16 mode, as one", () => {
+    expect(claimsIn("CI tests on Node 24, with Node16 module resolution")).toEqual([]);
   });
 
   it("declares engines.node as a single >= floor, the shape the rest of this reads", () => {
@@ -91,7 +121,9 @@ describe("supported Node versions", () => {
   it("states no other floor in any tracked document", () => {
     for (const doc of documents()) {
       for (const version of claimsIn(read(doc))) {
-        expect(version, `${doc} states Node ${version}, but engines.node says ${floor}`).toBe(floor);
+        expect(version, `${doc} states a Node floor of ${version}, but engines.node says ${floor}`).toBe(
+          floor
+        );
       }
     }
   });
