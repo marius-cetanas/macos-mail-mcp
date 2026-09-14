@@ -453,7 +453,20 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
    * top-level comment just because it has no `in_reply_to_id` either.
    */
   it("does not take a malformed entry for a top-level comment", () => {
-    for (const comment of [null, "a string", 42, {}, [], { in_reply_to_id: null }]) {
+    for (const comment of [
+      null,
+      "a string",
+      42,
+      {},
+      [],
+      { in_reply_to_id: null },
+      // GitHub's ids start at 1, so none of these is a comment it sent. (Raised by Copilot on #82.)
+      { id: 0 },
+      { id: -5 },
+      { id: 1.5 },
+      // A present key is not an absent one, whatever it holds. (Raised by Copilot on #82.)
+      { id: 1, in_reply_to_id: null },
+    ]) {
       const r = classifyRound({
         reviews: [DECLINED_ROUND, personReview({ comments: [comment] })],
         head: HEAD,
@@ -486,6 +499,7 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
         personReview({ id: 3, user: { login: "dependabot[bot]", type: "Bot" } }),
         personReview({ id: 4, comments: [REPLY] }),
         personReview({ id: undefined }),
+        personReview({ id: 0 }),
       ],
       head: HEAD,
     });
@@ -732,15 +746,23 @@ describe("isHumanReview", () => {
   });
 
   /*
-   * Only a key that is absent or null makes a comment top-level. Any other value reads as a reply,
-   * one that is not a number included — the direction to be wrong in.
+   * Only an absent key makes a comment top-level: absence is the one shape measured. A key that is
+   * present reads as not top-level whatever it holds — `null` included, which used to count, and a
+   * value that is not a number. An unmeasured shape is refused rather than counted. (Raised by
+   * Copilot on #82.)
    */
-  it("reads any in_reply_to_id that is present and not null as a reply", () => {
-    for (const in_reply_to_id of [4006046306, "4006046306", 0, false]) {
+  it("reads a comment as top-level only when in_reply_to_id is absent", () => {
+    for (const in_reply_to_id of [4006046306, "4006046306", 0, false, null]) {
       const review = personReview({ comments: [{ id: 1, in_reply_to_id }] });
       expect(isHumanReview(review), String(in_reply_to_id)).toBe(false);
     }
-    expect(isHumanReview(personReview({ comments: [{ id: 1, in_reply_to_id: null }] }))).toBe(true);
+    expect(isHumanReview(personReview({ comments: [{ id: 1 }] }))).toBe(true);
+  });
+
+  it("takes only a positive integer for a comment's id, as GitHub's ids are", () => {
+    for (const id of [0, -1, 1.5, "1"]) {
+      expect(isHumanReview(personReview({ comments: [{ id }] })), String(id)).toBe(false);
+    }
   });
 
   it("takes only the two verdict states as a statement on their own, compared exactly", () => {

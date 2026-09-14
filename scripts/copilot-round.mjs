@@ -153,29 +153,43 @@ export function isHumanReviewer(user) {
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED"];
 
 /**
+ * Is this a GitHub object id? A positive safe integer: GitHub's ids start at 1, so `0`, a negative
+ * number or a fraction is a malformed entry rather than an object GitHub sent. (Raised by Copilot on
+ * #82.)
+ *
+ * @param {unknown} value
+ */
+function isGithubId(value) {
+  return Number.isSafeInteger(value) && /** @type {number} */ (value) > 0;
+}
+
+/**
  * Does this comment start a thread, rather than answer one?
  *
- * Every comment GitHub returns carries a numeric `id`, so an entry without one is not taken for a
- * top-level comment merely because it has no `in_reply_to_id` either. Why the key's absence is the
- * test is in `isHumanReview`.
+ * Only when GitHub identified it and sent **no** `in_reply_to_id` key. An entry without an id is not
+ * taken for a top-level comment merely because it has no `in_reply_to_id` either, and a key that is
+ * present reads as not top-level whatever it holds, `null` included: absence is the one shape
+ * measured, and an unmeasured one is refused rather than counted. Why absence is the test is in
+ * `isHumanReview`. (Raised by Copilot on #82: `in_reply_to_id == null` counted an explicit `null`.)
  *
  * @param {unknown} comment
  */
 function isTopLevel(comment) {
   const c = /** @type {any} */ (comment);
-  return Number.isSafeInteger(c?.id) && c.in_reply_to_id == null;
+  return isGithubId(c?.id) && !Object.hasOwn(c, "in_reply_to_id");
 }
 
 /**
- * Does this comment answer a thread? The other half of `isTopLevel` among the comments GitHub
- * identifies. An entry with no numeric `id` is neither, which is what lets `classifyRound` tell a
- * review of replies from a malformed one when it says why the check is still waiting.
+ * Does this comment answer a thread — an identified comment whose `in_reply_to_id` holds a value?
+ * An entry without an id, or with `in_reply_to_id: null`, is neither this nor top-level, which is
+ * what lets `classifyRound` tell a review of replies from a malformed one when it says why the check
+ * is still waiting.
  *
  * @param {unknown} comment
  */
 function isReply(comment) {
   const c = /** @type {any} */ (comment);
-  return Number.isSafeInteger(c?.id) && c.in_reply_to_id != null;
+  return isGithubId(c?.id) && c.in_reply_to_id != null;
 }
 
 /**
@@ -216,8 +230,9 @@ function isReply(comment) {
  * through the endpoint `readComments` reads, on 2026-09-14: on all 54 reviews by a person in this
  * repository that held comments, every comment GraphQL reports as a reply carried a numeric
  * `in_reply_to_id`; on twelve of Copilot's reviews, every comment starting a thread had **no such
- * key at all**, rather than a null one. So a comment is top-level when the key is absent or null,
- * and anything else there reads as a reply — the direction to be wrong in.
+ * key at all**, rather than a null one. So a comment is top-level only when the key is absent. A key
+ * that is present reads as not top-level whatever it holds, `null` included: absence is the shape
+ * measured, and an unmeasured one is refused rather than counted — the direction to be wrong in.
  *
  * @param {unknown} review a review as the reviews list returns it, with `comments` once read
  */
@@ -379,7 +394,7 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
      * reply line trailing every refused review.)
      */
     const unread = people
-      .filter((r) => !Array.isArray(r?.comments) && Number.isSafeInteger(r?.id))
+      .filter((r) => !Array.isArray(r?.comments) && isGithubId(r?.id))
       .map((r) => r.id);
     const read = people.filter((r) => Array.isArray(r?.comments));
     const replyOnly = read.filter((r) => r.comments.length > 0 && r.comments.every(isReply)).length;
