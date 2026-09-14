@@ -30,13 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   also carried a real Copilot round, which decides first, and the other is on #3, which predates
   the check.
 
-  A person's review now counts when it says something of its own — a verdict, a body, or a
-  top-level comment. A `COMMENTED` review still counts, because GitHub refuses an approval on your
+  A person's review now counts when it says something of its own — a verdict, a non-blank body, or
+  a top-level comment. A `COMMENTED` review still counts, because GitHub refuses an approval on your
   own pull request and an approval-only rule would leave a sole maintainer unable to satisfy the
   check; on a pull request of your own that Copilot declines, that means submitting a review with a
-  body or an inline comment rather than replying to a thread. Telling a reply apart takes one more
-  read, of the pull request's review comments, which the check makes only where they decide the
-  answer.
+  non-blank body or an inline comment rather than replying to a thread. Telling a reply apart takes
+  one more read, of the pull request's review comments, which the check makes only where they decide
+  the answer.
 
   That rule refuses more than replies. Each of these used to count and no longer does, failing
   closed: a review with no verdict, no body beyond whitespace and no comments at all, such as an

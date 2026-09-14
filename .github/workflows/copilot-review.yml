@@ -65,9 +65,9 @@
 # **But it has to say something.** GitHub records a reply to a review thread as a `COMMENTED`
 # review too — an empty body and nothing in it but the reply (measured on #73) — so while any
 # review by a person counted, a reply to any thread satisfied this gate with nobody having reviewed
-# anything. A person's review now counts when it carries a verdict, a body, or a top-level comment.
-# Telling a reply apart takes one more read, of the pull request's review comments, made only where
-# it decides the answer. See `isHumanReview` in `scripts/copilot-round.mjs`.
+# anything. A person's review now counts when it carries a verdict, a non-blank body, or a top-level
+# comment. Telling a reply apart takes one more read, of the pull request's review comments, made
+# only where it decides the answer. See `isHumanReview` in `scripts/copilot-round.mjs`.
 #
 # ## `pull_request_review` is deliberately not a trigger
 #

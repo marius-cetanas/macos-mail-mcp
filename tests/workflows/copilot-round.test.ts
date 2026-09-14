@@ -890,10 +890,11 @@ describe("describeRequest (#58)", () => {
     expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
     expect(line).toMatch(/No round is coming from this job/);
     // A thread reply is the first thing someone reading this on a Dependabot pull request might
-    // post, and it does not satisfy the check, so the line says what does.
+    // post, and it does not satisfy the check, so the line says what does — a body that is not
+    // blank, since whitespace is not one. (Raised by Copilot on #82.)
     expect(line).toMatch(/a person's review of this head now satisfies the check instead/);
     expect(line).toMatch(
-      /one with a verdict, a body or a top-level comment, since a reply to a thread is not a review/
+      /one with a verdict, a non-blank body or a top-level comment, since a reply to a thread is not a review/
     );
     expect(line).toMatch(/still lands and still counts/);
     expect(line).not.toMatch(/will expire/);
