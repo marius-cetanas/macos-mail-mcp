@@ -167,7 +167,8 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
    - Use `EXTENDED_TIMEOUT` for potentially slow operations
 4. Register the tool with `server.tool(name, description, zodSchema, handler)`
 5. Add unit test in `tests/domains/<domain>/`
-6. Run `npm run build && npm test`
+6. Update the tool counts the documentation states — `tests/domains/tool-counts.test.ts` holds each one it finds to the registered tools
+7. Run `npm run build && npm test`
 
 ## How to Add a New Domain
 
@@ -175,6 +176,7 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 2. Create `src/domains/<name>/scripts/` directory for AppleScript templates
 3. Import and call `registerXxxTools(server)` in `src/index.ts`
 4. Add tests in `tests/domains/<name>/`
+5. Add the domain wherever the documentation lists or counts domains — `tests/domains/tool-counts.test.ts` holds the counts to the registrations
 
 ## Known Gotchas
 

@@ -26,8 +26,8 @@ src/
     escape-for-json.applescript      # Shared JSON escaping (auto-prepended to all scripts)
   domains/
     accounts/                        # 2 tools
-    mailboxes/                       # 2 tools
-    messages/                        # 7 message + 4 attachment tools
+    mailboxes/                       # 3 tools
+    messages/                        # 8 message + 4 attachment tools
     compose/                         # 3 tools
 tests/                               # Vitest unit tests (mocked bridge)
 ```
@@ -46,7 +46,8 @@ tests/                               # Vitest unit tests (mocked bridge)
    - Use `EXTENDED_TIMEOUT` for potentially slow operations
 4. **Register the tool** with `server.tool(name, description, zodSchema, handler)`
 5. **Add tests** in `tests/domains/<domain>/` — cover the registered tool handler, not just the handler function
-6. **Verify:** `npm run build && npm run test:coverage`
+6. **Update the tool counts** the documentation states — `tests/domains/tool-counts.test.ts` holds each one it finds to the registered tools
+7. **Verify:** `npm run build && npm run test:coverage`
 
 ## How to Add a New Domain
 
@@ -54,6 +55,7 @@ tests/                               # Vitest unit tests (mocked bridge)
 2. Create `src/domains/<name>/scripts/` for AppleScript templates
 3. Import and call `registerXxxTools(server)` in `src/index.ts`
 4. Add tests in `tests/domains/<name>/`
+5. Add the domain wherever the documentation lists or counts domains — `tests/domains/tool-counts.test.ts` holds the counts to the registrations
 
 ## Key Patterns
 
