@@ -586,6 +586,30 @@ export async function describeRequest(isRoundPending, recorded) {
 export const REVIEWER_PAGE = 100;
 
 /**
+ * How many items `api` asks a REST list for per page — the most GitHub serves.
+ *
+ * Measured on 2026-09-14 on `GET /pulls/{n}/reviews`, against the 511 reviews of nodejs/node#22712:
+ * 30 a page with no `per_page`, and 100 for `per_page=101`. At 100 a pull request needs more than a
+ * hundred reviews before a poll makes a second request for them.
+ */
+export const REST_PAGE = 100;
+
+/**
+ * The next page's URL from a `Link` header, or `null` when there is no next page.
+ *
+ * Found by name rather than taken from the first link, because the first link is not always `next`.
+ * Measured on #24: a middle page lists `prev` first, and following it goes back to page 1 — whose
+ * first link is `next` — so a reader of first links goes round pages 1 and 2 and never reaches 3.
+ *
+ * @param {string | null | undefined} link the response's `Link` header
+ * @returns {string | null}
+ */
+export function nextPageUrl(link) {
+  const match = typeof link === "string" ? /<([^<>]+)>\s*;\s*rel="next"/.exec(link) : null;
+  return match ? match[1] : null;
+}
+
+/**
  * Build the GitHub calls `awaitRound` needs, over an injected `fetch`.
  *
  * Extracted from the CLI arm so it can be tested. It is the half that actually runs in CI, and
@@ -603,12 +627,49 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
     "user-agent": "macos-mail-mcp-copilot-gate",
   };
 
+  /*
+   * Every page of a list, not only the first.
+   *
+   * This returned `res.json()` from one request, which for a list is one page. Measured on
+   * 2026-09-14, `GET /pulls/{n}/reviews` lists oldest first by `submitted_at` — all 511 reviews of
+   * nodejs/node#22712 in that order, and #24's 18 here — so the reviews this check waits for,
+   * Copilot's round on the head and any human review of it, are the newest. Past 30 they sat on a
+   * page it never read, so `classifyRound` reported the head unreviewed — "the branch moved", or "no
+   * Copilot round yet" — and the check would expire red with no push able to clear it. Fail-closed,
+   * never a wrong green, and the symptom #44 describes.
+   *
+   * It had not bitten: as of that date the most reviews on any pull request here was 18, on #24. But
+   * a reply to a review thread is recorded as a review of its own — all 54 replies in this repository
+   * were, each alone in its review; 5198788557 on #73 is one, `COMMENTED` with an empty body — so
+   * every reply in a long conversation adds a review.
+   *
+   * `per_page` goes on every read, so nothing here has to know which paths are lists. Measured, the
+   * single pull request endpoint ignores it: the object came back identical, with no `Link` header,
+   * so a resource is still one request.
+   *
+   * The next page is followed as GitHub names it — under `/repositories/{id}/`, not the
+   * `/repos/{owner}/{name}/` path requested — rather than rebuilt from a page number, and only on
+   * api.github.com. The token rides on every request, so a link anywhere else is refused before it is
+   * requested.
+   */
   const api = async (suffix) => {
-    const res = await fetch(`https://api.github.com/repos/${repo}/pulls/${pr}${suffix}`, {
-      headers,
-    });
-    if (!res.ok) throw new Error(`GET pulls/${pr}${suffix} -> ${res.status}`);
-    return res.json();
+    const path = `pulls/${pr}${suffix}`;
+    const first = new URL(`https://api.github.com/repos/${repo}/${path}`);
+    first.searchParams.set("per_page", String(REST_PAGE));
+
+    const pages = [];
+    for (let url = first.href; url; ) {
+      const where = pages.length === 0 ? path : `${path} (page ${pages.length + 1})`;
+      if (new URL(url).origin !== "https://api.github.com") {
+        throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
+      }
+      const res = await fetch(url, { headers });
+      if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
+      pages.push(await res.json());
+      url = nextPageUrl(res.headers.get("link"));
+    }
+    // A resource is one page and comes back as it is; a list is every page, in order.
+    return Array.isArray(pages[0]) ? pages.flat() : pages[0];
   };
 
   const graphql = async (query, variables) => {

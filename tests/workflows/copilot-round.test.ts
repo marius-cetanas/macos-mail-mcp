@@ -970,8 +970,8 @@ describe("makeGithubIo", () => {
 
     /*
      * The defect. Reviews are listed oldest first by `submitted_at` — measured across all 511 on
-     * nodejs/node#22712, and on #24's 18 here — so the ones this check waits for are on the last
-     * page, and a read that stopped at the first never saw them.
+     * nodejs/node#22712, and on #24's 18 here — so the ones this check waits for are the newest, at
+     * the end of the list, and a read that stopped at the first page never saw them.
      */
     it("reads every page of a list, in order", async () => {
       const g = io([
@@ -1205,9 +1205,9 @@ describe("nextPageUrl", () => {
  * `api` used to read one page. Reviews come 30 a page by default, oldest first, so past 30 the
  * newest — Copilot's round on the head, and any human review of it — went unread, `classifyRound`
  * reported the head unreviewed, and the check would expire red with no push able to clear it. As of
- * 2026-09-14 no pull request here had got there — 18 reviews, on #24, was the most — but every reply
- * to a review thread is recorded as a review of its own (5198788557 on #73), and the maintainer had
- * written 54 of those across the repository.
+ * 2026-09-14 no pull request here had got there — 18 reviews, on #24, was the most — but a reply to a
+ * review thread is recorded as a review of its own: all 54 replies in this repository were, each
+ * alone in its review, 5198788557 on #73 among them.
  */
 describe("awaitRound over makeGithubIo when the round is past the first page", () => {
   /**
