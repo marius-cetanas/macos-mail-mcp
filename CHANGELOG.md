@@ -99,7 +99,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redirects, the refusal of a next page off api.github.com and the paged read, and every script reads
   through it; a resource that carries a `Link` header, as the compare endpoint does, is one request
   rather than every page of it. `check-npmrc.mjs` uses `scripts/is-main.mjs` rather than a copy of
-  it, as `release-notes.mjs` does since #100.
+  it; #100 does the same for `release-notes.mjs`.
 - The scripts CI runs before anything is installed — `changelog`, `copilot-reviewed`,
   `branch-freshness` and `intake` install nothing, and the release job runs `check-npmrc.mjs`
   before its `npm ci` — are held to imports of Node built-ins and other files under `scripts/` only,
