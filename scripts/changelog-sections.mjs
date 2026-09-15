@@ -44,32 +44,31 @@
  * those later recordings did, and the log says the scope allowed it.
  */
 import { readFileSync } from "node:fs";
-import { nextPageUrl, REST_PAGE } from "./copilot-round.mjs";
+import { API, REST_PAGE, githubHeaders, readPages } from "./github-api.mjs";
 import { isMain } from "./is-main.mjs";
 
 /**
- * The `## [name]` sections of a changelog, keyed by name: each from its heading line to the line
- * before the next heading, trailing blank lines dropped so that inserting a neighbour leaves a
- * section's text as it was. Text before the first heading belongs to no section. A name heading
- * more than one section throws, since keeping either copy could hide a change to the other.
+ * The `## [name]` sections of a changelog, every copy under its name in the order they appear: each
+ * from its heading line to the line before the next heading, trailing blank lines dropped so that
+ * inserting a neighbour leaves a section's text as it was. Text before the first heading belongs to
+ * no section.
  *
  * @param {string} text the changelog
- * @returns {Map<string, string>}
+ * @returns {Map<string, string[]>}
  */
-export function sectionsOf(text) {
-  const sections = new Map();
+export function copiesOf(text) {
+  const copies = new Map();
   let name = null;
   let lines = [];
   const close = () => {
     if (name === null) return;
-    // Refused rather than written over: a Map keeps the last value under a key, so an unchanged copy
-    // appended after an altered section would hide the alteration (raised by Copilot on #98).
-    if (sections.has(name)) throw new Error(`more than one section is headed [${name}]`);
     // Blank lines only. A trailing space is content, and two of them end a Markdown line in a hard
     // break, so trimming them would let a shipped section change unseen (raised by Copilot on #98).
     let end = lines.length;
     while (end > 0 && lines[end - 1].trim() === "") end -= 1;
-    sections.set(name, lines.slice(0, end).join("\n"));
+    const list = copies.get(name) ?? [];
+    list.push(lines.slice(0, end).join("\n"));
+    copies.set(name, list);
   };
   for (const line of text.split("\n")) {
     const heading = /^## \[([^\]]+)\]/.exec(line);
@@ -82,6 +81,23 @@ export function sectionsOf(text) {
     }
   }
   close();
+  return copies;
+}
+
+/**
+ * `copiesOf`, one text per name. A name heading more than one section throws, since keeping either
+ * copy could hide a change to the other: a Map keeps the last value under a key, so an unchanged copy
+ * appended after an altered section would hide the alteration (raised by Copilot on #98).
+ *
+ * @param {string} text the changelog
+ * @returns {Map<string, string>}
+ */
+export function sectionsOf(text) {
+  const sections = new Map();
+  for (const [name, copies] of copiesOf(text)) {
+    if (copies.length > 1) throw new Error(`more than one section is headed [${name}]`);
+    sections.set(name, copies[0]);
+  }
   return sections;
 }
 
@@ -148,37 +164,57 @@ const lineDiff = (was, is) => {
   return { added: added.concat(is.slice(j)), removed: removed.concat(was.slice(i)) };
 };
 
-/** `sectionsOf`, with the file a refusal came from named in its message. */
-const sectionsIn = (text, whose) => {
-  try {
-    return sectionsOf(text);
-  } catch (error) {
-    throw new Error(`${whose} CHANGELOG.md: ${error instanceof Error ? error.message : String(error)}`);
-  }
-};
-
 /**
  * Every version section of `base` that `head` alters or lacks. `[Unreleased]` is not a version and
  * is free to change; a section only `head` has is new, and free too. A changed section whose diff
  * would pass `DIFF_LIMIT` comes back with `diffed: false` and its line counts instead of its lines.
  *
+ * A heading repeated in the checkout is refused, unless the base carries the same copies unchanged.
+ * A change that adds a copy, or alters one, could hide a change to another — a Map keeps the last
+ * value under a key (raised by Copilot on #98) — but one that merely inherits `main`'s duplicate did
+ * not make it, and refusing it too would fail every pull request after the duplicate landed, the one
+ * removing it included: the base is the merge commit's first parent, so once `main` carried two
+ * sections under one version, so did every checkout. A duplicate the base carries is then a section
+ * that cannot be compared line by line: inherited unchanged it is no change, and resolved, altered or
+ * dropped it is a change reported by its copies, judged as any change to that version is.
+ *
  * @returns {Array<
  *   | { version: string, kind: "changed" | "removed", added: string[], removed: string[] }
  *   | { version: string, kind: "changed", diffed: false, lines: { before: number, after: number } }
+ *   | { version: string, kind: "changed" | "removed", diffed: false, copies: { before: number, after: number } }
  * >}
  */
 export function changedSections(baseText, headText) {
-  const base = sectionsIn(baseText, "the base's");
-  const head = sectionsIn(headText, "the checkout's");
+  const base = copiesOf(baseText);
+  const head = copiesOf(headText);
+  const same = (a, b) =>
+    a !== undefined && b !== undefined && a.length === b.length && a.every((text, i) => text === b[i]);
+
+  for (const [name, copies] of head) {
+    if (copies.length > 1 && !same(base.get(name), copies)) {
+      throw new Error(`the checkout's CHANGELOG.md: more than one section is headed [${name}]`);
+    }
+  }
+
   const changes = [];
-  for (const [version, before] of base) {
+  for (const [version, copies] of base) {
     if (!isVersion(version)) continue;
     const after = head.get(version);
-    const was = before.split("\n");
+    if (same(copies, after)) continue;
+    if (copies.length > 1) {
+      changes.push({
+        version,
+        kind: after === undefined ? "removed" : "changed",
+        diffed: false,
+        copies: { before: copies.length, after: after?.length ?? 0 },
+      });
+      continue;
+    }
+    const was = copies[0].split("\n");
     if (after === undefined) {
       changes.push({ version, kind: "removed", added: [], removed: was });
-    } else if (after !== before) {
-      const is = after.split("\n");
+    } else {
+      const is = after[0].split("\n");
       changes.push(
         (was.length + 1) * (is.length + 1) > DIFF_LIMIT
           ? { version, kind: "changed", diffed: false, lines: { before: was.length, after: is.length } }
@@ -203,7 +239,7 @@ const indent = (lines) =>
 export function verdict({ changes, tagged, subject }) {
   const messages = [];
   let shipped = 0;
-  for (const { version, kind, added, removed, diffed, lines } of changes) {
+  for (const { version, kind, added, removed, diffed, lines, copies } of changes) {
     const tag = `v${version}`;
     if (!tagged.has(version)) {
       messages.push(
@@ -215,6 +251,10 @@ export function verdict({ changes, tagged, subject }) {
     if (kind === "removed") {
       messages.push(
         `## [${version}] shipped before this change (${tag} is reachable from the base), and this change removes it.`
+      );
+    } else if (copies !== undefined) {
+      messages.push(
+        `## [${version}] shipped before this change (${tag} is reachable from the base), and this change alters it: the base heads ${copies.before} sections [${version}] and this change leaves ${copies.after}, which cannot be compared line by line.`
       );
     } else if (diffed === false) {
       messages.push(
@@ -335,13 +375,9 @@ export async function check({ io, base, head, subject }) {
  * a failed read that names its status (raised by Copilot on #98).
  */
 export function makeGithubIo({ fetch, token, repo }) {
-  const headers = {
-    authorization: `Bearer ${token}`,
-    accept: "application/vnd.github+json",
-    "user-agent": "macos-mail-mcp-changelog-sections",
-  };
+  const headers = githubHeaders(token, "macos-mail-mcp-changelog-sections");
   const get = (path, accept = headers.accept) =>
-    fetch(`https://api.github.com/repos/${repo}/${path}`, {
+    fetch(`${API}/repos/${repo}/${path}`, {
       headers: { ...headers, accept },
       redirect: "manual",
     });
@@ -399,8 +435,8 @@ export function makeGithubIo({ fetch, token, repo }) {
      * one pull request, whose `merge_commit_sha` was the commit asked about; `6afc2e1`, committed
      * without one, listed none. It is still a list, which the docs page 30 at a time, and reading one
      * page of a list is the defect #81 fixed (raised by Copilot on #98). So every page is read, 100 at
-     * a time, through `copilot-round.mjs`'s `nextPageUrl`; and since the token goes with every request,
-     * a next page off api.github.com is refused before it is asked for, as that reader refuses one.
+     * a time, through `readPages`, which refuses a next page off api.github.com before asking for it,
+     * since the token goes with every request.
      *
      * The match is on `merge_commit_sha` because the title grants the override, so only the pull
      * request this push merged may give it. A rebase merge has not been measured; if one does not
@@ -408,20 +444,13 @@ export function makeGithubIo({ fetch, token, repo }) {
      */
     pullTitle: async (sha) => {
       const path = `commits/${sha}/pulls`;
-      const pulls = [];
-      let url = `https://api.github.com/repos/${repo}/${path}?per_page=${REST_PAGE}`;
-      for (let page = 1; url; page += 1) {
-        const where = page === 1 ? path : `${path} (page ${page})`;
-        if (new URL(url).origin !== "https://api.github.com") {
-          throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
-        }
-        const res = await fetch(url, { headers, redirect: "manual" });
-        if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
-        const list = await res.json();
-        if (!Array.isArray(list)) throw new Error(`GET ${where} -> not a list`);
-        pulls.push(...list);
-        url = nextPageUrl(res.headers.get("link"));
-      }
+      const pulls = await readPages({
+        fetch,
+        headers,
+        url: `${API}/repos/${repo}/${path}?per_page=${REST_PAGE}`,
+        where: path,
+      });
+      if (!Array.isArray(pulls)) throw new Error(`GET ${path} -> not a list`);
       const merged = pulls.find((pull) => pull.merged_at && pull.merge_commit_sha === sha);
       return merged ? merged.title : null;
     },

@@ -9,7 +9,7 @@
 // package rather than an auth failure. See actions/setup-node#1551.
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { isMain } from "./is-main.mjs";
 
 // Matches an assignment, not a mention: the key must be at the start of the
 // line or immediately after the `:` of a registry-scoped key
@@ -91,21 +91,7 @@ export function checkFiles(paths) {
   return problems;
 }
 
-/**
- * True when this file was executed directly rather than imported.
- * Compares resolved real paths: matching on the basename would fire for any
- * same-named script, and splitting on "/" alone misses Windows separators.
- */
-function isMain() {
-  if (process.argv[1] === undefined) return false;
-  try {
-    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
-  } catch {
-    return false;
-  }
-}
-
-if (isMain()) {
+if (isMain(import.meta.url)) {
   const paths = process.argv.slice(2);
   const problems = checkFiles(paths);
   for (const { path, hits } of problems) {

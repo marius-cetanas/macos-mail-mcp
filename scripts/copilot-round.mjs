@@ -24,6 +24,7 @@
 
 /** Reviewer logins that count as the Copilot reviewer. Compared lower-cased. */
 import { isMain } from "./is-main.mjs";
+import { API, REST_PAGE, githubHeaders, readPages } from "./github-api.mjs";
 
 export const COPILOT_LOGINS = [
   "copilot-pull-request-reviewer[bot]",
@@ -770,30 +771,6 @@ export async function describeRequest(isRoundPending, recorded) {
 export const REVIEWER_PAGE = 100;
 
 /**
- * How many items `api` asks a REST list for per page — the most GitHub serves.
- *
- * Measured on 2026-09-14 on `GET /pulls/{n}/reviews`, against the 511 reviews of nodejs/node#22712:
- * 30 a page with no `per_page`, and 100 for `per_page=101`. At 100 a pull request needs more than a
- * hundred reviews before a poll makes a second request for them.
- */
-export const REST_PAGE = 100;
-
-/**
- * The next page's URL from a `Link` header, or `null` when there is no next page.
- *
- * Found by name rather than taken from the first link, because the first link is not always `next`.
- * Measured on #24: a middle page lists `prev` first, and following it goes back to page 1 — whose
- * first link is `next` — so a reader of first links goes round pages 1 and 2 and never reaches 3.
- *
- * @param {string | null | undefined} link the response's `Link` header
- * @returns {string | null}
- */
-export function nextPageUrl(link) {
-  const match = typeof link === "string" ? /<([^<>]+)>\s*;\s*rel="next"/.exec(link) : null;
-  return match ? match[1] : null;
-}
-
-/**
  * Build the GitHub calls `awaitRound` needs, over an injected `fetch`.
  *
  * Extracted from the CLI arm so it can be tested. It is the half that actually runs in CI, and
@@ -805,11 +782,7 @@ export function nextPageUrl(link) {
  * @param {{fetch: typeof globalThis.fetch, token: string, repo: string, pr: string|number}} deps
  */
 export function makeGithubIo({ fetch, token, repo, pr }) {
-  const headers = {
-    authorization: `Bearer ${token}`,
-    accept: "application/vnd.github+json",
-    "user-agent": "macos-mail-mcp-copilot-gate",
-  };
+  const headers = githubHeaders(token, "macos-mail-mcp-copilot-gate");
 
   /*
    * Every page of a list, not only the first.
@@ -829,45 +802,15 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
    *
    * `per_page` goes on every read, so nothing here has to know which paths are lists. Measured, the
    * single pull request endpoint ignores it: the object came back identical, with no `Link` header,
-   * so a resource is still one request.
-   *
-   * The next page is followed as GitHub names it — under `/repositories/{id}/`, not the
-   * `/repos/{owner}/{name}/` path requested — rather than rebuilt from a page number, and only on
-   * api.github.com. The token rides on every request, so a link anywhere else is refused before it is
-   * requested.
-   *
-   * **The refusal is not redundant with fetch's own protection.** fetch drops a caller-set
-   * `authorization` header only when a redirect crosses origins; a next link is a fresh request, so
-   * without the refusal the token would go wherever the link pointed. The suite measures that on the
-   * Node running it. Both alternatives were weighed and rejected: stopping at the last page read
-   * hands `classifyRound` a partial list, the defect this function was fixed for, and following the
-   * link without the token merges a list from an unknown host into the reviews. Every `Link` measured
-   * so far was on api.github.com.
-   *
-   * **Nor does any request follow a redirect** (raised by Copilot on #98). The origin check reads only
-   * the link, and fetch follows a redirect on its own: an api.github.com URL answered with a 3xx to
-   * another origin would come back `ok`, token dropped, and be read as a page. Every request this
-   * module makes sets `redirect: "manual"`, under which fetch returns the 3xx itself — measured in the
-   * suite on the Node running it — so a redirect is a failed read that names its status.
+   * so a resource is still one request. How the pages are followed — as GitHub names them, on
+   * api.github.com only, and never through a redirect — is `readPages`' contract in
+   * `github-api.mjs`, where the reasons and the measurements behind each refusal are kept once.
    */
   const api = async (suffix) => {
     const path = `pulls/${pr}${suffix}`;
-    const first = new URL(`https://api.github.com/repos/${repo}/${path}`);
+    const first = new URL(`${API}/repos/${repo}/${path}`);
     first.searchParams.set("per_page", String(REST_PAGE));
-
-    const pages = [];
-    for (let url = first.href; url; ) {
-      const where = pages.length === 0 ? path : `${path} (page ${pages.length + 1})`;
-      if (new URL(url).origin !== "https://api.github.com") {
-        throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
-      }
-      const res = await fetch(url, { headers, redirect: "manual" });
-      if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
-      pages.push(await res.json());
-      url = nextPageUrl(res.headers.get("link"));
-    }
-    // A resource is one page and comes back as it is; a list is every page, in order.
-    return Array.isArray(pages[0]) ? pages.flat() : pages[0];
+    return readPages({ fetch, headers, url: first.href, where: path });
   };
 
   const graphql = async (query, variables) => {

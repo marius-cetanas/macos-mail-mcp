@@ -106,6 +106,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `branch-freshness` now also re-runs when a pull request is edited, which includes a change of base.
   Its answer depends on the base, and a pull request retargeted to `main` keeps its head, so the
   freshness it had passed against the old base used to stand for the new one.
+- The three GitHub readers in `scripts/` are one. `copilot-round.mjs`, `changelog-sections.mjs` and
+  `check-freshness.mjs` each built their own headers and paging, the changelog check importing its
+  page reader from the Copilot gate, and `check-freshness.mjs` made the one request in `scripts/` that
+  still followed a redirect. `scripts/github-api.mjs` now carries the headers, the refusal of
+  redirects, the refusal of a next page off api.github.com and the paged read, and every script reads
+  through it; a resource that carries a `Link` header, as the compare endpoint does, is one request
+  rather than every page of it. `check-npmrc.mjs` uses `scripts/is-main.mjs` rather than a copy of
+  it; #100 does the same for `release-notes.mjs`.
+- The scripts CI runs before anything is installed — `changelog`, `copilot-reviewed`,
+  `branch-freshness` and `intake` install nothing, and the release job runs `check-npmrc.mjs`
+  before its `npm ci` — are held to imports of Node built-ins and other files under `scripts/` only,
+  by `tests/workflows/script-imports.test.ts`, which reads the jobs from the workflows step by step.
+  The claim was a sentence in `verify.yml`; one package import anywhere in that graph would have
+  turned a required check red on every pull request at once.
+- The `changelog` check no longer refuses every pull request once `main` carries two sections under
+  one version heading. It refused a duplicate wherever it found it, the base included, so a duplicate
+  that reached `main` — two pull requests recording the same release, the second merged on a check
+  run before the first landed — would have failed every pull request after it, the one removing it
+  among them, since every checkout inherits its base. A duplicate the checkout inherits unchanged is
+  now passed over; a change that adds a copy or alters one is still refused, and one that resolves or
+  drops the copies is a change to that version, reported by its copies and judged as any change to a
+  shipped section is.
+- Vitest runs the tree's own tests only. Without `include`, its default glob also collected the
+  checkouts under `.claude/worktrees/`: measured on 2026-09-15 with six present, 263 files ran instead
+  of 34, an older copy of one test failed against this tree's README, and eight copies of
+  `tests/release/workflow.test.ts` raced on the one `package-lock.json` they all rewrite and left it
+  dirty.
+- `tests/release/changelog-sections.test.ts` now holds the push trigger to `main`, which its name
+  said it did; and `verify.yml` names the handoff file it cites for its open questions, since four
+  carry that date.
 
 ## [2.0.0] - 2026-09-14
 
