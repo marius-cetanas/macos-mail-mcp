@@ -835,6 +835,14 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
    * `/repos/{owner}/{name}/` path requested — rather than rebuilt from a page number, and only on
    * api.github.com. The token rides on every request, so a link anywhere else is refused before it is
    * requested.
+   *
+   * **The refusal is not redundant with fetch's own protection.** fetch drops a caller-set
+   * `authorization` header only when a redirect crosses origins; a next link is a fresh request, so
+   * without the refusal the token would go wherever the link pointed. The suite measures that on the
+   * Node running it. Both alternatives were weighed and rejected: stopping at the last page read
+   * hands `classifyRound` a partial list, the defect this function was fixed for, and following the
+   * link without the token merges a list from an unknown host into the reviews. Every `Link` measured
+   * so far was on api.github.com.
    */
   const api = async (suffix) => {
     const path = `pulls/${pr}${suffix}`;

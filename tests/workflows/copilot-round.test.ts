@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
@@ -1481,6 +1483,49 @@ describe("makeGithubIo", () => {
         "GET pulls/7/reviews (page 2) -> not followed: https://example.com/reviews?page=2 is off api.github.com"
       );
       expect(g.calls).toHaveLength(1);
+    });
+
+    /*
+     * Why the refusal above is not redundant with fetch's own protection, measured on the Node that
+     * runs this suite rather than asserted from one machine. fetch drops a caller-set `authorization`
+     * header only when a redirect crosses origins. A next link is a fresh request, so it keeps the
+     * header — which is what would carry the token off api.github.com if the refusal were removed.
+     * If a Node release ever stops sending it, this fails, and the refusal's reason has changed.
+     */
+    it("would otherwise send the token: fetch keeps it on a fresh request to another origin", async () => {
+      const seen: Array<{ path: string | undefined; authorization: string | null }> = [];
+      const listen = (handle: (req: IncomingMessage, res: ServerResponse) => void) =>
+        new Promise<Server>((resolve) => {
+          const server = createServer(handle);
+          server.listen(0, "127.0.0.1", () => resolve(server));
+        });
+      const origin = (server: Server) => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+      // Two listeners on different ports are two origins.
+      const elsewhere = await listen((req, res) => {
+        seen.push({ path: req.url, authorization: req.headers.authorization ?? null });
+        res.end("[]");
+      });
+      const api = await listen((_req, res) => {
+        res.writeHead(302, { location: `${origin(elsewhere)}/redirected` });
+        res.end();
+      });
+
+      try {
+        const headers = { authorization: "Bearer t" };
+        await (await fetch(`${origin(elsewhere)}/next`, { headers })).text();
+        await (await fetch(`${origin(api)}/redirect`, { headers })).text();
+      } finally {
+        for (const server of [api, elsewhere]) {
+          server.closeAllConnections();
+          server.close();
+        }
+      }
+
+      expect(seen).toEqual([
+        { path: "/next", authorization: "Bearer t" },
+        { path: "/redirected", authorization: null },
+      ]);
     });
   });
 
