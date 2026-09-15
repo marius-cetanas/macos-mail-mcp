@@ -203,8 +203,9 @@ Three layers, and the boundary between them is what keeps shell and AppleScript 
 (`bridge/applescript-runner.ts`) loads a template, substitutes parameters with escaping, prepends
 the shared `escapeForJson` handler and runs `osascript`, never a shell. **Scripts**
 (`*.applescript`) are templates with `{{param}}` placeholders that return JSON. Handlers never
-build script text themselves. The source tree, the test layout and how to add a tool are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+build script text themselves. The source tree and how to add a tool are in
+[CONTRIBUTING.md](https://github.com/marius-cetanas/macos-mail-mcp/blob/main/CONTRIBUTING.md),
+which the package does not ship either.
 
 ## Known Limitations
 
