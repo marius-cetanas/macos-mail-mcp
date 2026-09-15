@@ -138,7 +138,7 @@ pinning it is a branch-protection change, which is Gated (`change-branch-protect
 
 The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset were a pair: the
 check waited for a round, the ruleset requested one. The payload is kept at
-`.github/rulesets/copilot-auto-review.json` so the dependency is reviewable rather than remembered.
+`.github/rulesets/copilot-auto-review.json` so the ruleset is reviewable rather than remembered.
 
 **The check no longer depends on that pairing, because the ruleset does not cover every pull request
 it gates (#44).** Two holes were measured, with different causes. The ruleset is conditioned on

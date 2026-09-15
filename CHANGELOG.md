@@ -46,6 +46,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   history are two empty dismissed reviews, on #69 and #70, neither on its pull request's final head.
   They are read whole, every page, by the same reader #81 gave the reviews, as one list for the
   pull request rather than one read per review.
+- `.github/rulesets/README.md` said the `copilot-reviewed` check depended on the Copilot review
+  ruleset: delete the ruleset and no round is ever requested, and the check fails with nothing
+  explaining why. That has been false since #49, which had the check request the round itself and
+  name a failed request in its log, and which corrected the gate map but not the README. The README
+  now says what the ruleset still buys — a request within a second of opening and on every push —
+  and what the check does without it, for a person's pull request, a Dependabot one and a fork's.
+  `tests/workflows/copilot-ruleset.test.ts` holds what the README says the check does to
+  `awaitRound`, what it says of the ruleset to the payload, and what it quotes to the gate map, so a
+  change to any of those fails on the README. What GitHub does with each request — how soon the
+  ruleset asks, whether a request records — is measured rather than tested, and can change without
+  failing it. The gate map no longer calls the payload a dependency of the check.
 
 ## [2.0.0] - 2026-09-14
 
