@@ -136,8 +136,8 @@ jobs:
   #
   # No `npm ci`: the script imports Node built-ins and other files under `scripts/` — the GitHub
   # reader every check shares among them — and nothing installed, so the job installs nothing and
-  # caches nothing. `tests/workflows/script-imports.test.ts` holds every script a job runs without
-  # `npm ci` to that, because one package import anywhere in the graph would turn a required check
+  # caches nothing. `tests/workflows/script-imports.test.ts` holds every script a job runs before its
+  # `npm ci`, or without one, to that, because one package import anywhere in the graph would turn a required check
   # red on every pull request at once. It joins `verify`'s dependencies rather than becoming a
   # required check of its own, so the merge gate covers it without a branch-protection change.
   changelog:
