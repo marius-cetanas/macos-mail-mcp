@@ -306,9 +306,12 @@ describe("verdict", () => {
 
 /**
  * A `fetch` that answers by path under the repository and records what it was asked. A real
- * `Response` always has `headers`, `json` and `text`, so every answer here does too.
+ * `Response` always has `headers`, `json` and `text`, so every answer here does too; a route may set the
+ * headers, as a `link` to the next page.
  */
-const fetchStub = (routes: Record<string, { status?: number; body?: unknown; text?: string }>) => {
+const fetchStub = (
+  routes: Record<string, { status?: number; body?: unknown; text?: string; headers?: Record<string, string> }>
+) => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   const fetch = async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
@@ -317,7 +320,7 @@ const fetchStub = (routes: Record<string, { status?: number; body?: unknown; tex
     return {
       ok: status >= 200 && status < 300,
       status,
-      headers: new Headers(),
+      headers: new Headers(route?.headers ?? {}),
       json: async () => route?.body ?? {},
       text: async () => route?.text ?? "",
     } as unknown as Response;
@@ -429,7 +432,7 @@ describe("makeGithubIo", () => {
   describe("pullTitle", () => {
     it("returns the title of the pull request merged as this commit, among any others listed", async () => {
       const g = io({
-        [`commits/${H}/pulls`]: {
+        [`commits/${H}/pulls?per_page=100`]: {
           body: [
             { title: "still open", merged_at: null, merge_commit_sha: null },
             { title: "merged as another commit", merged_at: "2026-09-01T00:00:00Z", merge_commit_sha: M },
@@ -438,13 +441,13 @@ describe("makeGithubIo", () => {
         },
       });
       await expect(g.pullTitle(H)).resolves.toBe("merged as this one");
-      expect(g.calls[0].url).toBe(`https://api.github.com/repos/o/r/commits/${H}/pulls`);
+      expect(g.calls[0].url).toBe(`https://api.github.com/repos/o/r/commits/${H}/pulls?per_page=100`);
     });
 
     // A title is permission to alter a shipped section, so only the pull request this push merged may
     // grant it. One merged as another commit, or not merged at all, gives null, and the push falls back.
     it("is null when no pull request was merged as this commit", async () => {
-      const pulls = (body: unknown[]) => io({ [`commits/${H}/pulls`]: { body } }).pullTitle(H);
+      const pulls = (body: unknown[]) => io({ [`commits/${H}/pulls?per_page=100`]: { body } }).pullTitle(H);
       await expect(pulls([])).resolves.toBe(null);
       await expect(
         pulls([{ title: "merged as another commit", merged_at: "2026-09-01T00:00:00Z", merge_commit_sha: M }])
@@ -453,12 +456,49 @@ describe("makeGithubIo", () => {
     });
 
     it("names the status when the read fails, and refuses an answer that is not a list", async () => {
-      await expect(io({ [`commits/${H}/pulls`]: { status: 500 } }).pullTitle(H)).rejects.toThrow(
+      await expect(io({ [`commits/${H}/pulls?per_page=100`]: { status: 500 } }).pullTitle(H)).rejects.toThrow(
         `GET commits/${H}/pulls -> 500`
       );
-      await expect(io({ [`commits/${H}/pulls`]: { body: { message: "x" } } }).pullTitle(H)).rejects.toThrow(
+      await expect(io({ [`commits/${H}/pulls?per_page=100`]: { body: { message: "x" } } }).pullTitle(H)).rejects.toThrow(
         `GET commits/${H}/pulls -> not a list`
       );
+    });
+
+    /*
+     * A list endpoint, paged 30 at a time by default (raised by Copilot on #98). GitHub documents one
+     * merged pull request for a commit on the default branch, and the three measured above listed at
+     * most one, but reading one page of a list is the defect #81 fixed. So: 100 a page, the most the
+     * docs allow, and every page after it.
+     */
+    it("reads every page, following Link: rel=\"next\"", async () => {
+      const next = `https://api.github.com/repositories/1/commits/${H}/pulls?per_page=100&page=2`;
+      const g = io({
+        [`commits/${H}/pulls?per_page=100`]: {
+          body: [{ title: "merged as another commit", merged_at: "2026-09-01T00:00:00Z", merge_commit_sha: M }],
+          headers: { link: `<${next}>; rel="next", <${next}>; rel="last"` },
+        },
+        [next]: { body: [{ title: "merged as this one", merged_at: "2026-09-02T00:00:00Z", merge_commit_sha: H }] },
+      });
+      await expect(g.pullTitle(H)).resolves.toBe("merged as this one");
+      expect(g.calls.map((c) => c.url)).toEqual([
+        `https://api.github.com/repos/o/r/commits/${H}/pulls?per_page=100`,
+        next,
+      ]);
+    });
+
+    // The token goes with every request, so a next page elsewhere is refused before it is asked for,
+    // as #81's reader refuses one.
+    it("refuses a next page off api.github.com without requesting it", async () => {
+      const g = io({
+        [`commits/${H}/pulls?per_page=100`]: {
+          body: [],
+          headers: { link: '<https://example.com/pulls?page=2>; rel="next"' },
+        },
+      });
+      await expect(g.pullTitle(H)).rejects.toThrow(
+        "not followed: https://example.com/pulls?page=2 is off api.github.com"
+      );
+      expect(g.calls).toHaveLength(1);
     });
   });
 
@@ -471,7 +511,7 @@ describe("makeGithubIo", () => {
       [`commits/${M}`]: { body: { parents: [{ sha: B }, { sha: H }] } },
       "git/ref/tags/v2.0.0": { body: {} },
       [`compare/v2.0.0...${B}`]: { body: { status: "ahead" } },
-      [`commits/${H}/pulls`]: { body: [] },
+      [`commits/${H}/pulls?per_page=100`]: { body: [] },
     });
     await g.file(B);
     await g.parents(M);
@@ -517,36 +557,70 @@ describe("resolveBase", () => {
 
 /*
  * The override's subject. On pull_request the workflow passes the pull request's title. On push it can
- * only pass `head_commit.message`, which is that title for a squash merge alone: a merge commit reads
- * "Merge pull request #N from …" and a rebase merge carries its last commit's subject, so a
- * `docs(changelog):` correction would pass its pull request and then fail on `main` (raised by Copilot
- * on #98). A push therefore asks which pull request was merged as the commit.
+ * pass only `head_commit.message`, which need not be that title: a merge commit reads "Merge pull
+ * request #N from …", and under this repository's `COMMIT_OR_PR_TITLE` a squash of one commit takes
+ * that commit's own title. So a push asks which pull request was merged as the commit (raised by Copilot
+ * on #98), and only when the commit sits directly on BEFORE: the push is judged from BEFORE, and a title
+ * speaks for one pull request's merge, not for everything a push can hold (raised by Copilot on #98).
  */
 describe("resolveSubject", () => {
   it("on pull_request keeps the title it was given, and asks nothing", async () => {
     const g = io({});
     await expect(
       resolveSubject({ event: "pull_request", sha: M, subject: "docs(changelog): correct 1.3.4" }, g)
-    ).resolves.toBe("docs(changelog): correct 1.3.4");
+    ).resolves.toEqual({ subject: "docs(changelog): correct 1.3.4", source: "the pull request's title" });
     expect(g.calls).toHaveLength(0);
   });
 
-  it("on push uses the title of the pull request merged as that commit", async () => {
+  it("on push uses the title of the pull request merged as that commit, a merge commit on BEFORE", async () => {
     const g = io({
-      [`commits/${H}/pulls`]: {
+      [`commits/${H}`]: { body: { parents: [{ sha: B }, { sha: M }] } },
+      [`commits/${H}/pulls?per_page=100`]: {
         body: [{ title: "docs(changelog): correct 1.3.4", merged_at: "2026-09-15T00:00:00Z", merge_commit_sha: H }],
       },
     });
-    await expect(
-      resolveSubject({ event: "push", sha: H, subject: "Merge pull request #3 from someone/branch" }, g)
-    ).resolves.toBe("docs(changelog): correct 1.3.4");
+    const result = await resolveSubject(
+      { event: "push", sha: H, before: B, subject: "Merge pull request #3 from someone/branch" },
+      g
+    );
+    expect(result).toEqual({
+      subject: "docs(changelog): correct 1.3.4",
+      source: "the title of the pull request merged as the pushed commit",
+    });
   });
 
   it("on push falls back to the commit's own message when no pull request was merged as it", async () => {
-    const g = io({ [`commits/${H}/pulls`]: { body: [] } });
-    await expect(
-      resolveSubject({ event: "push", sha: H, subject: "docs: prepare for public release" }, g)
-    ).resolves.toBe("docs: prepare for public release");
+    const g = io({
+      [`commits/${H}`]: { body: { parents: [{ sha: B }] } },
+      [`commits/${H}/pulls?per_page=100`]: { body: [] },
+    });
+    const result = await resolveSubject(
+      { event: "push", sha: H, before: B, subject: "docs: prepare for public release" },
+      g
+    );
+    expect(result).toEqual({
+      subject: "docs: prepare for public release",
+      source: "the pushed commit's message, since no pull request was merged as it",
+    });
+  });
+
+  /*
+   * Measured on 2026-09-15: each of the nine pushes to `main` the events API listed sat directly on its
+   * `before`, with one parent, and was the merge commit of one pull request; `main` has no merge queue.
+   * A pushed commit that does not sit on BEFORE means the push holds more than one merge, or something
+   * other than one, and no single title or message speaks for all of it, so none is read.
+   */
+  it("on push reads no subject when the pushed commit does not sit directly on BEFORE", async () => {
+    const g = io({ [`commits/${H}`]: { body: { parents: [{ sha: M }] } } });
+    const result = await resolveSubject(
+      { event: "push", sha: H, before: B, subject: "docs(changelog): correct 1.3.4" },
+      g
+    );
+    expect(result.subject).toBeNull();
+    expect(result.source).toBe(
+      `nothing, since ${H}'s first parent is ${M}, not ${B}, so no one pull request accounts for the push`
+    );
+    expect(g.calls.map((c) => c.url)).toEqual([`https://api.github.com/repos/o/r/commits/${H}`]);
   });
 });
 
@@ -602,6 +676,26 @@ describe("check over makeGithubIo", () => {
     const result = await check({ io: g, base: B, head: MISFILED, subject });
     expect(result.ok).toBe(true);
     expect(result.messages.join("\n")).toMatch(/v2\.0\.0 is not reachable from the base/);
+  });
+
+  /*
+   * The shape raised by Copilot on #98: one push holding an unscoped change to a shipped section and,
+   * last, a pull request titled with the scope. That title must not pass the change before it.
+   */
+  it("fails a push of more than one merge, whatever the last pull request's title says", async () => {
+    const g = io({
+      ...shipped,
+      [`commits/${H}`]: { body: { parents: [{ sha: M }] } },
+      [`commits/${H}/pulls?per_page=100`]: {
+        body: [{ title: "docs(changelog): correct 1.3.4", merged_at: "2026-09-15T00:00:00Z", merge_commit_sha: H }],
+      },
+    });
+    const { subject } = await resolveSubject(
+      { event: "push", sha: H, before: B, subject: "docs(changelog): correct 1.3.4" },
+      g
+    );
+    const result = await check({ io: g, base: B, head: MISFILED, subject });
+    expect(result.ok).toBe(false);
   });
 });
 
