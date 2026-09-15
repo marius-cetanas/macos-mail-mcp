@@ -180,16 +180,19 @@ function isTopLevel(comment) {
 }
 
 /**
- * Does this comment answer a thread — an identified comment whose `in_reply_to_id` holds a value?
- * An entry without an id, or with `in_reply_to_id: null`, is neither this nor top-level, which is
- * what lets `classifyRound` tell a review of replies from a malformed one when it says why the check
- * is still waiting.
+ * Does this comment answer a thread — an identified comment whose `in_reply_to_id` names its parent
+ * by an id of the same kind? An entry without an id, or whose `in_reply_to_id` is `null`, `0`,
+ * negative, fractional or not a number, is neither this nor top-level, which is what lets
+ * `classifyRound` tell a review of replies from a malformed one when it says why the check is still
+ * waiting. The gate is the same either way — `isTopLevel` refuses any present key — so this decides
+ * only what the reason says. (Raised by Copilot on #82: a malformed parent used to count as a reply
+ * here.)
  *
  * @param {unknown} comment
  */
 function isReply(comment) {
   const c = /** @type {any} */ (comment);
-  return isGithubId(c?.id) && c.in_reply_to_id != null;
+  return isGithubId(c?.id) && isGithubId(c.in_reply_to_id);
 }
 
 /**

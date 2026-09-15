@@ -536,6 +536,11 @@ describe("classifyRound on a person's review that is only a thread reply", () =>
       classifyRound({ reviews: [DECLINED_ROUND, ...reviews], head: HEAD }).reason;
     expect(reason(personReview({ comments: [] }))).not.toMatch(/repl/);
     expect(reason(personReview({ comments: [REPLY, {}] }))).not.toMatch(/repl/);
+    // A parent that is not a GitHub id makes no reply either. (Raised by Copilot on #82.)
+    for (const in_reply_to_id of [0, -1, 1.5, "4006046306", true]) {
+      const r = reason(personReview({ comments: [{ id: 1, in_reply_to_id }] }));
+      expect(r, String(in_reply_to_id)).not.toMatch(/repl/);
+    }
     expect(
       reason(personReview({ id: 11, comments: [REPLY] }), personReview({ id: 12, comments: [] }))
     ).toMatch(
