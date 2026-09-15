@@ -40,6 +40,12 @@ Without the ruleset, case by case:
   pull request against `main` is neither a draft nor Dependabot's and nothing in the payload
   excludes it; whether the check then waited for that round rather than asking; and, where it did
   ask, that line in its log with a 403.
+- **A pull request whose round never comes.** Copilot can hold a recorded request and deliver
+  nothing: on 2026-09-15, #104 drew no round in the thirty-eight minutes between the ruleset's
+  request and a fresh one by hand, while every other pull request that day drew one within seven
+  minutes. After thirty minutes with no round on the head the check stops waiting for Copilot and
+  waits for a person's review of the head instead, as it does where the request cannot record; a
+  Copilot round arriving anyway still counts.
 
 Apply with:
 

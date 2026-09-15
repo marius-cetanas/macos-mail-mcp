@@ -301,6 +301,23 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
   });
 
   /**
+   * A recorded request that stands too long is a round that is not coming (#104). The README says
+   * the check then waits for a person's review of the head; held to the loop with a request older
+   * than the threshold, and shown not to widen while the request is fresh.
+   */
+  it("says a request that has stood thirty minutes gives way to a person's review of the head", async () => {
+    const person = { user: { login: "a-maintainer", type: "User" }, state: "COMMENTED", commit_id: HEAD, id: 1, body: "Read the diff." };
+    const wait = { requestRound: async () => {}, isRoundPending: async () => true, sleep: noSleep, budgetMs: 0 };
+    const stale = await awaitRound({ api: pullRequest([person]), ...wait, requestedFor: async () => 31 * 60_000 });
+    expect(stale.state, `${README} says a person's review satisfies the check once the request has stood too long`).toBe("landed");
+    const fresh = await awaitRound({ api: pullRequest([person]), ...wait, requestedFor: async () => 5 * 60_000 });
+    expect(fresh.state, `${README} says that happens after thirty minutes, not before`).toBe("expired");
+    expect(readme).toContain(
+      "After thirty minutes with no round on the head the check stops waiting for Copilot and waits for a person's review of the head instead"
+    );
+  });
+
+  /**
    * The gate map's "The platform floor" said the check asks for the round itself and that asking is
    * the floor beneath the ruleset, and never named #58 or #64 — so two reviewers of #83 read it as
    * saying asking closes the bot-author hole. It does not: on a Dependabot pull request the request

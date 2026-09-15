@@ -43,6 +43,20 @@
 # steps (hand-request the round, wait for it to be declined, review, re-run); the first two only
 # ever produced a round known to be empty, and are gone. See #58 for the citations.
 #
+# ## A request that stands too long is a round that is not coming (#104)
+#
+# Measured on #104 on 2026-09-15: the ruleset requested the round at 10:22Z, a rebase at 10:33Z
+# drew nothing, a fresh request by hand at 10:52Z drew nothing, and at 11:00Z there was still no
+# round — while every other pull request that day drew one within seven minutes. Two runs of this
+# check expired red meanwhile, each after its ten-minute budget, and nothing bounded how many more
+# would; the loop was a person re-requesting and re-running until Copilot answered.
+#
+# So the check reads how long the request has stood, from the pull request's timeline, and after
+# thirty minutes with no round on the head takes the path it takes for a request that cannot record:
+# it waits for a person's review of the head. That bounds the loop — a run to expire, a re-run to
+# read the age, a review — and a Copilot round that arrives anyway still wins. See
+# `DEFAULT_STALE_AFTER_MS` in `scripts/copilot-round.mjs`.
+#
 # ## A round is not a review just because it arrived (#54)
 #
 # Copilot submits a review in two cases where nobody looked, and the check counted both. They get
