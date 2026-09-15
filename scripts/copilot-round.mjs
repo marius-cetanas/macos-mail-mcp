@@ -825,7 +825,7 @@ export const REVIEWER_PAGE = 100;
  *
  * @param {{fetch: typeof globalThis.fetch, token: string, repo: string, pr: string|number}} deps
  */
-export function makeGithubIo({ fetch, token, repo, pr, runId, now = Date.now }) {
+export function makeGithubIo({ fetch, token, repo, pr, headArrivedAt, now = Date.now }) {
   const headers = githubHeaders(token, "macos-mail-mcp-copilot-gate");
 
   /*
@@ -969,9 +969,11 @@ export function makeGithubIo({ fetch, token, repo, pr, runId, now = Date.now }) 
    * or the readying that started it is what put the head here, and a re-run keeps the creation time
    * (measured on run 34958585235: created 10:33:33Z, attempt 3 started 11:12:19Z). A commit's own
    * date would not do — it is when the commit was made, not when it became the head, and a branch
-   * moved to an older commit would read as stale at once (raised by Copilot on #106). Without the
-   * run, or without leave to read it, this throws rather than guesses, and the loop widens nothing.
-   * `now` is injected so the age is testable without a clock.
+   * moved to an older commit would read as stale at once (raised by Copilot on #106). The time
+   * arrives as `headArrivedAt`, read by a job of its own with the one scope that read needs, so the
+   * scope is never in the hands of the pull request's code, which this job checks out and runs
+   * (raised by Copilot on #106 as well). Without it this throws rather than guesses, and the loop
+   * widens nothing. `now` is injected so the age is testable without a clock.
    */
   const requestedFor = async () => {
     const events = await readPages({
@@ -988,10 +990,12 @@ export function makeGithubIo({ fetch, token, repo, pr, runId, now = Date.now }) 
       else if (event?.event === "review_request_removed" && namesCopilot(event)) requestedAt = null;
     }
     if (requestedAt === null || Number.isNaN(requestedAt)) return null;
-    if (!runId) throw new Error("no run id: the head's arrival is this run's creation time, and GITHUB_RUN_ID is unset");
-    const run = await readPages({ fetch, headers, url: `${API}/repos/${repo}/actions/runs/${runId}`, where: `actions/runs/${runId}` });
-    const arrivedAt = Date.parse(run?.created_at ?? "");
-    if (Number.isNaN(arrivedAt)) throw new Error(`GET actions/runs/${runId} -> no created_at to read the head's arrival from`);
+    const arrivedAt = Date.parse(headArrivedAt ?? "");
+    if (Number.isNaN(arrivedAt)) {
+      throw new Error(
+        `no arrival time for the head: HEAD_ARRIVED_AT is ${headArrivedAt === undefined ? "unset" : JSON.stringify(headArrivedAt)}, and it should be this run's creation time`
+      );
+    }
     return Math.max(0, now() - Math.max(requestedAt, arrivedAt));
   };
 
@@ -1003,13 +1007,13 @@ if (isMain(import.meta.url)) {
   const repo = process.env.GITHUB_REPOSITORY;
   const pr = process.env.PR_NUMBER;
   const token = process.env.GH_TOKEN;
-  const runId = process.env.GITHUB_RUN_ID;
+  const headArrivedAt = process.env.HEAD_ARRIVED_AT;
   if (!repo || !pr || !token) {
     console.error("need GITHUB_REPOSITORY, PR_NUMBER and GH_TOKEN");
     process.exit(1);
   }
 
-  const { api, isRoundPending, requestRound, requestedFor } = makeGithubIo({ fetch, token, repo, pr, runId });
+  const { api, isRoundPending, requestRound, requestedFor } = makeGithubIo({ fetch, token, repo, pr, headArrivedAt });
 
   const { state, reason } = await awaitRound({
     api,

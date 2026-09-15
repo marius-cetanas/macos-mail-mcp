@@ -52,9 +52,10 @@
 # would; the loop was a person re-requesting and re-running until Copilot answered.
 #
 # So the check reads how long the request has stood — from the pull request's timeline, and from
-# its own run's creation time, which is when the current head arrived and which a re-run keeps — and
-# after thirty minutes with no round on the head takes the path it takes for a request that cannot
-# record:
+# its own run's creation time, which is when the current head arrived, which a re-run keeps, and
+# which a job of its own reads so the scope that read needs stays out of the pull request's hands —
+# and after thirty minutes with no round on the head takes the path it takes for a request that
+# cannot record:
 # it waits for a person's review of the head. That bounds the loop — a run to expire, a re-run to
 # read the age, a review — and a Copilot round that arrives anyway still wins. See
 # `DEFAULT_STALE_AFTER_MS` in `scripts/copilot-round.mjs`.
@@ -103,7 +104,28 @@ permissions:
   contents: read
 
 jobs:
+  # One value for the job below: this run's creation time, which is when the current head arrived
+  # and where the thirty minutes a request may stand with no round start (#104). A job of its own,
+  # because the scope that read needs, `actions: read`, is enough to list and download other runs'
+  # logs and artifacts, and the job below checks out and runs the pull request's own code with its
+  # token (raised by Copilot on #106). No checkout here, and nothing but the API.
+  arrival:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      created_at: ${{ steps.run.outputs.created_at }}
+    steps:
+      - name: When this run was created, which a re-run keeps
+        id: run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh api "repos/{owner}/{repo}/actions/runs/$GITHUB_RUN_ID" --jq '"created_at=" + .created_at' >> "$GITHUB_OUTPUT"
+
   copilot-reviewed:
+    needs: arrival
     runs-on: ubuntu-latest
     # `pull-requests: write` buys exactly one call: requesting the Copilot round when nothing else
     # has.
@@ -129,11 +151,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      # `actions: read` buys one read: this run's own creation time, which is when the current head
-      # arrived and where the thirty minutes a request may stand with no round start (#104). A
-      # re-run keeps it. Without the scope that read fails, the check says so, and the rule widens
-      # nothing — the safe side, and the reason the suite holds the scope.
-      actions: read
     # The wait budget is 10 minutes (DEFAULT_BUDGET_MS, pinned by a test); this is the backstop
     # for a job that hangs somewhere other than the wait.
     timeout-minutes: 15
@@ -151,4 +168,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_ARRIVED_AT: ${{ needs.arrival.outputs.created_at }}
         run: node scripts/copilot-round.mjs

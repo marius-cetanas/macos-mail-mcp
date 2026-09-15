@@ -1744,7 +1744,14 @@ describe("awaitRound over makeGithubIo when the round is past the first page", (
 describe("the copilot review workflow grants what the request needs", () => {
   interface Workflow {
     permissions?: Record<string, string>;
-    jobs: Record<string, { permissions?: Record<string, string> }>;
+    jobs: Record<
+      string,
+      {
+        permissions?: Record<string, string>;
+        needs?: string | string[];
+        steps?: Array<{ uses?: string; run?: string; env?: Record<string, string> }>;
+      }
+    >;
   }
 
   const workflow = parse(
@@ -1771,11 +1778,25 @@ describe("the copilot review workflow grants what the request needs", () => {
     expect(effective("copilot-reviewed").contents).toBe("read");
   });
 
-  // The one read `actions: read` buys: this run's creation time, the start of the thirty minutes a
-  // request may stand with no round (#104). Without the scope the read fails and the rule never
-  // widens anything, so a missing scope is silent — which is why it is held here.
-  it("grants actions: read, for the read of this run's creation time", () => {
-    expect(effective("copilot-reviewed").actions).toBe("read");
+  /**
+   * The one read `actions: read` buys — this run's creation time, the start of the thirty minutes a
+   * request may stand with no round (#104) — is made in a job of its own. The scope is enough to
+   * list and download other runs' logs and artifacts, and the checker job runs the pull request's
+   * own script with its token, so the scope must not reach it (raised by Copilot on #106). Held
+   * both ways: the reader has the scope and no checkout, the checker has neither the scope nor the
+   * read, and the value crosses as an output.
+   */
+  it("reads this run's creation time in a job the pull request's code never runs in", () => {
+    expect(effective("arrival")).toEqual({ actions: "read" });
+    expect((workflow.jobs.arrival.steps ?? []).some((s) => s.uses)).toBe(false);
+    expect(String(workflow.jobs.arrival.steps?.[0]?.run)).toContain(
+      'gh api "repos/{owner}/{repo}/actions/runs/$GITHUB_RUN_ID"'
+    );
+    expect(effective("copilot-reviewed").actions).toBeUndefined();
+    expect([workflow.jobs["copilot-reviewed"].needs].flat()).toContain("arrival");
+    const checker = (workflow.jobs["copilot-reviewed"].steps ?? []).find((s) => s.run?.includes("copilot-round.mjs"));
+    expect(checker?.env?.HEAD_ARRIVED_AT).toBe("${{ needs.arrival.outputs.created_at }}");
+    expect(String(checker?.run)).not.toMatch(/actions\/runs/);
   });
 
   // The default the job widens from. Without it, a job added later inherits whatever GitHub's
@@ -2049,10 +2070,10 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
   });
 
   const TIMELINE = "issues/7/timeline?per_page=100";
-  const RUN = "actions/runs/123";
-  // `null` stands for no run id: passing `undefined` would select the default, as a first cut of the
-  // no-run-id case found by asserting the wrong error.
-  const io = (routes: Record<string, unknown>, now: string, runId: string | null = "123") => {
+  const ARRIVED = "2026-09-15T10:33:33Z";
+  // `null` stands for no arrival time: passing `undefined` would select the default, as a first cut
+  // of that case found by asserting the wrong error.
+  const io = (routes: Record<string, unknown>, now: string, headArrivedAt: string | null = ARRIVED) => {
     const s = serving(routes);
     return {
       calls: s.calls,
@@ -2061,7 +2082,7 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
         token: "t",
         repo: "o/r",
         pr: "7",
-        runId: runId ?? undefined,
+        headArrivedAt: headArrivedAt ?? undefined,
         now: () => at(now),
       }),
     };
@@ -2072,11 +2093,8 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
   // `review_on_push` reviews the new head with no new event; the run's creation is the push, and a
   // re-run keeps it (attempt 3 of that run started at 11:12:19Z, created still 10:33:33Z).
   it("counts from the head's arrival, this run's creation, when that is later than the request", async () => {
-    const g = io(
-      { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [RUN]: { created_at: "2026-09-15T10:33:33Z" } },
-      "2026-09-15T10:53:38Z"
-    );
-    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at("2026-09-15T10:33:33Z"));
+    const g = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z");
+    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at(ARRIVED));
   });
 
   // The fresh request made by hand at 10:52:30Z, after the first was removed at 10:52:26Z.
@@ -2088,20 +2106,18 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
           removed("2026-09-15T10:52:26Z"),
           requested("2026-09-15T10:52:30Z"),
         ],
-        [RUN]: { created_at: "2026-09-15T10:33:33Z" },
       },
       "2026-09-15T10:53:38Z"
     );
     await expect(g.requestedFor()).resolves.toBe(68_000);
   });
 
-  it("is null when the request was removed and not made again, reading no run", async () => {
+  it("is null when the request was removed and not made again", async () => {
     const g = io(
       { [TIMELINE]: [requested("2026-09-15T10:22:07Z"), removed("2026-09-15T10:52:26Z")] },
       "2026-09-15T10:53:38Z"
     );
     await expect(g.requestedFor()).resolves.toBeNull();
-    expect(g.calls.some((u) => u.includes("/actions/runs/"))).toBe(false);
   });
 
   it("is null when no request names Copilot", async () => {
@@ -2109,18 +2125,16 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
     await expect(g.requestedFor()).resolves.toBeNull();
   });
 
-  // A commit's date would be when it was made, not when it became the head; without the run there is
-  // no arrival to read, and a guess would let a branch moved to an old commit read as stale at once.
-  it("refuses to guess the arrival when the run cannot be read, or there is no run id", async () => {
-    const unreadable = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z");
-    await expect(unreadable.requestedFor()).rejects.toThrow("GET actions/runs/123 -> 404");
-    const noRun = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", null);
-    await expect(noRun.requestedFor()).rejects.toThrow(/no run id/);
-    const noDate = io(
-      { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [RUN]: { status: "completed" } },
-      "2026-09-15T10:53:38Z"
-    );
-    await expect(noDate.requestedFor()).rejects.toThrow("no created_at");
+  // A commit's date would be when it was made, not when it became the head; without the arrival
+  // there is nothing to count from, and a guess would let a branch moved to an old commit read as
+  // stale at once. Only needed once a request stands: no request, nothing to count.
+  it("refuses to guess the arrival when none was handed in, or it is not a date", async () => {
+    const none = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", null);
+    await expect(none.requestedFor()).rejects.toThrow("no arrival time for the head: HEAD_ARRIVED_AT is unset");
+    const garbled = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", "soon");
+    await expect(garbled.requestedFor()).rejects.toThrow('HEAD_ARRIVED_AT is "soon"');
+    const idle = io({ [TIMELINE]: [] }, "2026-09-15T10:53:38Z", null);
+    await expect(idle.requestedFor()).resolves.toBeNull();
   });
 
   it("refuses a timeline that is not a list", async () => {
