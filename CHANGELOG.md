@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-09-15
+
+No change to the server: this release carries the README's Known issues and Changelog sections,
+this file's entries below, and two fixes to the release and review pipeline.
+
 ### Fixed
 
 - The release workflow's confirmation that the registry has the version now waits up to ten
