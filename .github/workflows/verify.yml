@@ -86,12 +86,60 @@ jobs:
       - name: The compiled artifacts match .portulan/gates.json
         run: npx portulan compile --check
 
+  # No entry lands in a section of `CHANGELOG.md` that a tag has already shipped.
+  #
+  # The changelog is kept by hand, and a release is recorded by inserting its heading below
+  # `## [Unreleased]` — so the list that was Unreleased's becomes the release's, and a branch that
+  # had appended an entry to that list merges cleanly with the entry under a release it is not part
+  # of. Measured on 2026-09-14 with `git merge-file`, #81's entry over `main` as #78 left it: zero
+  # conflicts, the entry under `## [2.0.0]`, and both test files that read `CHANGELOG.md` still
+  # green with it there, 12 of 12. It was caught only because #77 had edited the same lines.
+  #
+  # The tag decides, not the heading: #77 filed its entry under a recorded, untagged 2.0.0 fifteen
+  # seconds after #78 and four minutes before the tag, correctly. So the script asks GitHub whether
+  # `refs/tags/v{version}` exists, for a section that changed and no other. CI cannot look itself:
+  # the checkout is one commit with no tags. See `scripts/changelog-sections.mjs`.
+  #
+  # It runs on push as well as on pull_request because `strict` is off (`.portulan/gate-map.md`): a
+  # pull request checked before a release is tagged can merge after it, unchanged, and no
+  # pull_request run fires when only the base moves. On push the comparison is `github.event.before`
+  # against the pushed tip, so a misfiling that lands that way turns `main` red — detection, where
+  # the pull_request run is prevention. One gap remains: `concurrency` above cancels a run in
+  # progress when another push to `main` arrives, and if that happens before this job finishes, the
+  # next run's `before` already contains the entry. #78 and #77 merged fifteen seconds apart, so
+  # pushes that close together do happen here.
+  #
+  # No `npm ci`: the script uses only Node built-ins and `scripts/is-main.mjs`, so the job installs
+  # nothing and caches nothing. It joins `verify`'s dependencies rather than becoming a required
+  # check of its own, so the merge gate covers it without a branch-protection change.
+  changelog:
+    name: changelog
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # On pull_request `GITHUB_SHA` is the merge commit and the script reads its first parent — the
+      # base as it will be merged into — from the commits API; on push the base is `BEFORE`.
+      # `GITHUB_REPOSITORY`, `GITHUB_SHA` and `GITHUB_EVENT_NAME` come from the runner.
+      - name: No entry sits in a section a tag has already shipped
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          SUBJECT: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+        run: node scripts/changelog-sections.mjs
+
   # Single stable context for branch protection to require. Matrix job names
   # change whenever the matrix changes; this one does not.
   verify:
     name: verify
     runs-on: ubuntu-latest
-    needs: [test, audit, gate-policy]
+    needs: [test, audit, gate-policy, changelog]
     if: always()
     steps:
       # The condition lives in `if:` rather than in shell, so there is no embedded logic to test —
