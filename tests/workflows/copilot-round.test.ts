@@ -1771,6 +1771,13 @@ describe("the copilot review workflow grants what the request needs", () => {
     expect(effective("copilot-reviewed").contents).toBe("read");
   });
 
+  // The one read `actions: read` buys: this run's creation time, the start of the thirty minutes a
+  // request may stand with no round (#104). Without the scope the read fails and the rule never
+  // widens anything, so a missing scope is silent — which is why it is held here.
+  it("grants actions: read, for the read of this run's creation time", () => {
+    expect(effective("copilot-reviewed").actions).toBe("read");
+  });
+
   // The default the job widens from. Without it, a job added later inherits whatever GitHub's
   // repository-wide default happens to be rather than this file's answer.
   it("defaults the workflow itself to read-only", () => {
@@ -2041,33 +2048,30 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
     requested_reviewer: { login },
   });
 
-  const PR = "pulls/7?per_page=100";
   const TIMELINE = "issues/7/timeline?per_page=100";
-  const COMMIT = `commits/${HEAD}`;
-  const io = (routes: Record<string, unknown>, now: string) => {
-    const s = serving({ [PR]: { head: { sha: HEAD } }, ...routes });
+  const RUN = "actions/runs/123";
+  const io = (routes: Record<string, unknown>, now: string, runId: string | undefined = "123") => {
+    const s = serving(routes);
     return {
       calls: s.calls,
-      ...makeGithubIo({ fetch: s.fetch, token: "t", repo: "o/r", pr: "7", now: () => at(now) }),
+      ...makeGithubIo({ fetch: s.fetch, token: "t", repo: "o/r", pr: "7", runId, now: () => at(now) }),
     };
   };
 
-  // #104's timeline as measured: requested at 10:22:07Z, the head rebased at 10:33:35Z, no round at
-  // 10:53:38Z. A push after the request restarts the clock, since `review_on_push` reviews the new
-  // head with no new event.
-  it("counts from the head's commit when that is later than the request", async () => {
+  // #104 as measured: requested at 10:22:07Z, the head's run created at 10:33:33Z by the rebase that
+  // put it there, no round at 10:53:38Z. A push after the request restarts the clock, since
+  // `review_on_push` reviews the new head with no new event; the run's creation is the push, and a
+  // re-run keeps it (attempt 3 of that run started at 11:12:19Z, created still 10:33:33Z).
+  it("counts from the head's arrival, this run's creation, when that is later than the request", async () => {
     const g = io(
-      {
-        [TIMELINE]: [requested("2026-09-15T10:22:07Z")],
-        [COMMIT]: { commit: { committer: { date: "2026-09-15T10:33:35Z" } } },
-      },
+      { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [RUN]: { created_at: "2026-09-15T10:33:33Z" } },
       "2026-09-15T10:53:38Z"
     );
-    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at("2026-09-15T10:33:35Z"));
+    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at("2026-09-15T10:33:33Z"));
   });
 
   // The fresh request made by hand at 10:52:30Z, after the first was removed at 10:52:26Z.
-  it("counts from the last request when that is later than the commit", async () => {
+  it("counts from the last request when that is later than the arrival", async () => {
     const g = io(
       {
         [TIMELINE]: [
@@ -2075,20 +2079,20 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
           removed("2026-09-15T10:52:26Z"),
           requested("2026-09-15T10:52:30Z"),
         ],
-        [COMMIT]: { commit: { committer: { date: "2026-09-15T10:33:35Z" } } },
+        [RUN]: { created_at: "2026-09-15T10:33:33Z" },
       },
       "2026-09-15T10:53:38Z"
     );
     await expect(g.requestedFor()).resolves.toBe(68_000);
   });
 
-  it("is null when the request was removed and not made again, reading no commit", async () => {
+  it("is null when the request was removed and not made again, reading no run", async () => {
     const g = io(
       { [TIMELINE]: [requested("2026-09-15T10:22:07Z"), removed("2026-09-15T10:52:26Z")] },
       "2026-09-15T10:53:38Z"
     );
     await expect(g.requestedFor()).resolves.toBeNull();
-    expect(g.calls.some((u) => u.includes("/commits/"))).toBe(false);
+    expect(g.calls.some((u) => u.includes("/actions/runs/"))).toBe(false);
   });
 
   it("is null when no request names Copilot", async () => {
@@ -2096,12 +2100,18 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
     await expect(g.requestedFor()).resolves.toBeNull();
   });
 
-  it("counts from the request when the commit date cannot be read", async () => {
-    const g = io(
-      { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [COMMIT]: { commit: {} } },
+  // A commit's date would be when it was made, not when it became the head; without the run there is
+  // no arrival to read, and a guess would let a branch moved to an old commit read as stale at once.
+  it("refuses to guess the arrival when the run cannot be read, or there is no run id", async () => {
+    const unreadable = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z");
+    await expect(unreadable.requestedFor()).rejects.toThrow("GET actions/runs/123 -> 404");
+    const noRun = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", undefined);
+    await expect(noRun.requestedFor()).rejects.toThrow(/no run id/);
+    const noDate = io(
+      { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [RUN]: { status: "completed" } },
       "2026-09-15T10:53:38Z"
     );
-    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at("2026-09-15T10:22:07Z"));
+    await expect(noDate.requestedFor()).rejects.toThrow("no created_at");
   });
 
   it("refuses a timeline that is not a list", async () => {

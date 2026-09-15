@@ -51,8 +51,10 @@
 # check expired red meanwhile, each after its ten-minute budget, and nothing bounded how many more
 # would; the loop was a person re-requesting and re-running until Copilot answered.
 #
-# So the check reads how long the request has stood, from the pull request's timeline, and after
-# thirty minutes with no round on the head takes the path it takes for a request that cannot record:
+# So the check reads how long the request has stood — from the pull request's timeline, and from
+# its own run's creation time, which is when the current head arrived and which a re-run keeps — and
+# after thirty minutes with no round on the head takes the path it takes for a request that cannot
+# record:
 # it waits for a person's review of the head. That bounds the loop — a run to expire, a re-run to
 # read the age, a review — and a Copilot round that arrives anyway still wins. See
 # `DEFAULT_STALE_AFTER_MS` in `scripts/copilot-round.mjs`.
@@ -127,6 +129,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      # `actions: read` buys one read: this run's own creation time, which is when the current head
+      # arrived and where the thirty minutes a request may stand with no round start (#104). A
+      # re-run keeps it. Without the scope that read fails, the check says so, and the rule widens
+      # nothing — the safe side, and the reason the suite holds the scope.
+      actions: read
     # The wait budget is 10 minutes (DEFAULT_BUDGET_MS, pinned by a test); this is the backstop
     # for a job that hangs somewhere other than the wait.
     timeout-minutes: 15

@@ -825,7 +825,7 @@ export const REVIEWER_PAGE = 100;
  *
  * @param {{fetch: typeof globalThis.fetch, token: string, repo: string, pr: string|number}} deps
  */
-export function makeGithubIo({ fetch, token, repo, pr, now = Date.now }) {
+export function makeGithubIo({ fetch, token, repo, pr, runId, now = Date.now }) {
   const headers = githubHeaders(token, "macos-mail-mcp-copilot-gate");
 
   /*
@@ -964,19 +964,22 @@ export function makeGithubIo({ fetch, token, repo, pr, now = Date.now }) {
    * request's timeline: the last `review_requested` naming Copilot counts, unless a
    * `review_request_removed` naming Copilot came after it. A push after the request restarts the
    * clock — `review_on_push` reviews the new head with no new event, measured on #104, whose one
-   * event at 10:22Z outlived a rebase at 10:33Z — so the head commit's committer date is the start
-   * when it is later than the request. `now` is injected so the age is testable without a clock.
+   * event at 10:22Z outlived a rebase at 10:33Z — so the start is the later of the request and the
+   * head's arrival. The arrival is when this workflow's own run was created: the push, the reopening
+   * or the readying that started it is what put the head here, and a re-run keeps the creation time
+   * (measured on run 34958585235: created 10:33:33Z, attempt 3 started 11:12:19Z). A commit's own
+   * date would not do — it is when the commit was made, not when it became the head, and a branch
+   * moved to an older commit would read as stale at once (raised by Copilot on #106). Without the
+   * run, or without leave to read it, this throws rather than guesses, and the loop widens nothing.
+   * `now` is injected so the age is testable without a clock.
    */
   const requestedFor = async () => {
-    const [pullRequestNow, events] = await Promise.all([
-      api(""),
-      readPages({
-        fetch,
-        headers,
-        url: `${API}/repos/${repo}/issues/${pr}/timeline?per_page=${REST_PAGE}`,
-        where: `issues/${pr}/timeline`,
-      }),
-    ]);
+    const events = await readPages({
+      fetch,
+      headers,
+      url: `${API}/repos/${repo}/issues/${pr}/timeline?per_page=${REST_PAGE}`,
+      where: `issues/${pr}/timeline`,
+    });
     if (!Array.isArray(events)) throw new Error(`GET issues/${pr}/timeline -> not a list`);
     const namesCopilot = (event) => isCopilotLogin(event?.requested_reviewer?.login);
     let requestedAt = null;
@@ -985,11 +988,11 @@ export function makeGithubIo({ fetch, token, repo, pr, now = Date.now }) {
       else if (event?.event === "review_request_removed" && namesCopilot(event)) requestedAt = null;
     }
     if (requestedAt === null || Number.isNaN(requestedAt)) return null;
-    const sha = pullRequestNow?.head?.sha;
-    const commit = await readPages({ fetch, headers, url: `${API}/repos/${repo}/commits/${sha}`, where: `commits/${sha}` });
-    const committedAt = Date.parse(commit?.commit?.committer?.date ?? "");
-    const since = Number.isNaN(committedAt) ? requestedAt : Math.max(requestedAt, committedAt);
-    return Math.max(0, now() - since);
+    if (!runId) throw new Error("no run id: the head's arrival is this run's creation time, and GITHUB_RUN_ID is unset");
+    const run = await readPages({ fetch, headers, url: `${API}/repos/${repo}/actions/runs/${runId}`, where: `actions/runs/${runId}` });
+    const arrivedAt = Date.parse(run?.created_at ?? "");
+    if (Number.isNaN(arrivedAt)) throw new Error(`GET actions/runs/${runId} -> no created_at to read the head's arrival from`);
+    return Math.max(0, now() - Math.max(requestedAt, arrivedAt));
   };
 
   return { api, graphql, isRoundPending, requestRound, requestedFor };
@@ -1000,12 +1003,13 @@ if (isMain(import.meta.url)) {
   const repo = process.env.GITHUB_REPOSITORY;
   const pr = process.env.PR_NUMBER;
   const token = process.env.GH_TOKEN;
+  const runId = process.env.GITHUB_RUN_ID;
   if (!repo || !pr || !token) {
     console.error("need GITHUB_REPOSITORY, PR_NUMBER and GH_TOKEN");
     process.exit(1);
   }
 
-  const { api, isRoundPending, requestRound, requestedFor } = makeGithubIo({ fetch, token, repo, pr });
+  const { api, isRoundPending, requestRound, requestedFor } = makeGithubIo({ fetch, token, repo, pr, runId });
 
   const { state, reason } = await awaitRound({
     api,

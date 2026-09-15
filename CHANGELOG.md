@@ -25,8 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on either head for thirty-eight minutes, while every other pull request that day drew a round
   within seven; two runs of the check expired red, and nothing bounded how many more would. The
   check now reads how long the request has stood from the pull request's timeline, counting from the
-  head's commit when that is later, since a push restarts Copilot's clock without a new event, and a
-  Copilot round that arrives anyway still wins.
+  head's arrival — the creation of the check's own run, which a re-run keeps — when that is later,
+  since a push restarts Copilot's clock without a new event; the job holds `actions: read` for that
+  one read, and a Copilot round that arrives anyway still wins.
 
 ## [2.1.0] - 2026-09-15
 
