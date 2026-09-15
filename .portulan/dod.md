@@ -18,8 +18,8 @@ A change is done when every condition holds. Numbered so a review can cite one.
    `catch` that turns a throw into an MCP `isError` result, and that path is reachable only through
    the registered handler. Use `captureTools()` from `tests/helpers/capture-tools.ts`.
 6. Any Gated action in the change was surfaced and approved **before** it was taken.
-7. A verdict cited as approval **post-dates the head it judges**. After a rebase — which `strict`
-   forces whenever `main` moves — re-request review before merging.
+7. A verdict cited as approval **post-dates the head it judges**. After a rebase, re-request review
+   before merging.
 8. Shell and Node embedded in workflow YAML is **tested or extracted**. Every review finding against
    the release pipeline was in embedded shell that nothing could exercise; three such blocks now
    live in `scripts/` with tests.
