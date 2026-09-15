@@ -65,6 +65,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails unless the live column says `false` and the export column says `true`.
 - `scripts/branch-freshness.mjs` no longer attributes to the gate map a sentence the gate map
   dropped in #37. It paraphrases what the map records instead of quoting it.
+- A tagged version's section of `CHANGELOG.md` now stays as its release shipped it. Recording a
+  release inserts its heading below `[Unreleased]`, so the list an in-flight branch had appended an
+  entry to becomes the release's, and a clean rebase or merge then files that entry under a version
+  it did not ship in — measured on 2026-09-14 with #81's entry, which merged with no conflict under
+  `## [2.0.0]` while every test that reads this file still passed. A new `changelog` job, which
+  `verify` depends on, fails a change that alters or removes the section of a version whose tag
+  exists. New sections — a recording, or a backfill such as 1.3.1's — and sections not yet tagged
+  stay open, and a subject with a `changelog` scope, such as `docs(changelog): …`, overrides for a
+  deliberate correction. Over the 21 commits that had touched this file by 2026-09-14, the rule
+  fires on none.
+- The refusal to follow a `Link: rel="next"` off api.github.com, which #81 added as a precaution,
+  now rests on a measurement: fetch drops a caller-set `authorization` header only when a redirect
+  crosses origins, so a next link, being a fresh request, would carry the token wherever it pointed.
+  A test measures that on the Node running the suite.
 
 ## [2.0.0] - 2026-09-14
 

@@ -170,11 +170,11 @@ reviewer already on the pull request. A success status for an action that did no
 the failure *an error message that misleads costs more than one that is missing* names, so it is
 recorded in `scripts/copilot-round.mjs` beside the constant rather than left to be rediscovered.
 
-`verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix and the
-audit. It exists so branch protection has one stable context to require: matrix job names change
-whenever the matrix does, and a required check naming a job that no longer reports blocks every
-merge. Its job id and its `name:` are both `verify` so the reported context and the declared one
-cannot drift.
+`verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix, the
+audit, `gate-policy` and `changelog`. It exists so branch protection has one stable context to
+require: matrix job names change whenever the matrix does, and a required check naming a job that no
+longer reports blocks every merge. Its job id and its `name:` are both `verify` so the reported
+context and the declared one cannot drift.
 
 **A rebase invalidates the verdict that preceded it**, and that rule is now a check rather than a
 habit. `copilot-reviewed` matches every round against the pull request's *current* head, so a
