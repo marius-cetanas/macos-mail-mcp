@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   each release's notes from 2.1.0 on when recorded before the tag, and that the 2.0.0 major changed
   only the Node.js floor. The
   sentence under *Staying up to date* points at it rather than saying the same thing twice.
+- `README.md` is current with the tree and the issue tracker: `get_thread` is no longer "planned for
+  v2", two v2 releases having shipped without it; a Known issues subsection names the end-to-end
+  findings #84–#95 and the three that matter most when a result is relied on; the search caveat says
+  an unscoped search can leave Mail.app busy for minutes with nothing able to cancel it (#92); the
+  requirement is any MCP client rather than two named ones; and the source tree and the npx cache
+  mechanism, which `CONTRIBUTING.md` and `CLAUDE.md` carry, are links rather than copies.
 
 ## [2.1.0] - 2026-09-15
 

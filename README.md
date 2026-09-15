@@ -15,7 +15,8 @@ Works with **any email account configured in macOS Mail.app** — iCloud, Gmail,
 
 - macOS with Mail.app configured (with at least one email account)
 - Node.js 22.12+
-- Claude Code or Claude Desktop app
+- An MCP client. Claude Code, Claude Desktop and Cowork are the ones set up below; any client
+  that speaks MCP over stdio works.
 
 ## Installation
 
@@ -62,13 +63,9 @@ The `env.PATH` entry lets `npx` locate `node` for the same reason. Then **fully 
 Installed copies update themselves. `npx` re-resolves the published version every time
 the server starts, so a new release is picked up without you touching the config.
 
-`@latest` in the commands above makes that explicit rather than changing it. A bare
-package name already re-resolves today: npm skips the range-satisfies shortcut for a name
-with no version and fetches the manifest with `preferOnline`, so the `"^1.3.0"` that
-appears in the npx cache records the last install rather than pinning it. `@latest` takes
-the tag branch instead, which does not depend on that heuristic — so if npm ever changes
-it, the bare form would freeze on an old version silently. The cost is one extra download,
-because the two forms hash to different cache keys.
+`@latest` in the commands above makes that explicit rather than changing it. Why a bare
+package name already re-resolves, why `@latest` is still worth writing, and what it costs are
+in [CLAUDE.md](CLAUDE.md#registration).
 
 Two consequences worth knowing:
 
@@ -200,40 +197,13 @@ who the reply or forward comes from.
 
 ## Architecture
 
-```
-src/
-  index.ts                          # MCP server entry point
-  types.ts                          # TypeScript interfaces
-  utils.ts                          # Shared utilities (sanitize, expandTilde, toolError)
-  bridge/
-    applescript-runner.ts            # AppleScript execution engine
-    escape-for-json.applescript      # Shared JSON escaping handler (auto-prepended)
-  domains/
-    accounts/
-      accounts.tools.ts             # Tool registration & handlers
-      scripts/*.applescript          # AppleScript templates
-    mailboxes/
-      mailboxes.tools.ts
-      scripts/*.applescript
-    messages/
-      messages.tools.ts
-      scripts/*.applescript
-    compose/
-      compose.tools.ts
-      sender.ts                     # Resolves fromAccount to a "Name <address>" sender
-      scripts/*.applescript
-tests/
-  index.test.ts                     # Entry point: wiring, version, stdio
-  utils.test.ts                     # Shared utility tests
-  helpers/capture-tools.ts          # Stub server for exercising registered tools
-  bridge/                           # Escaping/parsing + runAppleScript execution
-  domains/*/                        # Handler and registration-layer tests
-```
-
-**Domain-driven layered architecture:**
-- **Tools layer** — Registers MCP tools with Zod schemas, validates input, calls the bridge
-- **Bridge layer** — Reads AppleScript templates, substitutes parameters (with injection-safe escaping), prepends the shared `escapeForJson` handler, executes via `osascript`, parses JSON output
-- **Script layer** — AppleScript templates with `{{param}}` placeholders, returning JSON strings. The `escapeForJson` handler is defined once in `bridge/escape-for-json.applescript` and automatically prepended to every script at runtime.
+Three layers, and the boundary between them is what keeps shell and AppleScript injection out.
+**Tools** (`*.tools.ts`) validate input with Zod and register with MCP. The **bridge**
+(`bridge/applescript-runner.ts`) loads a template, substitutes parameters with escaping, prepends
+the shared `escapeForJson` handler and runs `osascript`, never a shell. **Scripts**
+(`*.applescript`) are templates with `{{param}}` placeholders that return JSON. Handlers never
+build script text themselves. The source tree, the test layout and how to add a tool are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Known Limitations
 
@@ -243,7 +213,7 @@ This MCP communicates with Mail.app via AppleScript, which is a stable but legac
 
 ### Performance
 
-- **Large mailbox searches** — `search_messages` uses Mail.app's `whose` clause, which performs a linear scan and loads all matching messages into memory before applying the limit. Searching by `content` (message bodies) on very large IMAP mailboxes (50K+ messages) can be slow or timeout. Prefer searching by `subject` or `sender` when possible, and narrow results with `accountName` and `mailboxName`.
+- **Large mailbox searches** — `search_messages` uses Mail.app's `whose` clause, which performs a linear scan and loads all matching messages into memory before applying the limit. Searching by `content` (message bodies) on very large IMAP mailboxes (50K+ messages) can be slow or timeout. Prefer searching by `subject` or `sender` when possible, and narrow results with `accountName` and `mailboxName`. An unscoped or `content` search can outlast the client's timeout and leave Mail.app busy for around ten minutes afterwards, with nothing able to cancel it (#92).
 - **IMAP attachment downloads** — Attachments on IMAP accounts may not be downloaded locally. The tools check download status and report clearly when an attachment needs to be opened in Mail.app first.
 
 ### Message IDs
@@ -261,9 +231,19 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 - **MIME type detection** — Uses extension-based fallback when Mail.app's native MIME type property returns `missing value`.
 - **Mailbox management** — Creating mailboxes is supported, but deleting and renaming mailboxes is not possible via AppleScript (Mail.app limitation).
 
+### Known issues
+
+An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95, all open on
+2026-09-15 and none touched by 2.1.0, which changed nothing in the server. The three that matter
+most when a result is relied on: `send_message` with two or more `attachmentPaths` delivers no
+attachments and reports success (#85); `reply_to_message` sends an empty body, and
+`forward_message` with a `body` drops the text, the quoted original and the attachments (#84);
+`read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
+them (#94). The rest are in the [open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
+
 ### Roadmap
 
-- **`get_thread`** — Retrieve all messages in a conversation thread. Mail.app has no native threading support; implementation would require parsing RFC headers (`Message-ID`, `In-Reply-To`, `References`) which is slow on large mailboxes. Planned for v2.
+- **`get_thread`** — Retrieve all messages in a conversation thread. Mail.app has no native threading support; implementation would require parsing RFC headers (`Message-ID`, `In-Reply-To`, `References`) which is slow on large mailboxes. Not scheduled: 2.0.0 and 2.1.0 shipped without it.
 
 ## Development
 
