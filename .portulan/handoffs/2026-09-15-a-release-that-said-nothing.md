@@ -140,8 +140,9 @@ with `git checkout -- package-lock.json` before anything else was done there.
 
 ## Found in passing *(not fixed here)*
 
-- Six worktrees under `.claude/worktrees/` predate this session, each on a detached head from
-  August or early September; nothing here deleted them. `git worktree list` names them.
+- Five worktrees under `.claude/worktrees/` predate this session, each on a detached head from
+  August or early September; nothing here deleted them. `git worktree list` names them. The
+  sixth present during the review's run was this session's own, for #100.
 - The main tree's `node_modules/` lacks `@sleepy_panda_srl/portulan`, so `npx portulan compile
   --check` there falls through to the registry and fails with a 404 on a package named `portulan`.
   `npm ci` fixes it; every worktree here had it after `npm ci`.
