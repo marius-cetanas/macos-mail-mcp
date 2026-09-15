@@ -86,6 +86,14 @@ describe("sectionsOf", () => {
     expect(sectionsOf(roomier).get("2.0.0")).toBe(sectionsOf(RECORDED).get("2.0.0"));
   });
 
+  // Only blank lines are dropped. A trailing space is content — two end a Markdown line in a hard
+  // break — so a section that gains them has changed (raised by Copilot on #98).
+  it("keeps trailing spaces on a line of content, so a hard break added to a section is a change", () => {
+    const hardBreak = RECORDED.replace("moved alongside it.\n", "moved alongside it.  \n");
+    expect(sectionsOf(hardBreak).get("2.0.0")).not.toBe(sectionsOf(RECORDED).get("2.0.0"));
+    expect(changedSections(RECORDED, hardBreak)).toMatchObject([{ version: "2.0.0", kind: "changed" }]);
+  });
+
   it("returns nothing for a file with no headings", () => {
     expect(sectionsOf("# Changelog\n\nnothing yet\n").size).toBe(0);
   });
@@ -294,6 +302,24 @@ describe("makeGithubIo", () => {
       );
     });
   });
+
+  // Built on api.github.com, a request can still be redirected elsewhere, and fetch would follow it
+  // and hand back the other origin's answer. Each read refuses the redirect instead, so a 3xx is a
+  // failed read naming its status (raised by Copilot on #98).
+  it("follows no redirect on any read", async () => {
+    const g = io({
+      [`contents/CHANGELOG.md?ref=${B}`]: { text: RECORDED },
+      [`commits/${M}`]: { body: { parents: [{ sha: B }, { sha: H }] } },
+      "git/ref/tags/v2.0.0": { body: {} },
+    });
+    await g.file(B);
+    await g.parents(M);
+    await g.tagged("2.0.0");
+    expect(g.calls.map((c) => c.init?.redirect)).toEqual(["manual", "manual", "manual"]);
+    await expect(io({ [`commits/${M}`]: { status: 302 } }).parents(M)).rejects.toThrow(
+      `GET commits/${M} -> 302`
+    );
+  });
 });
 
 describe("resolveBase", () => {
@@ -380,6 +406,17 @@ describe("verify.yml runs it", () => {
 
   it("on both events the script accepts, so a merge that lands after a release is caught on main", () => {
     expect(Object.keys(ci.on)).toEqual(expect.arrayContaining(["push", "pull_request"]));
+  });
+
+  /*
+   * The override reads the pull request's title, and the bare `pull_request` trigger does not fire
+   * when only the title changes, so a green status could outlive the title that earned it. `edited`
+   * re-runs the workflow on a title change, and the default types are listed beside it because naming
+   * any type replaces them (raised by Copilot on #98).
+   */
+  it("re-runs when a pull request's title changes, as well as on the default events", () => {
+    const types = (ci.on.pull_request as { types?: string[] } | null)?.types ?? [];
+    expect(types).toEqual(expect.arrayContaining(["opened", "synchronize", "reopened", "edited"]));
   });
 
   it("hands the script the token, the push base and the subject through env, not shell", () => {
