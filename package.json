@@ -39,7 +39,8 @@
     "prepublishOnly": "npm run build && npm test"
   },
   "files": [
-    "build"
+    "build",
+    "CHANGELOG.md"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

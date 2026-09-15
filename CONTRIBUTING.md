@@ -100,10 +100,10 @@ what shipped; the real version is written during the release and never committed
 GitHub release, or npm.
 
 **Add your changelog entry in your pull request.** The release workflow cannot commit to
-`main`, so `CHANGELOG.md` is maintained by hand. GitHub release notes are generated
-separately from your commit subjects, which is the other reason to write them conventionally
-(`feat:`, `fix:`, `perf:`, `feat!:`) — the version is derived from them too.
-`chore:`/`docs:`/`test:` alone are not releasable.
+`main`, so `CHANGELOG.md` is maintained by hand; it ships in the package, and the GitHub
+release notes open with the version's section of it. The commit subjects are listed beneath,
+which is the other reason to write them conventionally (`feat:`, `fix:`, `perf:`, `feat!:`) —
+the version is derived from them too. `chore:`/`docs:`/`test:` alone are not releasable.
 
 **Put the entry under `## [Unreleased]`, and look at where it landed after a rebase.** Recording a
 release inserts its heading below `[Unreleased]`, so an entry appended before that can end up under

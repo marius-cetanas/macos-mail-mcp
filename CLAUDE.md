@@ -26,7 +26,8 @@ of the Sleepy Panda portfolio workspace.
 
 It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
 checks that the required status check `verify` is one a workflow here actually reports. Nothing in
-`.portulan/` ships to npm; `files: ["build"]` governs the tarball.
+`.portulan/` ships to npm; `files` in `package.json` governs the tarball, and lists `build` and
+`CHANGELOG.md` (#96) — `tests/release/package-files.test.ts` measures what `npm pack` would send.
 
 ## Tech Stack
 
@@ -78,7 +79,7 @@ src/
 scripts/                — release tooling, not shipped in the package
   next-version.mjs      — conventional commits → next semver
   check-npmrc.mjs       — fails a release if anything would disable OIDC
-  release-notes.mjs     — commit range → grouped GitHub release body
+  release-notes.mjs     — CHANGELOG.md section + grouped commit range → GitHub release body
 tests/
   index.test.ts                — Entry point: wiring, version, stdio, fatal path
   utils.test.ts                — Tests for sanitize, expandTilde
@@ -223,9 +224,13 @@ The consequence to remember: **the version in `package.json` is not the released
 Read the tag, the GitHub release, or npm.
 
 `CHANGELOG.md` is maintained by hand in ordinary pull requests, since the workflow cannot
-commit to it. GitHub release notes are generated from the commit range by
-`scripts/release-notes.mjs`, grouped by conventional-commit type — two independent artifacts,
-so writing one does not write the other.
+commit to it. GitHub release notes are built from it by `scripts/release-notes.mjs`: the
+version's section, when one was recorded before the tag, then the commit range grouped by
+conventional-commit type in a collapsed block beneath it. A version with no section gets the
+commit list and a `::warning::` in the run — which is how 2.0.0 shipped, and what #96 asked to
+end. The notes are prepared before anything irreversible, so a dry run previews them in its
+summary. Writing the changelog is still a separate act from releasing: the workflow reads the
+file and never writes it, and the file ships in the package.
 
 It carries a **standing `## [Unreleased]` heading**, and at release time the version heading is
 **inserted below it, not renamed from it**. Renaming is the natural move and it silently removes

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { writeFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -98,5 +98,93 @@ describe("check-npmrc CLI", () => {
 
   it("exits 0 when the file does not exist", () => {
     expect(run("check-npmrc.mjs", [join(dir, "absent.npmrc")]).code).toBe(0);
+  });
+});
+
+/**
+ * `run` above reports `err: ""` on exit 0, which is right for the two CLIs it was written for and
+ * wrong here: the release-notes CLI warns on stderr and still exits 0 when the changelog has no
+ * section for the version, so both streams are wanted whatever the exit code.
+ */
+function runBoth(script: string, args: string[]): { code: number; out: string; err: string } {
+  const result = spawnSync("node", [join("scripts", script), ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  return { code: result.status ?? 1, out: result.stdout, err: result.stderr };
+}
+
+describe("release-notes CLI", () => {
+  const dir = mkdtempSync(join(tmpdir(), "release-notes-cli-"));
+  const changelog = join(dir, "CHANGELOG.md");
+  writeFileSync(
+    changelog,
+    [
+      "# Changelog",
+      "",
+      "## [Unreleased]",
+      "",
+      "## [9.9.9] - 2026-09-15",
+      "",
+      "### Added",
+      "",
+      "- a thing that ships",
+      "",
+      "## [9.9.8] - 2026-09-01",
+      "",
+      "- older",
+      "",
+    ].join("\n")
+  );
+
+  it("prints usage rather than a stack trace without a range, and exits 1", () => {
+    const { code, err } = runBoth("release-notes.mjs", []);
+    expect(code).toBe(1);
+    expect(err).toMatch(/usage: release-notes\.mjs <git-range>/);
+    expect(err).not.toMatch(/at .*release-notes\.mjs:\d+/);
+  });
+
+  // HEAD..HEAD is empty, so the body is decided by the changelog alone — and CI's checkout, one
+  // commit with no tags, has no other range that is sure to exist.
+  it("opens with the version's changelog section when asked for one", () => {
+    const { code, out, err } = runBoth("release-notes.mjs", [
+      "HEAD..HEAD", "--version", "9.9.9", "--changelog", changelog,
+    ]);
+    expect(code).toBe(0);
+    expect(out.trim()).toBe("### Added\n\n- a thing that ships");
+    expect(err).toBe("");
+  });
+
+  it("warns on stderr, and prints what it has, when the section is missing", () => {
+    const { code, out, err } = runBoth("release-notes.mjs", [
+      "HEAD..HEAD", "--version", "8.8.8", "--changelog", changelog,
+    ]);
+    expect(code).toBe(0);
+    expect(err).toMatch(/^::warning::.*no \[8\.8\.8\] section/m);
+    expect(out.trim()).toBe("_No notable changes._");
+  });
+
+  it("says when the section is there and empty, which is a different thing", () => {
+    const empty = join(dir, "EMPTY.md");
+    writeFileSync(empty, "## [Unreleased]\n\n## [7.7.7] - 2026-09-15\n\n## [7.7.6] - 2026-09-01\n\n- older\n");
+    const { code, err } = runBoth("release-notes.mjs", [
+      "HEAD..HEAD", "--version", "7.7.7", "--changelog", empty,
+    ]);
+    expect(code).toBe(0);
+    expect(err).toMatch(/^::warning::.*an empty \[7\.7\.7\] section/m);
+  });
+
+  it("prints the commit list alone, silently, when no version is given", () => {
+    const { code, out, err } = runBoth("release-notes.mjs", ["HEAD..HEAD"]);
+    expect(code).toBe(0);
+    expect(out.trim()).toBe("_No notable changes._");
+    expect(err).toBe("");
+  });
+
+  it("exits 1 on a flag without a value, naming it", () => {
+    const { code, err } = runBoth("release-notes.mjs", ["HEAD..HEAD", "--version"]);
+    expect(code).toBe(1);
+    expect(err).toMatch(/--version needs a value/);
+    expect(err).toMatch(/usage: release-notes\.mjs/);
   });
 });

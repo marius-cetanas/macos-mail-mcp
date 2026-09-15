@@ -218,6 +218,38 @@ describe("release.yml — the whole release in one workflow", () => {
     });
   });
 
+  // The notes are the one release artifact a consumer reads (#96), so they are built where a dry
+  // run can show them and where a failure cannot follow the irreversible step.
+  describe("the release notes", () => {
+    const prepare = () => steps(wf()).find((s) => s.name === "Prepare the release notes");
+    const order = (fragment: string) => stepIndex(steps(wf()), fragment);
+
+    it("are prepared unconditionally, after the version is known and before the dry run", () => {
+      expect(prepare(), 'no step named exactly "Prepare the release notes"').toBeDefined();
+      expect(prepare()!.if).toBeUndefined();
+      expect(order("Prepare the release notes")).toBeGreaterThan(order("version is releasable"));
+      expect(order("Prepare the release notes")).toBeLessThan(order("Dry run"));
+      expect(order("Prepare the release notes")).toBeLessThan(order("Publish to npm"));
+    });
+
+    it("lead with the changelog section of the version being cut", () => {
+      expect(String(prepare()!.run)).toMatch(
+        /release-notes\.mjs "\$SINCE_RANGE" --version "\$NEXT" > notes\.md/
+      );
+    });
+
+    it("are previewed in the step summary, so a dry run shows them", () => {
+      expect(String(prepare()!.run)).toMatch(/cat notes\.md/);
+      expect(String(prepare()!.run)).toMatch(/GITHUB_STEP_SUMMARY/);
+    });
+
+    it("are what the release is cut from, not rebuilt after the publish", () => {
+      const tag = steps(wf()).find((s) => String(s.name ?? "").includes("Tag and cut"));
+      expect(String(tag!.run)).toMatch(/--notes-file notes\.md/);
+      expect(String(tag!.run)).not.toMatch(/release-notes\.mjs/);
+    });
+  });
+
   // Raised in review of #24: reporting every non-zero exit as "nothing to
   // release" misdiagnoses a malformed version or a git failure.
   describe("the derive-version step", () => {
