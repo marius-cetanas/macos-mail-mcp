@@ -2050,11 +2050,20 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
 
   const TIMELINE = "issues/7/timeline?per_page=100";
   const RUN = "actions/runs/123";
-  const io = (routes: Record<string, unknown>, now: string, runId: string | undefined = "123") => {
+  // `null` stands for no run id: passing `undefined` would select the default, as a first cut of the
+  // no-run-id case found by asserting the wrong error.
+  const io = (routes: Record<string, unknown>, now: string, runId: string | null = "123") => {
     const s = serving(routes);
     return {
       calls: s.calls,
-      ...makeGithubIo({ fetch: s.fetch, token: "t", repo: "o/r", pr: "7", runId, now: () => at(now) }),
+      ...makeGithubIo({
+        fetch: s.fetch,
+        token: "t",
+        repo: "o/r",
+        pr: "7",
+        runId: runId ?? undefined,
+        now: () => at(now),
+      }),
     };
   };
 
@@ -2105,7 +2114,7 @@ describe("makeGithubIo reading how long the round has been on order (#104)", () 
   it("refuses to guess the arrival when the run cannot be read, or there is no run id", async () => {
     const unreadable = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z");
     await expect(unreadable.requestedFor()).rejects.toThrow("GET actions/runs/123 -> 404");
-    const noRun = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", undefined);
+    const noRun = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", null);
     await expect(noRun.requestedFor()).rejects.toThrow(/no run id/);
     const noDate = io(
       { [TIMELINE]: [requested("2026-09-15T10:22:07Z")], [RUN]: { status: "completed" } },
