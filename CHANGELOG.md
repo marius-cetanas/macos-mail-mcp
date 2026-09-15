@@ -73,12 +73,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `verify` depends on, fails a change that alters or removes the section of a version whose tag
   exists. New sections — a recording, or a backfill such as 1.3.1's — and sections not yet tagged
   stay open, and a subject with a `changelog` scope, such as `docs(changelog): …`, overrides for a
-  deliberate correction. Over the 21 commits that had touched this file by 2026-09-14, the rule
+  deliberate correction; the workflow re-runs when a pull request's title changes, because the
+  override reads the title. Over the 21 commits that had touched this file by 2026-09-14, the rule
   fires on none.
 - The refusal to follow a `Link: rel="next"` off api.github.com, which #81 added as a precaution,
   now rests on a measurement: fetch drops a caller-set `authorization` header only when a redirect
   crosses origins, so a next link, being a fresh request, would carry the token wherever it pointed.
-  A test measures that on the Node running the suite.
+  A test measures that on the Node running the suite. No request either check makes follows a
+  redirect: fetch would follow a 3xx to another origin and hand back that origin's answer, so a
+  redirect is now a failed read that names its status.
 
 ## [2.0.0] - 2026-09-14
 

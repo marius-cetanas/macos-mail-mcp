@@ -843,6 +843,12 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
    * hands `classifyRound` a partial list, the defect this function was fixed for, and following the
    * link without the token merges a list from an unknown host into the reviews. Every `Link` measured
    * so far was on api.github.com.
+   *
+   * **Nor does any request follow a redirect** (raised by Copilot on #98). The origin check reads only
+   * the link, and fetch follows a redirect on its own: an api.github.com URL answered with a 3xx to
+   * another origin would come back `ok`, token dropped, and be read as a page. Every request this
+   * module makes sets `redirect: "manual"`, under which fetch returns the 3xx itself — measured in the
+   * suite on the Node running it — so a redirect is a failed read that names its status.
    */
   const api = async (suffix) => {
     const path = `pulls/${pr}${suffix}`;
@@ -855,7 +861,7 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
       if (new URL(url).origin !== "https://api.github.com") {
         throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
       }
-      const res = await fetch(url, { headers });
+      const res = await fetch(url, { headers, redirect: "manual" });
       if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
       pages.push(await res.json());
       url = nextPageUrl(res.headers.get("link"));
@@ -869,6 +875,7 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
       method: "POST",
       headers: { ...headers, "content-type": "application/json" },
       body: JSON.stringify({ query, variables }),
+      redirect: "manual",
     });
     if (!res.ok) throw new Error(`GraphQL -> ${res.status}`);
     const body = await res.json();
@@ -922,6 +929,7 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
     // status. That is the misleading error this repository has a principle about.
     const res = await fetch(`https://api.github.com/users/${encodeURIComponent(COPILOT_REVIEWER)}`, {
       headers,
+      redirect: "manual",
     });
     if (!res.ok) throw new Error(`GET users/${COPILOT_REVIEWER} -> ${res.status}`);
     const { node_id: botId } = await res.json();

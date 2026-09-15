@@ -3,7 +3,13 @@ name: CI
 on:
   push:
     branches: [main]
+  # `edited` is here for the `changelog` job, which reads the pull request's title for its override:
+  # without it a title change runs nothing, and a green status could outlive the title that earned
+  # it (raised by Copilot on #98). It re-runs the whole workflow on a title, body or base edit — every
+  # job, because a skipped job reports success to a required check and could stand in for a real
+  # failure. Naming any type replaces the defaults, so they are listed too.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
 
 # Least privilege: nothing here needs write access to the repo.
 permissions:

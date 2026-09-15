@@ -56,7 +56,12 @@ export function sectionsOf(text) {
   let name = null;
   let lines = [];
   const close = () => {
-    if (name !== null) sections.set(name, lines.join("\n").replace(/\s+$/, ""));
+    if (name === null) return;
+    // Blank lines only. A trailing space is content, and two of them end a Markdown line in a hard
+    // break, so trimming them would let a shipped section change unseen (raised by Copilot on #98).
+    let end = lines.length;
+    while (end > 0 && lines[end - 1].trim() === "") end -= 1;
+    sections.set(name, lines.slice(0, end).join("\n"));
   };
   for (const line of text.split("\n")) {
     const heading = /^## \[([^\]]+)\]/.exec(line);
@@ -210,8 +215,11 @@ export async function check({ io, base, head, subject }) {
 }
 
 /**
- * The three reads, over an injected `fetch`. Every request carries the token, and every one is
- * built here from a path, so none can leave api.github.com.
+ * The three reads, over an injected `fetch`. Every request carries the token and is built here from a
+ * path on api.github.com, and none follows a redirect: fetch would otherwise follow a 3xx to another
+ * origin and hand back that origin's answer as the file, the parents or the tag. Under
+ * `redirect: "manual"` the 3xx comes back as a failed read that names its status (raised by Copilot
+ * on #98).
  */
 export function makeGithubIo({ fetch, token, repo }) {
   const headers = {
@@ -220,7 +228,10 @@ export function makeGithubIo({ fetch, token, repo }) {
     "user-agent": "macos-mail-mcp-changelog-sections",
   };
   const get = (path, accept = headers.accept) =>
-    fetch(`https://api.github.com/repos/${repo}/${path}`, { headers: { ...headers, accept } });
+    fetch(`https://api.github.com/repos/${repo}/${path}`, {
+      headers: { ...headers, accept },
+      redirect: "manual",
+    });
 
   return {
     /** `CHANGELOG.md` as it is at `ref`, raw. Measured on 2026-09-14 at `17cc876`. */
