@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The release workflow's confirmation that the registry has the version now waits up to ten
+  minutes, in `scripts/confirm-published.mjs`, rather than a minute in embedded shell. npm accepts
+  a publish and processes it afterwards, answering `npm view` with 404 until it is done: the 2.1.0
+  publish on 2026-09-15 was accepted at 10:11:24Z with its provenance signed and logged, the
+  confirmation gave up at 10:12:26Z, and the registry listed the version at 10:16:31Z with no tag and
+  no GitHub release behind it, both then made by hand. The message on giving up now says the publish
+  reported success and what to do, and `CLAUDE.md` says how to finish a release by hand, since the
+  workflow refuses to run again for a version already on the registry.
+
 ### Internal
 
 - `README.md` has a Changelog section: where the changelog is, that it ships in the package and opens

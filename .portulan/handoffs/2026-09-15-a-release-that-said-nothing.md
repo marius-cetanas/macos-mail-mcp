@@ -191,3 +191,29 @@ handoff names. Since then:
 
 The order still holds: #101 and #102 before the release, since their entries now sit under
 `## [2.1.0]` on `main`; a merge after the tag fails the `changelog` check on its own entry.
+
+## Amended again on 2026-09-15: the release ran
+
+#101 and #102 merged in the hour after the first amendment, and the maintainer said to proceed.
+Measured on `main` at `c55a60e` first: `bump: auto` derived 2.1.0 from eleven commits, the heading
+carried the day's date, and `release-notes.mjs` opened the notes with 2.1.0's section.
+
+- **The dry run** (34956489199) was green end to end: 2.1.0, minor; notes prepared with no warning;
+  the dry-run tarball listed `CHANGELOG.md` beside `LICENSE`, `README.md` and `package.json`, 54
+  files.
+- **The publish** (34956573319) published: `+ macos-mail-mcp@2.1.0` at 10:11:24Z, provenance signed
+  and in the transparency log. Then **the confirmation step failed the run** at 10:12:26Z. npm had
+  printed *"Your package is being processed and may take a few minutes to become available"*, and
+  the step waited a minute; the registry listed the version at 10:16:31Z. The tag and the GitHub
+  release were skipped — the ordering working as designed, on a publish that had in fact succeeded.
+- **Finished by hand, at the maintainer's explicit approval**, once `npm view` answered: annotated
+  tag `v2.1.0` at `c55a60e`, pushed; the release cut from the notes the same script produces, marked
+  latest. `dist-tags.latest` is 2.1.0 and the attestation is at the registry's attestations URL.
+- **The fix** is the pull request this amendment travels in: the confirmation extracted to
+  `scripts/confirm-published.mjs` with a ten-minute budget, tests that hold the budget and the
+  message on giving up, and the recovery procedure in `CLAUDE.md`.
+- **Also user-facing, at the maintainer's request:** #103 adds a Changelog section to the README,
+  and the v2.0.0 GitHub release's notes now open with its changelog section, the commits folded
+  beneath — the sentence #96 asked for, applied to the release it was about.
+
+The `v2.1.0` tag makes 2.1.0's section shipped; every entry since sits under `[Unreleased]`.

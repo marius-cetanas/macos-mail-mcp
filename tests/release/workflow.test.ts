@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { DEFAULT_BUDGET_MS, DEFAULT_POLL_MS } from "../../scripts/confirm-published.mjs";
 
 const DIR = join(process.cwd(), ".github/workflows");
 
@@ -215,6 +216,22 @@ describe("release.yml — the whole release in one workflow", () => {
       const publish = steps(wf()).find((s) => s.name === "Publish to npm");
       expect(String(publish!.run)).toMatch(/npm publish --ignore-scripts/);
       expect(String(publish!.run)).toMatch(/build\/index\.js/);
+    });
+  });
+
+  /**
+   * The confirmation between the publish and the tag. npm lists a version some minutes after
+   * accepting it, and a wait of one minute in embedded shell failed the 2.1.0 release on 2026-09-15
+   * after a publish that had succeeded, so the tag and the GitHub release were made by hand.
+   */
+  describe("the registry confirmation", () => {
+    it("waits through scripts/confirm-published.mjs, whose budget outlasts npm's processing", () => {
+      const step = steps(wf()).find((s) => s.name === "Confirm the registry has it");
+      expect(step, 'no step named exactly "Confirm the registry has it"').toBeDefined();
+      expect(String(step!.run).trim()).toBe('node scripts/confirm-published.mjs macos-mail-mcp "$NEXT"');
+      // 2.1.0 was listed five minutes after the PUT; the budget is the ceiling, and it has to clear that.
+      expect(DEFAULT_BUDGET_MS).toBeGreaterThanOrEqual(10 * 60 * 1000);
+      expect(DEFAULT_POLL_MS).toBeLessThanOrEqual(30 * 1000);
     });
   });
 
