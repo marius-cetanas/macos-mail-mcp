@@ -78,8 +78,7 @@ Two consequences worth knowing:
   start rather than falling back to the cached copy. That is the price of always-current;
   pinning a version to avoid it gives up the updates.
 
-What each version changed is in [CHANGELOG.md](CHANGELOG.md), which ships in the package and
-opens the notes of each GitHub release from 2.1.0 on.
+What each version changed is in the [changelog](#changelog).
 
 ### Install from Source
 
@@ -279,6 +278,14 @@ npm run build         # Build for production
 The suite covers `src/` fully, and `vitest.config.ts` enforces 100% statement,
 branch, function and line thresholds. CI runs `test:coverage`, so new code
 without tests fails the build.
+
+## Changelog
+
+Every version's changes are in [CHANGELOG.md](CHANGELOG.md). It ships inside the npm package, so
+an installed copy carries the entries for the version it is, next to its `package.json`; and each
+GitHub release from 2.1.0 on opens its notes with that version's section, the commit list folded
+beneath. The 2.0.0 major changed only the Node.js floor — the server itself was unchanged — which
+is the kind of fact this file exists to say, and the reason it now ships (#96).
 
 ## License
 
