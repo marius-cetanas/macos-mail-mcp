@@ -20,6 +20,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and follows GitHub's `Link` header to the last. As of 2026-09-14 no pull request here had got
   there — the most was 18 reviews, on #24 — but a reply in a review thread is recorded as a review
   of its own, as all 54 in this repository were, so each reply in a long conversation adds one.
+- `copilot-reviewed` no longer counts a reply to a review thread as a person's review. GitHub
+  records a reply as a pull request review of its own — `COMMENTED`, empty body, nothing in it but
+  the reply — and where no Copilot round is coming the check asked only whether a person had
+  reviewed the head. So on a lockfile Copilot declines to read, or a Dependabot pull request it
+  cannot be requested for, a reply to any thread from any account that is not a bot satisfied the
+  gate that exists so a person reads the diff. Measured on #73, whose review 5198788557 is exactly
+  that shape. No merge rested on one: of the 37 commits here that carried a reply-only review, 36
+  also carried a real Copilot round, which decides first, and the other is on #3, which predates
+  the check.
+
+  A person's review now counts when it says something of its own — a verdict, a non-blank body, or
+  a top-level comment. A `COMMENTED` review still counts, because GitHub refuses an approval on your
+  own pull request and an approval-only rule would leave a sole maintainer unable to satisfy the
+  check; on a pull request of your own that Copilot declines, that means submitting a review with a
+  non-blank body or an inline comment rather than replying to a thread. Telling a reply apart takes
+  one more read, of the pull request's review comments, which the check makes only where they decide
+  the answer.
+
+  That rule refuses more than replies. Each of these used to count and no longer does, failing
+  closed: a review with no verdict, no body beyond whitespace and no comments at all, such as an
+  empty dismissed approval; a review whose only body is whitespace; and a review whose comments do
+  not come back as a list, or that has no id to read them by. A read that fails outright now ends
+  the run red, where the review used to count. The only reviews of those shapes in this repository's
+  history are two empty dismissed reviews, on #69 and #70, neither on its pull request's final head.
+  They are read whole, every page, by the same reader #81 gave the reviews, as one list for the
+  pull request rather than one read per review.
 
 ## [2.0.0] - 2026-09-14
 
