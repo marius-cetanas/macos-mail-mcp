@@ -32,8 +32,14 @@ Without the ruleset, case by case:
 - **A pull request from a fork.** The job's token is read-only there, so the check's request is
   expected to fail. The log names the failure, `could not request a round (…) — waiting anyway`,
   and the check keeps waiting: a round requested by hand still counts if it lands before the budget
-  runs out, and without one the check expires red. Expected, not measured — the only fork pull
-  request here, #33, predates the check.
+  runs out, and without one the check expires red. Expected, not measured: GitHub's documentation
+  gives a `pull_request` run from a public fork a read-only token whatever the workflow asks for, and
+  the only fork pull request here, #33, predates the check. The measurement is the first fork pull
+  request to run it, which takes a second account, since an owner cannot fork their own repository.
+  Three things to read off it: whether the ruleset requested the round on opening, since a fork's
+  pull request against `main` is neither a draft nor Dependabot's and nothing in the payload
+  excludes it; whether the check then waited for that round rather than asking; and, where it did
+  ask, that line in its log with a 403.
 
 Apply with:
 

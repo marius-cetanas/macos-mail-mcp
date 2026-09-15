@@ -34,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a top-level comment. A `COMMENTED` review still counts, because GitHub refuses an approval on your
   own pull request and an approval-only rule would leave a sole maintainer unable to satisfy the
   check; on a pull request of your own that Copilot declines, that means submitting a review with a
-  non-blank body or an inline comment rather than replying to a thread. Telling a reply apart takes
+  non-blank body or a comment that starts a thread, rather than a reply in one. That a person's
+  thread-starting comment arrives with no `in_reply_to_id` at all, as Copilot's do, is not measured:
+  no person here has left one. Telling a reply apart takes
   one more read, of the pull request's review comments, which the check makes only where they decide
   the answer.
 
@@ -63,6 +65,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2026-09-15, turning all three of the map's statements of the live value to `true` left the suite
   green. The test now reads the map's table cell by cell, finding each column by its header, and
   fails unless the live column says `false` and the export column says `true`.
+- The suite also reads the two other places the gate map states the live value of `strict` — the
+  platform floor's branch-protection row and the paragraph on it — which the check above had left
+  unread, so either could have said the opposite with the suite green while the map said the suite
+  would fail.
+- The gate map's platform floor names #58 and #64. It said the check asks for the round itself and
+  that asking is the floor beneath the ruleset, and two reviewers read that as asking closing the
+  bot-author hole. It does not: on a Dependabot pull request the request records nothing (#58), and
+  the floor there is a person's review of the head (#64). `tests/workflows/copilot-ruleset.test.ts`
+  holds the sentence beside the README's.
+- `.github/rulesets/README.md` says what would measure the fork case it marks as expected — a pull
+  request from a second account's fork — and what to read off its `copilot-reviewed` log.
 - `scripts/branch-freshness.mjs` no longer attributes to the gate map a sentence the gate map
   dropped in #37. It paraphrases what the map records instead of quoting it.
 - A change to a released version's section of `CHANGELOG.md` now fails CI. Recording a release
