@@ -27,33 +27,53 @@ import { isMain } from "./is-main.mjs";
 /** Ten minutes: twice what 2.1.0 took, and a ceiling rather than a wait — the loop returns on the first listing. */
 export const DEFAULT_BUDGET_MS = 10 * 60 * 1000;
 export const DEFAULT_POLL_MS = 10 * 1000;
+/** The least a read of the attestation gets once the version is listed, whatever is left of the budget. */
+export const ATTESTATION_READ_MS = 30 * 1000;
+
+/** What the run should do once this gives up, stated on every failing path since the publish did not fail. */
+export const GUIDANCE =
+  "The publish reported success, and npm processes a publish after accepting it, so do not publish again: " +
+  "check `npm view` for the version, and once it is listed, push the tag and cut the release by hand — " +
+  "CLAUDE.md, Releasing, says how.";
 
 /**
  * Read the registry until it lists the version, or the budget is spent.
  *
+ * The budget is a wall-clock deadline, and each read is bounded to what is left of it: the time a
+ * read takes counts, and a registry that hangs cannot carry the run past the ceiling — an earlier
+ * cut counted only the sleeps and gave `npm view` no timeout (raised by Copilot on #104).
+ *
  * @param {{
- *   view: (field: string) => Promise<string | null>,
+ *   view: (field: string, bound: { timeoutMs: number }) => Promise<string | null>,
  *   sleep: (ms: number) => Promise<void>,
+ *   now?: () => number,
  *   budgetMs?: number,
  *   pollMs?: number,
  *   log?: (line: string) => void,
- * }} deps `view(field)` is `npm view <name>@<version> <field>`: the value, or null when the registry
- *   has no such version.
+ * }} deps `view(field, { timeoutMs })` is `npm view <name>@<version> <field>`, bounded to `timeoutMs`:
+ *   the value, or null when the registry has no such version. `now` is the clock, injected so a test
+ *   can drive it.
  * @returns {Promise<{ state: "published" | "absent", polls: number, elapsedMs: number, attested: boolean | null }>}
  */
 export async function awaitPublished({
   view,
   sleep,
+  now = Date.now,
   budgetMs = DEFAULT_BUDGET_MS,
   pollMs = DEFAULT_POLL_MS,
   log = () => {},
 }) {
-  let elapsedMs = 0;
+  const start = now();
+  const deadline = start + budgetMs;
+  const remaining = () => Math.max(1, deadline - now());
   let polls = 0;
   for (;;) {
     polls += 1;
-    if ((await view("version")) !== null) {
-      const attested = Boolean(await view("dist.attestations.url"));
+    if ((await view("version", { timeoutMs: remaining() })) !== null) {
+      const attested = Boolean(
+        await view("dist.attestations.url", { timeoutMs: Math.max(remaining(), ATTESTATION_READ_MS) })
+      );
+      const elapsedMs = now() - start;
       const reads = `${polls} read${polls === 1 ? "" : "s"}`;
       log(`published: the registry lists the version after ${reads}, ${Math.round(elapsedMs / 1000)}s.`);
       log(
@@ -63,35 +83,37 @@ export async function awaitPublished({
       );
       return { state: "published", polls, elapsedMs, attested };
     }
+    const elapsedMs = now() - start;
     if (elapsedMs + pollMs > budgetMs) {
       log(
-        `::error::the registry has not listed the version after ${polls} reads, ${Math.round(elapsedMs / 1000)}s. ` +
-          "The publish reported success, and npm processes a publish after accepting it, so do not publish again: " +
-          "check `npm view` for the version, and once it is listed, push the tag and cut the release by hand — " +
-          "CLAUDE.md, Releasing, says how."
+        `::error::the registry has not listed the version after ${polls} reads, ${Math.round(elapsedMs / 1000)}s. ${GUIDANCE}`
       );
       return { state: "absent", polls, elapsedMs, attested: null };
     }
     await sleep(pollMs);
-    elapsedMs += pollMs;
   }
 }
 
 /**
- * `npm view <name>@<version> <field>` over an injected runner: the field's value, trimmed; null on
- * the registry's 404 for a version it does not have; anything else thrown, naming the failure.
- * `--prefer-online`, because the answer being waited for is exactly the one a cache would hide.
+ * `npm view <name>@<version> <field>` over an injected runner, bounded to `timeoutMs`: the field's
+ * value, trimmed; null on the registry's 404 for a version it does not have; a read that ran out of
+ * its bound thrown as such; anything else thrown, naming the failure. `--prefer-online`, because
+ * the answer being waited for is exactly the one a cache would hide.
  *
  * @param {string} name
  * @param {string} version
- * @param {(file: string, args: string[]) => Promise<{ stdout: string }>} run
+ * @param {(file: string, args: string[], options: { timeout: number }) => Promise<{ stdout: string }>} run
  */
 export function makeNpmView(name, version, run = promisify(execFile)) {
-  return async (field) => {
+  return async (field, { timeoutMs } = {}) => {
+    const options = timeoutMs === undefined ? {} : { timeout: timeoutMs };
     try {
-      const { stdout } = await run("npm", ["view", `${name}@${version}`, field, "--prefer-online"]);
+      const { stdout } = await run("npm", ["view", `${name}@${version}`, field, "--prefer-online"], options);
       return String(stdout).trim();
     } catch (error) {
+      if (error?.killed === true || error?.signal === "SIGTERM") {
+        throw new Error(`npm view ${name}@${version} ${field} timed out after ${Math.round((timeoutMs ?? 0) / 1000)}s`);
+      }
       const said = `${error?.stderr ?? ""}\n${error?.message ?? ""}`;
       if (/\bE404\b/.test(said)) return null;
       const reason = String(error?.stderr || error?.message || error).trim();
@@ -121,7 +143,7 @@ if (isMain(import.meta.url)) {
     });
     process.exit(result.state === "published" ? 0 : 1);
   } catch (error) {
-    console.log(`::error::${error instanceof Error ? error.message : String(error)}`);
+    console.log(`::error::${error instanceof Error ? error.message : String(error)}. ${GUIDANCE}`);
     process.exit(1);
   }
 }
