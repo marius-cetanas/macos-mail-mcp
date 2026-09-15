@@ -160,6 +160,18 @@ So the check now requests the round itself when none is pending, which is why it
 notice, to a check that asks for what it is waiting on. The ruleset stays: it is faster on the common
 path, and the check asking is the floor beneath it rather than a replacement.
 
+**Asking closes one of the two holes, not both (#58).** On a pull request against a non-default base
+the request records and the round comes. On a Dependabot pull request it does not: the mutation is
+accepted, the job's own log says `PullRequests: write`, and no `review_requested` event is ever
+recorded — measured on #55, #56 and #57 — because a Copilot review is billed to a licensed account,
+an app requesting on a bot's behalf has none, and GitHub's remedy is an organisation policy this
+user-owned repository cannot set. Since #63 the mutation's own answer says whether GitHub recorded
+the request, and since #64 the check, told no, waits for a person's review of the head instead — the
+answer it already gave a diff Copilot declines to read (#61) — and since #82 only a review that says
+something. So on a Dependabot pull request the floor beneath the ruleset is a person, not the
+check's request. The README beside the payload quotes only the common-path sentence above, which
+holds there. _(Two reviewers of #83 read this section as saying that asking closes both holes.)_
+
 **Requesting it takes GraphQL, and the REST spelling fails silently.**
 `POST /pulls/{n}/requested_reviewers` with `copilot-pull-request-reviewer[bot]` returns **201 Created
 and adds nobody** — measured on #48 on 2026-08-26. Copilot is a **Bot**, and that endpoint takes

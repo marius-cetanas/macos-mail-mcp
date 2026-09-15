@@ -301,6 +301,23 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
   });
 
   /**
+   * The gate map's "The platform floor" said the check asks for the round itself and that asking is
+   * the floor beneath the ruleset, and never named #58 or #64 — so two reviewers of #83 read it as
+   * saying asking closes the bot-author hole. It does not: on a Dependabot pull request the request
+   * records nothing, and the floor there is a person's review of the head. Held here beside the
+   * README's Dependabot bullet, which says the same of the check, so the two cannot drift apart.
+   */
+  it("says, in the gate map's platform floor, that asking does not close the Dependabot hole", () => {
+    const floor = flat(gateMap.slice(gateMap.indexOf("## The platform floor")));
+    expect(floor).toContain("Asking closes one of the two holes, not both (#58)");
+    expect(floor).toContain(
+      "since #64 the check, told no, waits for a person's review of the head instead"
+    );
+    expect(readme).toContain("The check's request is accepted and records nothing (#58)");
+    expect(readme).toContain("Since #64 a person's review of the head then satisfies the check");
+  });
+
+  /**
    * The README quotes the gate map on why the ruleset stays rather than restating it, so the two
    * cannot come to give different reasons. Each quotation is held to the gate map, and the link to a
    * heading the gate map has.

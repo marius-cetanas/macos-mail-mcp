@@ -258,4 +258,19 @@ describe("the exported ruleset and the floor it came from", () => {
     expect(column("live"), "the live value the map gives for `strict`").toBe("false");
     expect(column("export"), "the exported value the map gives for `strict`").toBe("true");
   });
+
+  /**
+   * The map states the live value in two more places — the platform-floor table's branch-protection
+   * row, and the paragraph headed "`strict` is off, deliberately" — and until this test the row above
+   * was the only one held: either could have said the opposite with the suite green, which the map's
+   * own sentence about the suite denies. (Found in a review of the changes since 2.0.0.)
+   */
+  it("reads the other two statements of the live value the same way", () => {
+    const protection = tableRow("Branch protection");
+    expect(protection.Value, "the platform-floor table states strict in its branch-protection row").toContain(
+      "not strict",
+    );
+    expect(map).toContain("**`strict` is off, deliberately.**");
+    expect(map).not.toMatch(/`strict` is on\b/);
+  });
 });
