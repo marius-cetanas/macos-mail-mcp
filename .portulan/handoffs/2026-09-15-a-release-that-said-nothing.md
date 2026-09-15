@@ -217,3 +217,67 @@ carried the day's date, and `release-notes.mjs` opened the notes with 2.1.0's se
   beneath — the sentence #96 asked for, applied to the release it was about.
 
 The `v2.1.0` tag makes 2.1.0's section shipped; every entry since sits under `[Unreleased]`.
+
+## Amended a third time on 2026-09-15: after the release
+
+Written from a checkout at `2730412` (#106). What followed the release, in order:
+
+- **#103 and #105 — the README, user-facing.** The maintainer asked for user-facing documentation
+  to be brought current. #103 added a Changelog section; Copilot's one finding on it was right — the
+  section claimed every release from 2.1.0 on opens with its changelog section, and the notes carry
+  it only when it was recorded before the tag, as 1.3.1 shows — and is fixed. #105, from a read of
+  the whole README against the tree and the issue tracker, made four changes: `get_thread` is no
+  longer "planned for v2"; a Known issues subsection names the end-to-end findings #84–#95, dated,
+  with the three that matter most when a result is relied on; the requirement is any MCP client over
+  stdio; and the Architecture tree and the npx cache mechanism, drifted copies of `CONTRIBUTING.md`
+  and `CLAUDE.md`, are a sentence and a link. Copilot's three findings on #105 were right and are
+  fixed: a garbled phrase inherited from #103, and two relative links to files the tarball does not
+  ship, one of them claiming a test layout `CONTRIBUTING.md` does not have — both now repository
+  URLs. The v2.0.0 GitHub release's notes were edited to open with its changelog section, at the
+  maintainer's instruction.
+- **#104 — merged as `141e3c6`, after a round that would not come.** Copilot held the ruleset's
+  request from 10:22Z and delivered nothing on either head — a rebase at 10:33Z, and the check's
+  own run, re-run twice, expired each time — while every other pull request that day drew a round
+  within seven minutes. A re-request under the maintainer's account with Copilot already listed
+  changed nothing; removing Copilot from the requested reviewers and requesting again, at 10:52Z,
+  drew the round at 10:57Z. The check had expired at 10:56Z; a re-run then found the round. Copilot's
+  one finding — the confirmation counted only its sleeps, and `npm view` had no timeout, so a hung
+  registry read could carry the run past the ceiling it claims — is fixed with a wall-clock deadline
+  and per-read bounds, tests on a fake clock.
+- **#106 — the time box, at the maintainer's request.** `copilot-reviewed` now reads how long the
+  Copilot request has stood, from the pull request's timeline, and after thirty minutes with no
+  round on the head takes the path it takes for a request that cannot record: a person's review of
+  the head satisfies the check. The bound is a run to expire, a re-run to read the age, a review; a
+  Copilot round arriving anyway still wins. Copilot's two findings were right and are fixed: the
+  head's arrival is the creation time of the check's own run, which a re-run keeps (measured on run
+  34958585235: created 10:33:33Z, attempt 3 started 11:12:19Z), not the commit's date, which is when
+  the commit was made and would read a branch moved to an older commit as stale at once; and the
+  `actions: read` that read needs is held by a job of its own, `arrival`, with no checkout, which
+  hands the checker one value as an output — the scope is enough to read other runs' logs and
+  artifacts and must not reach the pull request's checked-out script. Merged as `2730412` from
+  `762e5e5`, with every check green and Copilot's round blue with no comments.
+
+Three mistakes of this session's own, recorded because each is a shape rather than an instance:
+
+- **A reply that named the wrong commit.** A chain of edits stopped at an anchor the previous fix had
+  already rewritten, nothing new was committed, and the reply and the description note that followed
+  in the same chain named the head before the fix. Both were corrected once the fix existed. The
+  shape: a reply written in the same command as the push it describes reports the push that was
+  meant, not the one that happened.
+- **A push with a failing test.** `npx vitest run … | grep -E "Tests |FAIL"` exits with grep's status,
+  which is 0 whenever a line matched, so `&&` carried on into the commit and the push. The next
+  chain captured vitest's own exit code and stopped on it.
+- **A test that asserted the wrong error.** A harness whose parameter defaulted to `"123"` was handed
+  `undefined` for the no-run-id case and got the default, so the case never lacked a run id. A null
+  sentinel fixed it, and the harness says why.
+
+**Open questions** *(human-owned)*, as they stand now:
+
+- Which row of the stale-base table above to take; the recommendation is unchanged.
+- Whether to shorten the changelog entries to one line each, now that release notes carry them.
+- Whether to measure the fork case, which takes a second account.
+- Whether `copilot-reviewed` should re-request the round itself once it is stale, removing and
+  re-adding Copilot as was done by hand on #104, before falling back to a person's review.
+
+**Next action.** Nothing outstanding beyond the open questions; the worktree for this branch can go
+once it merges.
