@@ -63,6 +63,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   2026-09-15, turning all three of the map's statements of the live value to `true` left the suite
   green. The test now reads the map's table cell by cell, finding each column by its header, and
   fails unless the live column says `false` and the export column says `true`.
+- `scripts/branch-freshness.mjs` no longer attributes to the gate map a sentence the gate map
+  dropped in #37. It paraphrases what the map records instead of quoting it.
 
 ## [2.0.0] - 2026-09-14
 
