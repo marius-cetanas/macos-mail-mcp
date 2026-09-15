@@ -65,7 +65,8 @@ the server starts, so a new release is picked up without you touching the config
 
 `@latest` in the commands above makes that explicit rather than changing it. Why a bare
 package name already re-resolves, why `@latest` is still worth writing, and what it costs are
-in [CLAUDE.md](CLAUDE.md#registration).
+in [CLAUDE.md](https://github.com/marius-cetanas/macos-mail-mcp/blob/main/CLAUDE.md#registration),
+which the package does not ship.
 
 Two consequences worth knowing:
 
