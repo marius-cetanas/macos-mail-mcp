@@ -244,7 +244,11 @@ change that alters or removes the section of a version whose tag the change's ba
 asking the API because CI's checkout has no tags. A new section is free, so recording and backfilling
 are unaffected, and so is a section whose tag the base does not contain yet, where an entry merged
 before the tag really is in that release — including when the release tags that commit after it was
-pushed. A deliberate correction to a shipped section carries a `changelog` scope in its subject.
+pushed. On `main` it detects rather than prevents: a pull request checked before a release is
+tagged can still merge after it, since `strict` is off and nothing re-runs the check, and the push
+run then fails with the entry already landed. A deliberate correction to a shipped section carries
+a `changelog` scope in its pull request's title, and merges as a squash or a merge commit, because
+on `main` the title counts only for a commit that sits directly on the tip it was merged into.
 
 ### Why the ordering is what it is
 

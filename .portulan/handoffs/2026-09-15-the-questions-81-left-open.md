@@ -191,6 +191,33 @@ The verify recipe with these changes: exit 0, **788 passed across 34 files**, 10
 (263/263), branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
 `npx portulan compile --check` GREEN.
 
+**And a sixth, from the review of `30e5505`.** Three findings: two changes, each with tests that
+failed first, 11 of 65, and one gap recorded rather than closed.
+
+- **A push's override spoke for more than its title.** The push run judges everything since BEFORE,
+  but read the title of the one pull request merged as the pushed commit, so a push holding two
+  merges would let the second's scoped title pass a change to a shipped section made by the first.
+  The title, or failing that the commit's message, now counts only when the pushed commit sits
+  directly on BEFORE, as a squash or a merge commit does; otherwise no subject is read, and the log
+  says why. Measured on 2026-09-15: each of the nine pushes to `main` the events API listed had one
+  parent, its `before`, and was one pull request's merge commit, so none of them would lose its
+  override; and `main` requires pull requests, refuses force pushes and has no merge queue. A rebase
+  merge of several commits would not sit on BEFORE, so a correction merged that way would fail on
+  `main`; `CLAUDE.md` now says a correction merges as a squash or a merge commit.
+- **The pull request lookup read one page.** `commits/{sha}/pulls` is a list, paged 30 at a time by
+  default. It now asks for 100 a page and follows `Link: rel="next"` with `copilot-round.mjs`'s
+  `nextPageUrl`, refusing a next page off api.github.com before asking for it, as #81's reader does.
+- **Recorded, not closed: the push run detects, it does not prevent.** A pull request checked before
+  a release is tagged can merge after it, and the push run then fails with the entry already on
+  `main`. Preventing that needs the check run again as the pull request merges, which needs a
+  branch-protection change such as a merge queue, so it is an open question below. `verify.yml`,
+  `CLAUDE.md` and the changelog entry now say detection where they read as more; the entry's first
+  sentence had said a released section "now stays as its release shipped it".
+
+The verify recipe with these changes: exit 0, **792 passed across 34 files**, 100% statements
+(263/263), branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
+`npx portulan compile --check` GREEN.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
@@ -211,6 +238,10 @@ The verify recipe with these changes: exit 0, **788 passed across 34 files**, 10
   accepted for now.
 - Whether `copilot-reviewed` should judge the base as well as the head. A round on the head says
   nothing about the diff to a base the pull request was retargeted to afterwards; raised by
+  Copilot on #98.
+- Whether to prevent, not only detect, an entry misfiled by a pull request checked before a release
+  and merged after it. The push run fails once the entry has landed; preventing it needs the check
+  run again as the pull request merges, a branch-protection change such as a merge queue. Raised by
   Copilot on #98.
 
 **Next action.** Nothing outstanding from this change beyond the open questions above, and one

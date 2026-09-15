@@ -121,14 +121,21 @@ jobs:
   # new commit on `main` nor a new tag starts a pull_request run (raised by Copilot on #98: the old
   # wording, "when only the base moves", read as a retarget, which `edited` now covers). On push the
   # comparison is `github.event.before` against the pushed tip, so a misfiling that lands that way
-  # turns `main` red — detection, where the pull_request run is prevention. One gap remains: `concurrency` above cancels a run in
-  # progress when another push to `main` arrives, and if that happens before this job finishes, the
-  # next run's `before` already contains the entry. #78 and #77 merged fifteen seconds apart, so
-  # pushes that close together do happen here.
+  # turns `main` red.
   #
-  # No `npm ci`: the script uses only Node built-ins and `scripts/is-main.mjs`, so the job installs
-  # nothing and caches nothing. It joins `verify`'s dependencies rather than becoming a required
-  # check of its own, so the merge gate covers it without a branch-protection change.
+  # Two gaps are known, and this job closes neither. That red is detection, not prevention: the
+  # entry is already on `main` when it shows (raised by Copilot on #98). Preventing it needs the
+  # check run again as the pull request merges, against the base and tags as they are then, which
+  # needs a branch-protection change such as a merge queue; the 2026-09-15 handoff leaves that open.
+  # And detection can be missed: `concurrency` above cancels a run in progress when another push to
+  # `main` arrives, and if that happens before this job finishes, the next run's `before` already
+  # contains the entry. #78 and #77 merged fifteen seconds apart, so pushes that close together do
+  # happen here.
+  #
+  # No `npm ci`: the script uses only Node built-ins, `scripts/is-main.mjs`, and the page reading it
+  # shares with `scripts/copilot-round.mjs`, which imports nothing more, so the job installs nothing
+  # and caches nothing. It joins `verify`'s dependencies rather than becoming a required check of
+  # its own, so the merge gate covers it without a branch-protection change.
   changelog:
     name: changelog
     runs-on: ubuntu-latest

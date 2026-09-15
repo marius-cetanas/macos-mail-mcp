@@ -31,7 +31,8 @@
  * `GET commits/{merge_commit_sha}` returned parents `[base.sha, head.sha]`. That is exactly what
  * merging would change, and the branch's own diff never shows it: against its merge-base, #81's
  * branch only ever added an entry under `[Unreleased]`. On `push` the base is
- * `github.event.before`, which also covers a push of several commits.
+ * `github.event.before`, which also covers a push of several commits, though no one title speaks
+ * for several merges, so such a push gets no override (see `resolveSubject`).
  *
  * ## New sections are free, and a `changelog` scope overrides
  *
@@ -43,6 +44,7 @@
  * those later recordings did, and the log says the scope allowed it.
  */
 import { readFileSync } from "node:fs";
+import { nextPageUrl, REST_PAGE } from "./copilot-round.mjs";
 import { isMain } from "./is-main.mjs";
 
 /**
@@ -273,20 +275,41 @@ export async function resolveBase({ event, sha, before }, io) {
 }
 
 /**
- * The subject the override reads. On `pull_request` it is the pull request's title, which the
- * workflow passes. On `push` the workflow can pass only the pushed commit's message, and that need not
- * be the title the pull request was checked with: a merge commit reads "Merge pull request #N from …",
- * as `517d295`, #3's, does, and as of 2026-09-15 this repository squashes with `COMMIT_OR_PR_TITLE`,
- * which GitHub documents as a lone commit's own title. A correction scoped in its title would then
- * pass its pull request and fail on `main` (raised by Copilot on #98). So a push asks which pull
- * request was merged as the commit, and uses the message only when there is none.
+ * The subject the override reads, and where it came from, for the log. On `pull_request` it is the
+ * pull request's title, which the workflow passes. On `push` the workflow can pass only the pushed
+ * commit's message, and that need not be the title the pull request was checked with: a merge commit
+ * reads "Merge pull request #N from …", as `517d295`, #3's, does, and as of 2026-09-15 this repository
+ * squashes with `COMMIT_OR_PR_TITLE`, which GitHub documents as a lone commit's own title. A correction
+ * scoped in its title would then pass its pull request and fail on `main` (raised by Copilot on #98).
+ * So a push asks which pull request was merged as the commit, and uses the message only when there is
+ * none.
  *
- * @param {{ event: string, sha: string, subject?: string }} run
- * @param {{ pullTitle: (sha: string) => Promise<string | null> }} io
+ * Only for a commit that sits directly on BEFORE, though. A push is judged from BEFORE, and a title
+ * speaks for one pull request's merge: were a push to hold two, the second's title would pass a change
+ * to a shipped section made by the first (raised by Copilot on #98). A squash or a merge commit sits on
+ * the tip it was merged into. Measured on 2026-09-15: each of the nine pushes to `main` the events API
+ * listed had one parent, its `before`, and was one pull request's merge commit; and `main` has no merge
+ * queue. A pushed commit that does not sit on BEFORE, as the last of several merges or of a rebase
+ * merge of several commits would not, reads no subject, and a change to a shipped section in it fails.
+ *
+ * @param {{ event: string, sha: string, before?: string, subject?: string }} run
+ * @param {{ parents: (sha: string) => Promise<string[]>, pullTitle: (sha: string) => Promise<string | null> }} io
+ * @returns {Promise<{ subject: string | null | undefined, source: string }>}
  */
-export async function resolveSubject({ event, sha, subject }, io) {
-  if (event !== "push") return subject;
-  return (await io.pullTitle(sha)) ?? subject;
+export async function resolveSubject({ event, sha, before, subject }, io) {
+  if (event !== "push") return { subject, source: "the pull request's title" };
+  const [first] = await io.parents(sha);
+  if (first !== before) {
+    return {
+      subject: null,
+      source: `nothing, since ${sha}'s first parent is ${first}, not ${before}, so no one pull request accounts for the push`,
+    };
+  }
+  const title = await io.pullTitle(sha);
+  if (title === null) {
+    return { subject, source: "the pushed commit's message, since no pull request was merged as it" };
+  }
+  return { subject: title, source: "the title of the pull request merged as the pushed commit" };
 }
 
 /**
@@ -305,11 +328,11 @@ export async function check({ io, base, head, subject }) {
 }
 
 /**
- * The reads, over an injected `fetch`. Every request carries the token and is built here from a
- * path on api.github.com, and none follows a redirect: fetch would otherwise follow a 3xx to another
- * origin and hand back that origin's answer as the file, the parents, the tag or the pull request. Under
- * `redirect: "manual"` the 3xx comes back as a failed read that names its status (raised by Copilot
- * on #98).
+ * The reads, over an injected `fetch`. Every request carries the token and goes to api.github.com:
+ * built here from a path, or a next page checked to be there before it is asked for. None follows a
+ * redirect: fetch would otherwise follow a 3xx to another origin and hand back that origin's answer as
+ * the file, the parents, the tag or the pull request. Under `redirect: "manual"` the 3xx comes back as
+ * a failed read that names its status (raised by Copilot on #98).
  */
 export function makeGithubIo({ fetch, token, repo }) {
   const headers = {
@@ -374,16 +397,31 @@ export function makeGithubIo({ fetch, token, repo }) {
      * GitHub lists, for a commit on the default branch, the merged pull request that introduced it.
      * Measured on 2026-09-15: `517d295`, #3's merge commit, and `aa3ca04`, #99's squash, each listed
      * one pull request, whose `merge_commit_sha` was the commit asked about; `6afc2e1`, committed
-     * without one, listed none. The match is on `merge_commit_sha` because the title grants the
-     * override, so only the pull request this push merged may give it. A rebase merge has not been
-     * measured; if one does not match, the push falls back to the commit's message, as it read before.
+     * without one, listed none. It is still a list, which the docs page 30 at a time, and reading one
+     * page of a list is the defect #81 fixed (raised by Copilot on #98). So every page is read, 100 at
+     * a time, through `copilot-round.mjs`'s `nextPageUrl`; and since the token goes with every request,
+     * a next page off api.github.com is refused before it is asked for, as that reader refuses one.
+     *
+     * The match is on `merge_commit_sha` because the title grants the override, so only the pull
+     * request this push merged may give it. A rebase merge has not been measured; if one does not
+     * match, the push falls back to the commit's message, as it read before.
      */
     pullTitle: async (sha) => {
       const path = `commits/${sha}/pulls`;
-      const res = await get(path);
-      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
-      const pulls = await res.json();
-      if (!Array.isArray(pulls)) throw new Error(`GET ${path} -> not a list`);
+      const pulls = [];
+      let url = `https://api.github.com/repos/${repo}/${path}?per_page=${REST_PAGE}`;
+      for (let page = 1; url; page += 1) {
+        const where = page === 1 ? path : `${path} (page ${page})`;
+        if (new URL(url).origin !== "https://api.github.com") {
+          throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
+        }
+        const res = await fetch(url, { headers, redirect: "manual" });
+        if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
+        const list = await res.json();
+        if (!Array.isArray(list)) throw new Error(`GET ${where} -> not a list`);
+        pulls.push(...list);
+        url = nextPageUrl(res.headers.get("link"));
+      }
       const merged = pulls.find((pull) => pull.merged_at && pull.merge_commit_sha === sha);
       return merged ? merged.title : null;
     },
@@ -408,8 +446,11 @@ if (isMain(import.meta.url)) {
   const io = makeGithubIo({ fetch, token: GH_TOKEN, repo: GITHUB_REPOSITORY });
   try {
     const base = await resolveBase({ event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, before: BEFORE }, io);
-    const subject = await resolveSubject({ event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, subject: SUBJECT }, io);
-    console.log(`${GITHUB_EVENT_NAME}: CHANGELOG.md in the checkout, against ${base}`);
+    const { subject, source } = await resolveSubject(
+      { event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, before: BEFORE, subject: SUBJECT },
+      io
+    );
+    console.log(`${GITHUB_EVENT_NAME}: CHANGELOG.md in the checkout, against ${base}; the override reads ${source}`);
     const head = readFileSync("CHANGELOG.md", "utf8");
     const { ok, messages } = await check({ io, base, head, subject });
     console.log(messages.join("\n"));
