@@ -82,6 +82,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A test measures that on the Node running the suite. No request either check makes follows a
   redirect: fetch would follow a 3xx to another origin and hand back that origin's answer, so a
   redirect is now a failed read that names its status.
+- `branch-freshness` now also re-runs when a pull request is edited, which includes a change of base.
+  Its answer depends on the base, and a pull request retargeted to `main` keeps its head, so the
+  freshness it had passed against the old base used to stand for the new one.
 
 ## [2.0.0] - 2026-09-14
 

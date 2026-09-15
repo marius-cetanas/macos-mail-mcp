@@ -125,6 +125,14 @@ taken on, before the rebase, and so do the replies on #98's review threads. Thei
 files**, 100% statements (263/263), branches (100/100), functions (64/64) and lines (262/262) on
 `src/`, 0 vulnerabilities; `npx portulan compile --check` GREEN.
 
+**Copilot's next comment, on the rebased head.** `edited` also fires on a change of base, and only
+`verify.yml` re-ran on it: a retarget keeps the head, so the other required checks kept the statuses
+they had against the old base. `branch-freshness` measures the branch against its base, so it now
+re-runs on `edited` too, with a test that failed first. `copilot-reviewed` asks for a round on the
+head, which a retarget does not change, so a re-run would give the same answer; and `analyze` runs
+only for pull requests into `main`, so one retargeted into `main` has no status to reuse and waits
+for a push. Whether `copilot-reviewed` should also judge the base is left open below.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
@@ -143,6 +151,9 @@ files**, 100% statements (263/263), branches (100/100), functions (64/64) and li
 - Whether checks should run their checker from a trusted revision rather than the pull request's own
   tree. It would apply to every check here, not only `changelog`; raised by Copilot on #98, and
   accepted for now.
+- Whether `copilot-reviewed` should judge the base as well as the head. A round on the head says
+  nothing about the diff to a base the pull request was retargeted to afterwards; raised by
+  Copilot on #98.
 
 **Next action.** Nothing outstanding from this change beyond the open questions above.
 

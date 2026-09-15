@@ -8,6 +8,14 @@ on:
   # it (raised by Copilot on #98). It re-runs the whole workflow on a title, body or base edit — every
   # job, because a skipped job reports success to a required check and could stand in for a real
   # failure. Naming any type replaces the defaults, so they are listed too.
+  #
+  # A base edit leaves the head commit unchanged, so a required check that does not re-run keeps the
+  # status it had against the old base (raised by Copilot on #98). `branch-freshness` measures the
+  # branch against its base, so it re-runs on `edited` too. `copilot-reviewed` asks for a round on
+  # the head, which a retarget does not change, so a re-run would give the same answer; and `analyze`
+  # runs only for pull requests into `main`, so one retargeted into `main` has no status to reuse and
+  # waits for a push. Whether `copilot-reviewed` should also judge the base is an open question in
+  # the 2026-09-15 handoff.
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
