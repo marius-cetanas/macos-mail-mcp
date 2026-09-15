@@ -171,6 +171,27 @@ jobs:
           fi
           echo "$NEXT is releasable."
 
+      # The notes are built before anything irreversible, so a dry run previews them in its summary
+      # and a failure building them cannot strand a published version without a tag. They open with
+      # the version's section of CHANGELOG.md when one was recorded — which has to happen before the
+      # tag exists, since this workflow never commits — and carry the commits since the last tag
+      # beneath it. A version with no section gets the commit list and a warning in this log (#96).
+      - name: Prepare the release notes
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          SINCE_RANGE="HEAD"
+          if TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)"; then
+            SINCE_RANGE="$TAG..HEAD"
+          fi
+          node scripts/release-notes.mjs "$SINCE_RANGE" --version "$NEXT" > notes.md
+          {
+            echo "### Release notes for $NEXT"
+            echo
+            cat notes.md
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Written into the working tree and deliberately never committed. The
       # tarball carries the real version; git keeps the placeholder.
       - name: Apply the version to the tree being shipped
@@ -249,12 +270,6 @@ jobs:
           NEXT: ${{ steps.version.outputs.next }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          SINCE_RANGE="HEAD"
-          if TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null)"; then
-            SINCE_RANGE="$TAG..HEAD"
-          fi
-          node scripts/release-notes.mjs "$SINCE_RANGE" > notes.md
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$NEXT" -m "$NEXT"

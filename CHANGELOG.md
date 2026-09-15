@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-09-15
+
+### Added
+
+- The npm package now ships `CHANGELOG.md`, so what a version changed can be read from the installed
+  package instead of by diffing tarballs — which is how #96 learned that 2.0.0's `build/` was
+  byte-identical to 1.3.4's and the major was the Node floor. GitHub release notes now open with the
+  version's section of this file, when one was recorded before the tag, and carry the commit list
+  beneath it in a collapsed block; a version with no section gets the commit list and a warning in
+  the release run. The notes are built before anything irreversible, so a dry run previews them in
+  its summary and a failure building them cannot strand a published version without a tag.
+  `.npmignore` is gone: a root `.npmignore` does not override `files`, and it said `CHANGELOG.md` was
+  excluded. `tests/release/package-files.test.ts` measures the tarball with `npm pack --dry-run`.
+
 ### Internal
 
 - The tool-count check now fails when a tool name is registered twice. It used to pass the check

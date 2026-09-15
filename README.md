@@ -78,6 +78,9 @@ Two consequences worth knowing:
   start rather than falling back to the cached copy. That is the price of always-current;
   pinning a version to avoid it gives up the updates.
 
+What each version changed is in [CHANGELOG.md](CHANGELOG.md), which ships in the package and
+opens the notes of each GitHub release from 2.1.0 on.
+
 ### Install from Source
 
 For working on the server itself. This path does **not** auto-update — it runs whatever
