@@ -220,7 +220,7 @@ The `v2.1.0` tag makes 2.1.0's section shipped; every entry since sits under `[U
 
 ## Amended a third time on 2026-09-15: after the release
 
-Written from a checkout at `141e3c6` (#104), with #106 open. What followed the release, in order:
+Written from a checkout at `2730412` (#106). What followed the release, in order:
 
 - **#103 and #105 — the README, user-facing.** The maintainer asked for user-facing documentation
   to be brought current. #103 added a Changelog section; Copilot's one finding on it was right — the
@@ -254,8 +254,8 @@ Written from a checkout at `141e3c6` (#104), with #106 open. What followed the r
   the commit was made and would read a branch moved to an older commit as stale at once; and the
   `actions: read` that read needs is held by a job of its own, `arrival`, with no checkout, which
   hands the checker one value as an output — the scope is enough to read other runs' logs and
-  artifacts and must not reach the pull request's checked-out script. At this writing #106 is open
-  at `762e5e5`: every check green, Copilot's round blue with no comments, both threads resolved.
+  artifacts and must not reach the pull request's checked-out script. Merged as `2730412` from
+  `762e5e5`, with every check green and Copilot's round blue with no comments.
 
 Three mistakes of this session's own, recorded because each is a shape rather than an instance:
 
@@ -279,4 +279,5 @@ Three mistakes of this session's own, recorded because each is a shape rather th
 - Whether `copilot-reviewed` should re-request the round itself once it is stale, removing and
   re-adding Copilot as was done by hand on #104, before falling back to a person's review.
 
-**Next action.** Merge #106; then the worktree for its branch, and this one, can go.
+**Next action.** Nothing outstanding beyond the open questions; the worktree for this branch can go
+once it merges.
