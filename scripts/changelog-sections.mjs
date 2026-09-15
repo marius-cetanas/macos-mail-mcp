@@ -46,7 +46,8 @@ import { isMain } from "./is-main.mjs";
 /**
  * The `## [name]` sections of a changelog, keyed by name: each from its heading line to the line
  * before the next heading, trailing blank lines dropped so that inserting a neighbour leaves a
- * section's text as it was. Text before the first heading belongs to no section.
+ * section's text as it was. Text before the first heading belongs to no section. A name heading
+ * more than one section throws, since keeping either copy could hide a change to the other.
  *
  * @param {string} text the changelog
  * @returns {Map<string, string>}
@@ -57,6 +58,9 @@ export function sectionsOf(text) {
   let lines = [];
   const close = () => {
     if (name === null) return;
+    // Refused rather than written over: a Map keeps the last value under a key, so an unchanged copy
+    // appended after an altered section would hide the alteration (raised by Copilot on #98).
+    if (sections.has(name)) throw new Error(`more than one section is headed [${name}]`);
     // Blank lines only. A trailing space is content, and two of them end a Markdown line in a hard
     // break, so trimming them would let a shipped section change unseen (raised by Copilot on #98).
     let end = lines.length;
@@ -98,6 +102,15 @@ const only = (lines, others) => {
   return lines.filter((line) => line.trim() !== "" && !elsewhere.has(line));
 };
 
+/** `sectionsOf`, with the file a refusal came from named in its message. */
+const sectionsIn = (text, whose) => {
+  try {
+    return sectionsOf(text);
+  } catch (error) {
+    throw new Error(`${whose} CHANGELOG.md: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
 /**
  * Every version section of `base` that `head` alters or lacks. `[Unreleased]` is not a version and
  * is free to change; a section only `head` has is new, and free too.
@@ -105,8 +118,8 @@ const only = (lines, others) => {
  * @returns {Array<{ version: string, kind: "changed" | "removed", added: string[], removed: string[] }>}
  */
 export function changedSections(baseText, headText) {
-  const base = sectionsOf(baseText);
-  const head = sectionsOf(headText);
+  const base = sectionsIn(baseText, "the base's");
+  const head = sectionsIn(headText, "the checkout's");
   const changes = [];
   for (const [version, before] of base) {
     if (!isVersion(version)) continue;

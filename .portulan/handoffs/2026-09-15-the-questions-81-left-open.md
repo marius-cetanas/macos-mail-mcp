@@ -133,6 +133,12 @@ head, which a retarget does not change, so a re-run would give the same answer; 
 only for pull requests into `main`, so one retargeted into `main` has no status to reuse and waits
 for a push. Whether `copilot-reviewed` should also judge the base is left open below.
 
+**And one more, on the head after that.** `sectionsOf` kept sections in a `Map`, so a second section
+of the same name overwrote the first, and an edit to a shipped section followed by an unchanged copy
+of it passed. It now refuses a repeated name and says which file it was in, with tests that failed
+first. Neither this branch's `CHANGELOG.md` nor `main`'s has a repeated heading, so no pull request
+starts failing on it.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
