@@ -264,6 +264,27 @@ So the reversible thing happens last, and only on success. A failed publish leav
 behind, which is exactly the state v1.3.0 failed to achieve: it was tagged, then failed to
 publish, and the tag outlived the attempt.
 
+**npm lists a version some minutes after accepting it.** The CLI says so on a successful publish
+— *"Your package is being processed and may take a few minutes to become available"* — and
+`npm view` answers 404 until then. The 2.1.0 release on 2026-09-15 published at 10:11:24Z with its
+provenance signed and logged; the confirmation step, then ten reads six seconds apart, gave up at
+10:12:26Z, and the registry listed the version at 10:16:31Z. The tag and the GitHub release that
+follow the confirmation were skipped. `scripts/confirm-published.mjs` now waits up to ten minutes.
+**If it still gives up after the publish step printed `+ macos-mail-mcp@X.Y.Z`, the registry has
+the version, and the workflow will not run again for it** — `Verify the version is releasable`
+refuses a version already on the registry. Finish by hand, in the order the workflow keeps: wait
+until `npm view macos-mail-mcp@X.Y.Z version` answers, then tag the commit the run built and cut
+the release from the same notes the run would have written:
+
+```bash
+git tag -a vX.Y.Z -m X.Y.Z <the commit the run built> && git push origin vX.Y.Z
+node scripts/release-notes.mjs vPREVIOUS..vX.Y.Z --version X.Y.Z > notes.md
+gh release create vX.Y.Z --verify-tag --title vX.Y.Z --latest --notes-file notes.md
+```
+
+Pushing a tag by hand is Gated, and this is the case the gate map's reason for that allows: the
+ordering it protects is intact, because the registry has already confirmed the publish.
+
 The version is derived once, from everything accumulated since the last tag — five merged
 pull requests take 1.0.0 to 1.0.1, not 1.0.5. `scripts/next-version.mjs` is the resolver
 (`feat` → minor, `fix`/`perf` → patch, `!` or `BREAKING CHANGE` → major, highest wins);

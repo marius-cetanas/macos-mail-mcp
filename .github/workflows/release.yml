@@ -244,25 +244,18 @@ jobs:
           fi
           npm publish --ignore-scripts
 
+      # npm accepts a publish and processes it afterwards — "Your package is being processed and may
+      # take a few minutes to become available" — and `npm view` answers 404 until it is done. Ten
+      # reads six seconds apart failed the 2.1.0 release here on 2026-09-15 after a publish that had
+      # succeeded: accepted at 10:11:24Z, listed at 10:16:31Z, given up on at 10:12:26Z. The two steps
+      # below were skipped, and the tag and the GitHub release were made by hand. The wait is now in
+      # scripts/confirm-published.mjs, with a ten-minute budget its tests hold and a message on giving
+      # up that says the publish succeeded and what to do (CLAUDE.md, Releasing).
       - name: Confirm the registry has it
         if: ${{ inputs.mode == 'publish' }}
         env:
           NEXT: ${{ steps.version.outputs.next }}
-        run: |
-          for _ in $(seq 1 10); do
-            sleep 6
-            if npm view "macos-mail-mcp@$NEXT" version >/dev/null 2>&1; then
-              echo "Published macos-mail-mcp@$NEXT."
-              if npm view "macos-mail-mcp@$NEXT" dist.attestations >/dev/null 2>&1; then
-                echo "Provenance attestation present."
-              else
-                echo "::warning::No provenance attestation — the publish did not go through OIDC."
-              fi
-              exit 0
-            fi
-          done
-          echo "::error::$NEXT is not on the registry although publishing reported success."
-          exit 1
+        run: node scripts/confirm-published.mjs macos-mail-mcp "$NEXT"
 
       - name: Tag and cut the GitHub release
         if: ${{ inputs.mode == 'publish' }}
