@@ -94,6 +94,13 @@ describe("sectionsOf", () => {
     expect(changedSections(RECORDED, hardBreak)).toMatchObject([{ version: "2.0.0", kind: "changed" }]);
   });
 
+  // A Map keeps the last value under a key, so a second section of the same name would hide a change
+  // to the first. Refused rather than overwritten (raised by Copilot on #98).
+  it("refuses two sections of the same name rather than keeping only the last", () => {
+    const twice = `${RECORDED}## [2.0.0] - 2026-09-14\n\n- A copy.\n`;
+    expect(() => sectionsOf(twice)).toThrow("more than one section is headed [2.0.0]");
+  });
+
   it("returns nothing for a file with no headings", () => {
     expect(sectionsOf("# Changelog\n\nnothing yet\n").size).toBe(0);
   });
@@ -160,6 +167,18 @@ describe("changedSections", () => {
     expect(changedSections(RECORDED, redated)).toMatchObject([
       { version: "2.0.0", kind: "changed", added: ["## [2.0.0] - 2026-09-15"], removed: ["## [2.0.0] - 2026-09-14"] },
     ]);
+  });
+
+  /*
+   * The bypass the refusal closes: alter the shipped section, then append an unchanged copy of it.
+   * Overwritten by the copy, the alteration would not be seen at all.
+   */
+  it("fails closed when a changed section is followed by an unchanged copy of itself", () => {
+    const copy = sectionsOf(RECORDED).get("2.0.0");
+    const hidden = `${MISFILED}\n${copy}\n`;
+    expect(() => changedSections(RECORDED, hidden)).toThrow(
+      "the checkout's CHANGELOG.md: more than one section is headed [2.0.0]"
+    );
   });
 });
 
@@ -380,6 +399,14 @@ describe("check over makeGithubIo", () => {
     const g = io({ [`contents/CHANGELOG.md?ref=${B}`]: { text: RECORDED } });
     const result = await check({ io: g, base: B, head: MISFILED, subject });
     expect(result.ok).toBe(true);
+  });
+
+  it("refuses the duplicated-section shape end to end, rather than passing it", async () => {
+    const g = io(shipped);
+    const copy = sectionsOf(RECORDED).get("2.0.0");
+    await expect(check({ io: g, base: B, head: `${MISFILED}\n${copy}\n`, subject })).rejects.toThrow(
+      "more than one section is headed [2.0.0]"
+    );
   });
 });
 
