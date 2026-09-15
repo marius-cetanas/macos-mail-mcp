@@ -225,12 +225,12 @@ describe("verdict", () => {
   const misfiled = changedSections(RECORDED, MISFILED);
   const subject = "fix(ci): copilot-reviewed reads every page of a pull request's reviews";
 
-  it("fails the #78 shape once v2.0.0 is tagged, naming the section, the tag and the entry", () => {
+  it("fails the #78 shape once the base contains v2.0.0, naming the section, the tag and the entry", () => {
     const result = verdict({ changes: misfiled, tagged: new Set(["2.0.0"]), subject });
     expect(result.ok).toBe(false);
     const text = result.messages.join("\n");
     expect(text).toContain("## [2.0.0]");
-    expect(text).toContain("refs/tags/v2.0.0");
+    expect(text).toContain("v2.0.0 is reachable from the base");
     expect(text).toContain(ENTRY);
     expect(text).toContain("## [Unreleased]");
   });
@@ -240,10 +240,10 @@ describe("verdict", () => {
    * #78 recorded the version and four minutes before the tag. An entry merged before the tag is in
    * that release, so a recorded, untagged section is still open.
    */
-  it("passes the same shape while the tag does not exist, and says so", () => {
+  it("passes the same shape while the base does not contain the tag, and says so", () => {
     const result = verdict({ changes: misfiled, tagged: new Set(), subject });
     expect(result.ok).toBe(true);
-    expect(result.messages.join("\n")).toMatch(/refs\/tags\/v2\.0\.0 does not exist/);
+    expect(result.messages.join("\n")).toMatch(/v2\.0\.0 is not reachable from the base/);
   });
 
   it("lets a changelog-scoped subject alter a shipped section, and logs that it did", () => {
@@ -340,24 +340,54 @@ describe("makeGithubIo", () => {
     });
   });
 
-  describe("tagged", () => {
+  describe("shippedBefore", () => {
+    const ref = "git/ref/tags/v2.0.0";
+    const compare = `compare/v2.0.0...${B}`;
+
     // Measured on 2026-09-14: `git/ref/tags/v2.0.0` answered 200 and `git/ref/tags/v9.9.9` 404.
-    it("is true on 200 and false on 404", async () => {
-      const g = io({ "git/ref/tags/v2.0.0": { body: { ref: "refs/tags/v2.0.0" } } });
-      await expect(g.tagged("2.0.0")).resolves.toBe(true);
-      await expect(g.tagged("9.9.9")).resolves.toBe(false);
-      expect(g.calls.map((c) => c.url)).toEqual([
-        "https://api.github.com/repos/o/r/git/ref/tags/v2.0.0",
-        "https://api.github.com/repos/o/r/git/ref/tags/v9.9.9",
-      ]);
+    it("is false when the tag does not exist, and asks nothing more", async () => {
+      const g = io({});
+      await expect(g.shippedBefore("9.9.9", B)).resolves.toBe(false);
+      expect(g.calls.map((c) => c.url)).toEqual(["https://api.github.com/repos/o/r/git/ref/tags/v9.9.9"]);
     });
 
-    // Any other status is not an answer to "does the tag exist", and reading it as either would be
-    // a wrong answer given silently.
-    it("throws on any other status, naming it", async () => {
-      await expect(io({ "git/ref/tags/v2.0.0": { status: 503 } }).tagged("2.0.0")).rejects.toThrow(
+    /*
+     * Measured on 2026-09-15 against `v2.0.0`, an annotated tag on `878af79`: comparing the tag with a
+     * later commit answered `ahead`, with `878af79` itself `identical`, and with the commit before it
+     * `behind`. The base contains the tag's commit in the first two cases and not in the third.
+     */
+    it("is true when the base contains the tag's commit", async () => {
+      for (const status of ["ahead", "identical"]) {
+        const g = io({ [ref]: { body: {} }, [compare]: { body: { status } } });
+        await expect(g.shippedBefore("2.0.0", B), status).resolves.toBe(true);
+        expect(g.calls[1].url).toBe(`https://api.github.com/repos/o/r/${compare}`);
+      }
+    });
+
+    /*
+     * The case the comparison exists for (raised by Copilot on #98): a release that tags the commit a
+     * push brought in, after that push, leaves the tag outside the push's base. The entry is in that
+     * release rather than added to it.
+     */
+    it("is false when the tag was cut after the base", async () => {
+      for (const status of ["behind", "diverged"]) {
+        const g = io({ [ref]: { body: {} }, [compare]: { body: { status } } });
+        await expect(g.shippedBefore("2.0.0", B), status).resolves.toBe(false);
+      }
+    });
+
+    // Anything else is not an answer, and reading it as one would be a wrong answer given silently.
+    it("throws on any other answer from either read, naming it", async () => {
+      await expect(io({ [ref]: { status: 503 } }).shippedBefore("2.0.0", B)).rejects.toThrow(
         "GET git/ref/tags/v2.0.0 -> 503"
       );
+      // The tag exists, so a 404 from the comparison is about the base, and must not read as "not shipped".
+      await expect(io({ [ref]: { body: {} } }).shippedBefore("2.0.0", B)).rejects.toThrow(
+        `GET ${compare} -> 404`
+      );
+      await expect(
+        io({ [ref]: { body: {} }, [compare]: { body: { status: "unknown" } } }).shippedBefore("2.0.0", B)
+      ).rejects.toThrow("unknown");
     });
   });
 
@@ -369,11 +399,12 @@ describe("makeGithubIo", () => {
       [`contents/CHANGELOG.md?ref=${B}`]: { text: RECORDED },
       [`commits/${M}`]: { body: { parents: [{ sha: B }, { sha: H }] } },
       "git/ref/tags/v2.0.0": { body: {} },
+      [`compare/v2.0.0...${B}`]: { body: { status: "ahead" } },
     });
     await g.file(B);
     await g.parents(M);
-    await g.tagged("2.0.0");
-    expect(g.calls.map((c) => c.init?.redirect)).toEqual(["manual", "manual", "manual"]);
+    await g.shippedBefore("2.0.0", B);
+    expect(g.calls.map((c) => c.init?.redirect)).toEqual(["manual", "manual", "manual", "manual"]);
     await expect(io({ [`commits/${M}`]: { status: 302 } }).parents(M)).rejects.toThrow(
       `GET commits/${M} -> 302`
     );
@@ -415,6 +446,7 @@ describe("check over makeGithubIo", () => {
   const shipped = {
     [`contents/CHANGELOG.md?ref=${B}`]: { text: RECORDED },
     "git/ref/tags/v2.0.0": { body: { ref: "refs/tags/v2.0.0" } },
+    [`compare/v2.0.0...${B}`]: { body: { status: "ahead" } },
   };
   const subject = "fix(ci): copilot-reviewed reads every page of a pull request's reviews";
 
@@ -446,6 +478,22 @@ describe("check over makeGithubIo", () => {
     await expect(check({ io: g, base: B, head: `${MISFILED}\n${copy}\n`, subject })).rejects.toThrow(
       "more than one section is headed [2.0.0]"
     );
+  });
+
+  /*
+   * A normal release must not turn `main` red (raised by Copilot on #98). The entry merged while 2.0.0
+   * was untagged, the release then tagged that commit, and the push run asked only afterwards: the tag
+   * exists, but the push's base does not contain it.
+   */
+  it("passes an entry merged before the tag, when the tag was cut after the base", async () => {
+    const g = io({
+      [`contents/CHANGELOG.md?ref=${B}`]: { text: RECORDED },
+      "git/ref/tags/v2.0.0": { body: {} },
+      [`compare/v2.0.0...${B}`]: { body: { status: "behind" } },
+    });
+    const result = await check({ io: g, base: B, head: MISFILED, subject });
+    expect(result.ok).toBe(true);
+    expect(result.messages.join("\n")).toMatch(/v2\.0\.0 is not reachable from the base/);
   });
 });
 
