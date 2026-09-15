@@ -113,6 +113,18 @@ The verify recipe at `175892f`: exit 0, **767 passed across 34 files**, 100% sta
 branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
 `npx portulan compile --check` GREEN.
 
+**Rebased afterwards, at the maintainer's request.** By then `main` had gained #99 (`aa3ca04`), and
+the branch was rebased onto it rather than merged again, which drops the merge commit `1bc902b`.
+`CHANGELOG.md` conflicted once, where this branch's entries meet `main`'s, and was resolved the same
+way: #83's and #99's entries first, this branch's after. The rebased head differs from the pre-rebase
+head, `a43023f`, only in #99's four files. The hashes above name the commits the measurements were
+taken on, before the rebase, and so do the replies on #98's review threads. Their rebased counterparts:
+`e0073b6` (`ae3bc85`), `5464a5b` (`b28a70a`), `9786a7a` (`1fb6f6a`), `c4ed677` (`ed8081b`), `22ad8a3`
+(`bfc0102`), `ba9e8e0` (`0c6ff13`), `6a4575c` (`175892f`), `8f60a97` (`c55b5e9`) and `f293f79`
+(`a43023f`). The verify recipe at `f293f79`, the head before this note: exit 0, **768 passed across 34
+files**, 100% statements (263/263), branches (100/100), functions (64/64) and lines (262/262) on
+`src/`, 0 vulnerabilities; `npx portulan compile --check` GREEN.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
