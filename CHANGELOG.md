@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Internal
 
 - `README.md` has a Changelog section: where the changelog is, that it ships in the package and opens
-  each release's notes from 2.1.0 on, and that the 2.0.0 major changed only the Node.js floor. The
+  each release's notes from 2.1.0 on when recorded before the tag, and that the 2.0.0 major changed
+  only the Node.js floor. The
   sentence under *Staying up to date* points at it rather than saying the same thing twice.
 
 ## [2.1.0] - 2026-09-15

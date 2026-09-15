@@ -284,8 +284,10 @@ without tests fails the build.
 Every version's changes are in [CHANGELOG.md](CHANGELOG.md). It ships inside the npm package, so
 an installed copy carries the entries for the version it is, next to its `package.json`; and each
 GitHub release from 2.1.0 on opens its notes with that version's section, the commit list folded
-beneath. The 2.0.0 major changed only the Node.js floor — the server itself was unchanged — which
-is the kind of fact this file exists to say, and the reason it now ships (#96).
+beneath — when the section was recorded before the tag, which is the procedure here; a version
+recorded late, as 1.3.1 was, gets the commit list alone. The 2.0.0 major changed only the Node.js
+floor — the server itself was unchanged — which is the kind of fact this file exists to say, and
+the reason it now ships (#96).
 
 ## License
 
