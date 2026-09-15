@@ -52,12 +52,19 @@ const pullRequest =
  * document rather than the README alone, because a list of files is where the one nobody named goes
  * unchecked (#73). No wider, because a broader shape reads true sentences as the claim: with `ever`
  * optional, "on a draft pull request no round is requested" failed this, and on a draft that is
- * exactly what happens. (Raised in an independent review of #83.) The third shape is the gate map's
- * word for the payload, which outlived the pairing it described. (Raised by Copilot on #83.)
+ * exactly what happens. (Raised in an independent review of #83.)
+ *
+ * The old paragraph made four claims, and this list first held two of them. The other two could come
+ * back with it green, and both are false: every expiry names its reason, so nothing "fails with
+ * nothing explaining why", and the gate map calls the pairing past, so "The two are a pair" is not a
+ * thing any document here may say again. The last shape is the gate map's word for the payload, which
+ * outlived the pairing it described. (All three raised by Copilot on #83.)
  */
 const STALE = [
   /no (?:Copilot )?round is ever requested/i,
   /`copilot-reviewed` check depends on (?:this[.,;]|the ruleset)/i,
+  /fails with nothing explaining why/i,
+  /the two are a pair/i,
   /so the dependency is reviewable/i,
 ];
 
@@ -65,19 +72,23 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
   it.each([
     "if this ruleset is deleted, no round is ever requested",
     "**The `copilot-reviewed` check depends on this.**",
+    "the check waits out its budget and fails with nothing explaining why",
+    "The two are a pair.",
     "The payload is kept at `.github/rulesets/copilot-auto-review.json` so the dependency is reviewable",
   ])("reads the stale claim in %j", (sentence) => {
     expect(STALE.some((pattern) => pattern.test(sentence))).toBe(true);
   });
 
   // A false red is what gets a check switched off, so true sentences that come close are pinned as
-  // not matching: the README's replacement, the gate map's, what happens on a draft, and what the
-  // check really does depend on.
+  // not matching: the README's replacement, the gate map's two, what happens on a draft, what the
+  // check really does depend on, and the old failure told in the past tense.
   it.each([
     "**The `copilot-reviewed` check no longer depends on this.**",
     "The check no longer depends on that pairing",
+    "The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset were a pair",
     "On a draft pull request no round is requested, by the ruleset or by the check.",
     "The `copilot-reviewed` check depends on `pull-requests: write` to ask for the round.",
+    "Before #49, a pull request the ruleset skipped failed with nothing in its log explaining why.",
   ])("does not read %j as the stale claim", (sentence) => {
     expect(STALE.some((pattern) => pattern.test(sentence))).toBe(false);
   });
@@ -115,7 +126,7 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
    * does not look again when that round never comes — which "the first time" says and "whenever",
    * the README's first wording, did not. (Raised in an independent review of #83.)
    */
-  it("says the job decides once, the first time it finds a round owed", async () => {
+  it("says the job decides once, the first time it finds a Copilot round owed", async () => {
     let looks = 0;
     let asked = 0;
     const result = await awaitRound({
@@ -135,8 +146,38 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
     );
     expect(result.state).toBe("expired");
     expect(readme).toContain(
-      "the first time its job finds a round owed, it requests one unless one is already on order"
+      "the first time its job finds a Copilot round owed, it requests one unless one is already on order"
     );
+  });
+
+  /**
+   * What the job decides about is a Copilot round. Where a person's review is owed instead — a diff
+   * Copilot declines to read — its first owed state asks Copilot for nothing, which "a round owed"
+   * alone did not say. (Raised by Copilot on #83.)
+   */
+  it("says the job asks Copilot for nothing where a person's review is owed", async () => {
+    const declined = {
+      user: { login: "Copilot" },
+      commit_id: HEAD,
+      body: "Copilot wasn't able to review any files in this pull request.",
+    };
+    let asked = 0;
+    const result = await awaitRound({
+      api: pullRequest([declined]),
+      requestRound: async () => {
+        asked += 1;
+      },
+      isRoundPending: nothingPending,
+      sleep: noSleep,
+      budgetMs: 60_000,
+      pollMs: 30_000,
+    });
+    expect(result.polls).toBeGreaterThan(1);
+    expect(result.state).toBe("expired");
+    expect(asked, `${README} says the job asks Copilot for nothing where a person's review is owed`).toBe(
+      0
+    );
+    expect(readme).toContain("as on a diff Copilot declines to read, it asks Copilot for nothing");
   });
 
   /**

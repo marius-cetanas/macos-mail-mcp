@@ -11,10 +11,11 @@ Requests a Copilot round on every non-draft pull request against the default bra
 every push (`review_on_push`) — except on a pull request Dependabot opens, which draws none (#47).
 
 **The `copilot-reviewed` check no longer depends on this.** The check waits for a round on the
-commit being merged, and since #49 it also asks for one: the first time its job finds a round owed,
-it requests one unless one is already on order — so at most once per run. What this ruleset still
-buys is the earlier request — within a second of the pull request opening, and again on every
-push — where the check can ask only once its job is running. In the words of
+commit being merged, and since #49 it also asks for one: the first time its job finds a Copilot
+round owed, it requests one unless one is already on order — so at most once per run. Where a
+person's review is owed instead, as on a diff Copilot declines to read, it asks Copilot for nothing.
+What this ruleset still buys is the earlier request — within a second of the pull request opening,
+and again on every push — where the check can ask only once its job is running. In the words of
 [the gate map](../../.portulan/gate-map.md#the-platform-floor), it *"is faster on the common path,
 and the check asking is the floor beneath it rather than a replacement."*
 
