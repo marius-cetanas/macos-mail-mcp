@@ -167,3 +167,27 @@ with `git checkout -- package-lock.json` before anything else was done there.
 tag, release or publish was touched. The three worktrees this session made —
 `feat-changelog-in-the-package`, `ci-one-github-reader`, `docs-the-floor` — can be removed with
 `git worktree remove` once their branches merge.
+
+## Amended later on 2026-09-15
+
+The state paragraph above was true when written and false within the hour, the shape the 2026-09-02
+handoff names. Since then:
+
+- **#100 merged** at 09:57Z as `9b14ea0`, and `main` now derives **2.1.0** on `bump: auto` (nine
+  commits since `v2.0.0`, the `feat` among them; measured on `main` itself, since the same command
+  run inside #101's worktree, which lacks #100, still said 2.0.1).
+- **Copilot's round on #101** at `d66984f` found two things, both right, each fixed in its own
+  commit: the import-graph test exempted a whole job on any `npm ci`, missing the release job's
+  `check-npmrc.mjs`, which runs before that job's install — `24a6c4e` walks the steps in order and
+  holds it, with `next-version.mjs` asserted not held, shown to fail under the old exemption (2 of
+  5); and the changelog entry said `release-notes.mjs` already used `is-main.mjs`, true only once
+  #100 merges — `526f11b` rewords it. The round on `526f11b` found nothing new. The verify recipe
+  there: exit 0, 36 files / 814 tests, the same coverage, 0 vulnerabilities, compile GREEN.
+- **The two threads on #101 were answered, not resolved.** Each reply was recorded as a `COMMENTED`
+  review under the maintainer's name, the shape #82 stopped counting, and resolving them is the
+  maintainer's, since `main` requires conversation resolution.
+- **#102's round found nothing**, and every required check on it was green before this amendment,
+  which draws one more round.
+
+The order still holds: #101 and #102 before the release, since their entries now sit under
+`## [2.1.0]` on `main`; a merge after the tag fails the `changelog` check on its own entry.
