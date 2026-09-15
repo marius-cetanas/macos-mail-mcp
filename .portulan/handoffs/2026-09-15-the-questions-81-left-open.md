@@ -78,10 +78,44 @@ changelog-scoped (5 red), and keeping trailing blank lines (3 red). Review here 
 - **A promise the job could not keep.** Its comment said a misfiling on `main` turns `main` red.
   Cancellation can prevent that, and the comment now says so.
 
+## Copilot's round on #98 *(amended later on 2026-09-15)*
+
+Copilot's review of the pull request's first head recommended changes, with five findings. Auto-fix
+also reported a conflict with `main`, which had gained #83 and #97; `main` was merged in as `1bc902b`,
+keeping #83's changelog entry beside this branch's two. Four findings were fixed in `175892f`, each
+with a test that failed first (`0c6ff13`, 5 red of 195):
+
+- **Redirects were followed, in both scripts.** The origin check on `next` read only the link, and
+  fetch follows a 3xx on its own, so an api.github.com URL redirected to another origin would have
+  come back `ok`, token dropped, and been read as a page — or, in the changelog check, as the file, the
+  parents or the tag. Every request both scripts make now sets `redirect: "manual"`. Measured on Node
+  26.8.1 before relying on it, and in the suite on the Node that runs it: the 3xx comes back, it is not
+  `ok`, and nothing reaches the other origin. The changelog check's comment that no request "can leave
+  api.github.com" had been false for the same reason, and is corrected.
+- **Trailing spaces were trimmed.** `sectionsOf` removed all trailing whitespace, so a Markdown hard
+  break added to a shipped section compared equal. It now drops blank lines only.
+- **A title change ran nothing.** The override reads the pull request's title, and the bare
+  `pull_request` trigger does not fire on a title edit, so a green status could outlive the title that
+  earned it. `verify.yml` now also runs on `edited` and re-runs every job. Skipping jobs on an edit
+  was considered and rejected, because a skipped job reports success to a required check and could
+  stand in for a real failure.
+
+**Declined, and left open for the maintainer:** that the job runs the checker from the pull request's
+own tree, so a pull request could change the checker to pass. True, and true of every check here —
+`verify`'s tests, `copilot-reviewed` and `branch-freshness` all run from the checkout — while the
+boundary `pr-intake.yml` draws is `pull_request_target`, which carries the base repository's token;
+this workflow uses `pull_request`. Hardening one job alone would not change that, so it is recorded as
+a question for the whole repository rather than patched here, and its thread is left unresolved so the
+decision is not taken by default.
+
+The verify recipe at `175892f`: exit 0, **767 passed across 34 files**, 100% statements (263/263),
+branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
+`npx portulan compile --check` GREEN.
+
 ## Found in passing *(not fixed here)*
 
-- `.portulan/dod.md` condition 7 says `strict` forces a rebase whenever `main` moves; the gate map
-  records it as deliberately off. Flagged as a separate task.
+- `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
+  records it as deliberately off. Flagged as a separate task, which became #97 and fixed it.
 - The stop gate warned that a second handoff dated 2026-09-15 could red `docs.sh`'s record check. This
   repository has no `docs.sh`, nothing in its tests reads handoff dates, and `main` already carries
   three handoffs dated 2026-09-14. The warning describes a check this repository does not have, as the
@@ -93,8 +127,10 @@ changelog-scoped (5 red), and keeping trailing blank lines (3 red). Review here 
 
 - Whether the push run's cancellation gap is worth closing. Limiting `cancel-in-progress` to pull
   requests would let every run on `main` finish, at the cost of runner minutes on superseded pushes.
+- Whether checks should run their checker from a trusted revision rather than the pull request's own
+  tree. It would apply to every check here, not only `changelog`; raised by Copilot on #98.
 
-**Next action.** Nothing outstanding from this change beyond the open question above.
+**Next action.** Nothing outstanding from this change beyond the open questions above.
 
 **Recoverability.** Nothing partial: every change is in the pull request titled above, and no tag,
 release or publish was touched.
