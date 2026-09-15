@@ -12,6 +12,8 @@ import {
   resolveBase,
   check,
   makeGithubIo,
+  resolveSubject,
+  DIFF_LIMIT,
 } from "../../scripts/changelog-sections.mjs";
 
 /**
@@ -219,6 +221,34 @@ describe("changedSections reports what changed, in order and counting repeats", 
     expect(text).toContain("1 line(s) added, 0 removed");
     expect(text).toContain("(blank line)");
   });
+
+  /*
+   * The diff's table is lines before times lines after, and both are the pull request's to set, so an
+   * unbounded diff cost whatever a pull request made it cost: 820 MiB at 10,000 lines a side, measured
+   * on 2026-09-15 (raised by Copilot on #98). Past the limit the section is not diffed, and the report
+   * says why; the rule is unaffected.
+   */
+  it("does not diff a section too long to diff cheaply, and says so", () => {
+    const long = (tag: string) => Array.from({ length: 501 }, (_, i) => `- ${tag} ${i}`).join("\n");
+    const base = `## [2.0.0] - 2026-09-14\n\n${long("a")}\n`;
+    const head = `## [2.0.0] - 2026-09-14\n\n${long("b")}\n`;
+    expect(503 * 503).toBeGreaterThan(DIFF_LIMIT);
+    const [change] = changedSections(base, head);
+    expect(change).toMatchObject({ version: "2.0.0", kind: "changed", diffed: false });
+    const result = verdict({ changes: [change], tagged: new Set(["2.0.0"]), subject: "fix(ci): a thing" });
+    expect(result.ok).toBe(false);
+    expect(result.messages.join("\n")).toMatch(/503 lines before and 503 after, too long to diff here/);
+  });
+
+  // `DIFF_LIMIT`'s comment calls it two sections of 499 lines; at that size the diff is still made.
+  it("still diffs two sections of 499 lines, which is the limit", () => {
+    const long = (tag: string) => Array.from({ length: 497 }, (_, i) => `- ${tag} ${i}`).join("\n");
+    expect((499 + 1) * (499 + 1)).toBe(DIFF_LIMIT);
+    const [change] = changedSections(`## [2.0.0]\n\n${long("a")}\n`, `## [2.0.0]\n\n${long("b")}\n`);
+    expect(change.diffed).toBeUndefined();
+    expect(change.added).toHaveLength(497);
+    expect(change.removed).toHaveLength(497);
+  });
 });
 
 describe("verdict", () => {
@@ -391,6 +421,47 @@ describe("makeGithubIo", () => {
     });
   });
 
+  /*
+   * Measured on 2026-09-15 with `commits/{sha}/pulls`: on `517d295`, the merge commit for #3, whose
+   * subject is "Merge pull request #3 from …", it returned #3 with its title; on `aa3ca04`, #99's
+   * squash, it returned #99; on `6afc2e1`, committed without a pull request, it returned none.
+   */
+  describe("pullTitle", () => {
+    it("returns the title of the pull request merged as this commit, among any others listed", async () => {
+      const g = io({
+        [`commits/${H}/pulls`]: {
+          body: [
+            { title: "still open", merged_at: null, merge_commit_sha: null },
+            { title: "merged as another commit", merged_at: "2026-09-01T00:00:00Z", merge_commit_sha: M },
+            { title: "merged as this one", merged_at: "2026-09-02T00:00:00Z", merge_commit_sha: H },
+          ],
+        },
+      });
+      await expect(g.pullTitle(H)).resolves.toBe("merged as this one");
+      expect(g.calls[0].url).toBe(`https://api.github.com/repos/o/r/commits/${H}/pulls`);
+    });
+
+    // A title is permission to alter a shipped section, so only the pull request this push merged may
+    // grant it. One merged as another commit, or not merged at all, gives null, and the push falls back.
+    it("is null when no pull request was merged as this commit", async () => {
+      const pulls = (body: unknown[]) => io({ [`commits/${H}/pulls`]: { body } }).pullTitle(H);
+      await expect(pulls([])).resolves.toBe(null);
+      await expect(
+        pulls([{ title: "merged as another commit", merged_at: "2026-09-01T00:00:00Z", merge_commit_sha: M }])
+      ).resolves.toBe(null);
+      await expect(pulls([{ title: "not merged", merged_at: null, merge_commit_sha: H }])).resolves.toBe(null);
+    });
+
+    it("names the status when the read fails, and refuses an answer that is not a list", async () => {
+      await expect(io({ [`commits/${H}/pulls`]: { status: 500 } }).pullTitle(H)).rejects.toThrow(
+        `GET commits/${H}/pulls -> 500`
+      );
+      await expect(io({ [`commits/${H}/pulls`]: { body: { message: "x" } } }).pullTitle(H)).rejects.toThrow(
+        `GET commits/${H}/pulls -> not a list`
+      );
+    });
+  });
+
   // Built on api.github.com, a request can still be redirected elsewhere, and fetch would follow it
   // and hand back the other origin's answer. Each read refuses the redirect instead, so a 3xx is a
   // failed read naming its status (raised by Copilot on #98).
@@ -400,11 +471,13 @@ describe("makeGithubIo", () => {
       [`commits/${M}`]: { body: { parents: [{ sha: B }, { sha: H }] } },
       "git/ref/tags/v2.0.0": { body: {} },
       [`compare/v2.0.0...${B}`]: { body: { status: "ahead" } },
+      [`commits/${H}/pulls`]: { body: [] },
     });
     await g.file(B);
     await g.parents(M);
     await g.shippedBefore("2.0.0", B);
-    expect(g.calls.map((c) => c.init?.redirect)).toEqual(["manual", "manual", "manual", "manual"]);
+    await g.pullTitle(H);
+    expect(g.calls.map((c) => c.init?.redirect)).toEqual(Array(5).fill("manual"));
     await expect(io({ [`commits/${M}`]: { status: 302 } }).parents(M)).rejects.toThrow(
       `GET commits/${M} -> 302`
     );
@@ -439,6 +512,41 @@ describe("resolveBase", () => {
 
   it("refuses any other event by name", async () => {
     await expect(resolveBase({ event: "schedule", sha: H }, io({}))).rejects.toThrow("schedule");
+  });
+});
+
+/*
+ * The override's subject. On pull_request the workflow passes the pull request's title. On push it can
+ * only pass `head_commit.message`, which is that title for a squash merge alone: a merge commit reads
+ * "Merge pull request #N from …" and a rebase merge carries its last commit's subject, so a
+ * `docs(changelog):` correction would pass its pull request and then fail on `main` (raised by Copilot
+ * on #98). A push therefore asks which pull request was merged as the commit.
+ */
+describe("resolveSubject", () => {
+  it("on pull_request keeps the title it was given, and asks nothing", async () => {
+    const g = io({});
+    await expect(
+      resolveSubject({ event: "pull_request", sha: M, subject: "docs(changelog): correct 1.3.4" }, g)
+    ).resolves.toBe("docs(changelog): correct 1.3.4");
+    expect(g.calls).toHaveLength(0);
+  });
+
+  it("on push uses the title of the pull request merged as that commit", async () => {
+    const g = io({
+      [`commits/${H}/pulls`]: {
+        body: [{ title: "docs(changelog): correct 1.3.4", merged_at: "2026-09-15T00:00:00Z", merge_commit_sha: H }],
+      },
+    });
+    await expect(
+      resolveSubject({ event: "push", sha: H, subject: "Merge pull request #3 from someone/branch" }, g)
+    ).resolves.toBe("docs(changelog): correct 1.3.4");
+  });
+
+  it("on push falls back to the commit's own message when no pull request was merged as it", async () => {
+    const g = io({ [`commits/${H}/pulls`]: { body: [] } });
+    await expect(
+      resolveSubject({ event: "push", sha: H, subject: "docs: prepare for public release" }, g)
+    ).resolves.toBe("docs: prepare for public release");
   });
 });
 
@@ -547,8 +655,21 @@ describe("verify.yml runs it", () => {
     expect(runs.filter((r) => /^\s*npm\b/.test(r))).toEqual([]);
   });
 
-  it("does not widen the read-only token", () => {
-    expect(runsCheck[0][1].permissions).toBeUndefined();
+  /*
+   * On push the script reads the pull request merged as the pushed commit, and GitHub's table of what
+   * an app's token needs, read on 2026-09-15, lists `commits/{commit_sha}/pulls` under "Pull requests",
+   * read. A job's block replaces the workflow's, so `contents` is repeated. Nothing here writes.
+   */
+  it("reads contents and pull requests, and writes nothing", () => {
+    expect(runsCheck[0][1].permissions).toEqual({ contents: "read", "pull-requests": "read" });
+  });
+
+  // A stalled API call must fail the required aggregate promptly rather than hold it pending (raised
+  // by Copilot on #98), so the job carries a timeout, as `branch-freshness` does.
+  it("gives up after a bounded time", () => {
+    const minutes = (runsCheck[0][1] as { "timeout-minutes"?: number })["timeout-minutes"];
+    expect(minutes).toBeGreaterThan(0);
+    expect(minutes).toBeLessThanOrEqual(10);
   });
 });
 
