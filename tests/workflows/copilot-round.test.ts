@@ -17,6 +17,7 @@ import {
   awaitRound,
   DEFAULT_BUDGET_MS,
   DEFAULT_POLL_MS,
+  DEFAULT_STALE_AFTER_MS,
   COPILOT_LOGINS,
   COPILOT_REVIEWER,
   COPILOT_BOT_LOGIN,
@@ -1743,7 +1744,14 @@ describe("awaitRound over makeGithubIo when the round is past the first page", (
 describe("the copilot review workflow grants what the request needs", () => {
   interface Workflow {
     permissions?: Record<string, string>;
-    jobs: Record<string, { permissions?: Record<string, string> }>;
+    jobs: Record<
+      string,
+      {
+        permissions?: Record<string, string>;
+        needs?: string | string[];
+        steps?: Array<{ uses?: string; run?: string; env?: Record<string, string> }>;
+      }
+    >;
   }
 
   const workflow = parse(
@@ -1768,6 +1776,27 @@ describe("the copilot review workflow grants what the request needs", () => {
 
   it("keeps contents read-only, because the job checks nothing out", () => {
     expect(effective("copilot-reviewed").contents).toBe("read");
+  });
+
+  /**
+   * The one read `actions: read` buys — this run's creation time, the start of the thirty minutes a
+   * request may stand with no round (#104) — is made in a job of its own. The scope is enough to
+   * list and download other runs' logs and artifacts, and the checker job runs the pull request's
+   * own script with its token, so the scope must not reach it (raised by Copilot on #106). Held
+   * both ways: the reader has the scope and no checkout, the checker has neither the scope nor the
+   * read, and the value crosses as an output.
+   */
+  it("reads this run's creation time in a job the pull request's code never runs in", () => {
+    expect(effective("arrival")).toEqual({ actions: "read" });
+    expect((workflow.jobs.arrival.steps ?? []).some((s) => s.uses)).toBe(false);
+    expect(String(workflow.jobs.arrival.steps?.[0]?.run)).toContain(
+      'gh api "repos/{owner}/{repo}/actions/runs/$GITHUB_RUN_ID"'
+    );
+    expect(effective("copilot-reviewed").actions).toBeUndefined();
+    expect([workflow.jobs["copilot-reviewed"].needs].flat()).toContain("arrival");
+    const checker = (workflow.jobs["copilot-reviewed"].steps ?? []).find((s) => s.run?.includes("copilot-round.mjs"));
+    expect(checker?.env?.HEAD_ARRIVED_AT).toBe("${{ needs.arrival.outputs.created_at }}");
+    expect(String(checker?.run)).not.toMatch(/actions\/runs/);
   });
 
   // The default the job widens from. Without it, a job added later inherits whatever GitHub's
@@ -1877,5 +1906,239 @@ describe("awaitRound", () => {
     });
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("waiting:");
+  });
+});
+
+/**
+ * A recorded request that stands too long (#104). Copilot held the ruleset's request from 10:22Z on
+ * 2026-09-15 and delivered nothing on either head for thirty-eight minutes, while every other pull
+ * request that day drew a round within seven; two runs of the check expired red meanwhile, and
+ * nothing bounded how many more would. After `DEFAULT_STALE_AFTER_MS` with no round on the head the
+ * loop treats the round as not coming and takes the path a request that cannot record takes: a
+ * person's review of the head satisfies the check. A Copilot round arriving anyway still wins.
+ */
+describe("awaitRound on a request that has stood too long (#104)", () => {
+  const apiWith = (reviews: object[]) => async (suffix: string) =>
+    suffix === "/reviews" ? reviews : { head: { sha: HEAD } };
+  const noSleep = async () => {};
+  const onOrder = async () => true;
+  const asks = async () => {};
+  const said = personReview({ id: 1, body: "Read the diff." });
+
+  it("waits thirty minutes before calling a request stale", () => {
+    expect(DEFAULT_STALE_AFTER_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("takes a person's review of the head once the request is older than the threshold", async () => {
+    const lines: string[] = [];
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => 31 * 60_000,
+      sleep: noSleep,
+      budgetMs: 0,
+      log: (l) => lines.push(l),
+    });
+    expect(result).toMatchObject({ state: "landed", polls: 1 });
+    expect(result.reason).toBe(
+      "no Copilot round has come for aaaaaaaa in the time allowed; 1 human review(s) on it"
+    );
+    expect(lines).toContain(
+      "stale: Copilot has had the request for 31 minutes with no round on aaaaaaaa — the review owed is a person's now"
+    );
+  });
+
+  it("keeps waiting for Copilot while the request is fresh, whatever a person has left", async () => {
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => 5 * 60_000,
+      sleep: noSleep,
+      budgetMs: 0,
+    });
+    expect(result.state).toBe("expired");
+    expect(result.reason).not.toMatch(/time allowed/);
+  });
+
+  it("ages the request by the wait, so a run can turn stale part-way", async () => {
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => 29 * 60_000,
+      sleep: noSleep,
+      budgetMs: 10 * 60_000,
+      pollMs: 60_000,
+    });
+    expect(result).toMatchObject({ state: "landed", polls: 2 });
+  });
+
+  it("still takes a Copilot round that arrives, stale or not", async () => {
+    const result = await awaitRound({
+      api: apiWith([review("Copilot", HEAD)]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => 60 * 60_000,
+      sleep: noSleep,
+      budgetMs: 0,
+    });
+    expect(result.state).toBe("landed");
+    expect(result.reason).not.toMatch(/time allowed/);
+  });
+
+  it("reads the age only when a round is on order, and counts one the job just made as fresh", async () => {
+    let read = 0;
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: async () => ({ recorded: true }),
+      isRoundPending: async () => false,
+      requestedFor: async () => {
+        read += 1;
+        return 60 * 60_000;
+      },
+      sleep: noSleep,
+      budgetMs: 0,
+    });
+    expect(read).toBe(0);
+    expect(result.state).toBe("expired");
+  });
+
+  it("changes nothing when the age cannot be read, and says so", async () => {
+    const lines: string[] = [];
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => {
+        throw new Error("GET issues/7/timeline -> 500");
+      },
+      sleep: noSleep,
+      budgetMs: 0,
+      log: (l) => lines.push(l),
+    });
+    expect(result.state).toBe("expired");
+    expect(
+      lines.some((l) =>
+        /^could not read how long the round has been on order \(.*GET issues\/7\/timeline -> 500.*\) — waiting anyway$/.test(l)
+      )
+    ).toBe(true);
+  });
+
+  it("treats a request whose age nothing says as fresh", async () => {
+    const result = await awaitRound({
+      api: apiWith([said]),
+      requestRound: asks,
+      isRoundPending: onOrder,
+      requestedFor: async () => null,
+      sleep: noSleep,
+      budgetMs: 0,
+    });
+    expect(result.state).toBe("expired");
+  });
+});
+
+describe("makeGithubIo reading how long the round has been on order (#104)", () => {
+  const at = (iso: string) => Date.parse(iso);
+
+  /** A fetch that answers by the path under the repository, as the reader asks for it. */
+  const serving = (routes: Record<string, unknown>) => {
+    const calls: string[] = [];
+    const fetch = async (url: string) => {
+      calls.push(url);
+      const body = routes[url.replace("https://api.github.com/repos/o/r/", "")];
+      return {
+        ok: body !== undefined,
+        status: body === undefined ? 404 : 200,
+        headers: new Headers(),
+        json: async () => body,
+      } as unknown as Response;
+    };
+    return { fetch: fetch as unknown as typeof globalThis.fetch, calls };
+  };
+
+  const requested = (created_at: string, login = "Copilot") => ({
+    event: "review_requested",
+    created_at,
+    requested_reviewer: { login },
+  });
+  const removed = (created_at: string, login = "Copilot") => ({
+    event: "review_request_removed",
+    created_at,
+    requested_reviewer: { login },
+  });
+
+  const TIMELINE = "issues/7/timeline?per_page=100";
+  const ARRIVED = "2026-09-15T10:33:33Z";
+  // `null` stands for no arrival time: passing `undefined` would select the default, as a first cut
+  // of that case found by asserting the wrong error.
+  const io = (routes: Record<string, unknown>, now: string, headArrivedAt: string | null = ARRIVED) => {
+    const s = serving(routes);
+    return {
+      calls: s.calls,
+      ...makeGithubIo({
+        fetch: s.fetch,
+        token: "t",
+        repo: "o/r",
+        pr: "7",
+        headArrivedAt: headArrivedAt ?? undefined,
+        now: () => at(now),
+      }),
+    };
+  };
+
+  // #104 as measured: requested at 10:22:07Z, the head's run created at 10:33:33Z by the rebase that
+  // put it there, no round at 10:53:38Z. A push after the request restarts the clock, since
+  // `review_on_push` reviews the new head with no new event; the run's creation is the push, and a
+  // re-run keeps it (attempt 3 of that run started at 11:12:19Z, created still 10:33:33Z).
+  it("counts from the head's arrival, this run's creation, when that is later than the request", async () => {
+    const g = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z");
+    await expect(g.requestedFor()).resolves.toBe(at("2026-09-15T10:53:38Z") - at(ARRIVED));
+  });
+
+  // The fresh request made by hand at 10:52:30Z, after the first was removed at 10:52:26Z.
+  it("counts from the last request when that is later than the arrival", async () => {
+    const g = io(
+      {
+        [TIMELINE]: [
+          requested("2026-09-15T10:22:07Z"),
+          removed("2026-09-15T10:52:26Z"),
+          requested("2026-09-15T10:52:30Z"),
+        ],
+      },
+      "2026-09-15T10:53:38Z"
+    );
+    await expect(g.requestedFor()).resolves.toBe(68_000);
+  });
+
+  it("is null when the request was removed and not made again", async () => {
+    const g = io(
+      { [TIMELINE]: [requested("2026-09-15T10:22:07Z"), removed("2026-09-15T10:52:26Z")] },
+      "2026-09-15T10:53:38Z"
+    );
+    await expect(g.requestedFor()).resolves.toBeNull();
+  });
+
+  it("is null when no request names Copilot", async () => {
+    const g = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z", "a-person")] }, "2026-09-15T10:53:38Z");
+    await expect(g.requestedFor()).resolves.toBeNull();
+  });
+
+  // A commit's date would be when it was made, not when it became the head; without the arrival
+  // there is nothing to count from, and a guess would let a branch moved to an old commit read as
+  // stale at once. Only needed once a request stands: no request, nothing to count.
+  it("refuses to guess the arrival when none was handed in, or it is not a date", async () => {
+    const none = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", null);
+    await expect(none.requestedFor()).rejects.toThrow("no arrival time for the head: HEAD_ARRIVED_AT is unset");
+    const garbled = io({ [TIMELINE]: [requested("2026-09-15T10:22:07Z")] }, "2026-09-15T10:53:38Z", "soon");
+    await expect(garbled.requestedFor()).rejects.toThrow('HEAD_ARRIVED_AT is "soon"');
+    const idle = io({ [TIMELINE]: [] }, "2026-09-15T10:53:38Z", null);
+    await expect(idle.requestedFor()).resolves.toBeNull();
+  });
+
+  it("refuses a timeline that is not a list", async () => {
+    const g = io({ [TIMELINE]: { message: "moved" } }, "2026-09-15T10:53:38Z");
+    await expect(g.requestedFor()).rejects.toThrow("GET issues/7/timeline -> not a list");
   });
 });

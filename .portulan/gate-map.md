@@ -168,8 +168,10 @@ an app requesting on a bot's behalf has none, and GitHub's remedy is an organisa
 user-owned repository cannot set. Since #63 the mutation's own answer says whether GitHub recorded
 the request, and since #64 the check, told no, waits for a person's review of the head instead — the
 answer it already gave a diff Copilot declines to read (#61) — and since #82 only a review that says
-something. So on a Dependabot pull request the floor beneath the ruleset is a person, not the
-check's request. The README beside the payload quotes only the common-path sentence above, which
+something. A recorded request that has stood thirty minutes with no round on the head gets the same
+answer, since #104 drew none in thirty-eight (`DEFAULT_STALE_AFTER_MS`). So on a Dependabot pull
+request the floor beneath the ruleset is a person, not the check's request, and on any pull request
+it becomes one once Copilot has been silent for half an hour. The README beside the payload quotes only the common-path sentence above, which
 holds there. _(Two reviewers of #83 read this section as saying that asking closes both holes.)_
 
 **Requesting it takes GraphQL, and the REST spelling fails silently.**

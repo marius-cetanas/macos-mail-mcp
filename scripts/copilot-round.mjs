@@ -302,10 +302,12 @@ export function emptyRound(body) {
 
 /**
  * @param {{reviews: Array<object>, head: string, draft?: boolean,
- *          roundUnobtainable?: boolean}} input
+ *          roundUnobtainable?: boolean | "stale"}} input
  *   `roundUnobtainable` is set by the loop once GitHub's own answer to the request said the round
- *   was not recorded (#58). It never suppresses a Copilot round — one that arrives anyway, because
- *   somebody requested it from outside the job, still wins — it only adds the human-review path.
+ *   was not recorded (#58), or `"stale"` once a recorded request has stood longer than
+ *   `DEFAULT_STALE_AFTER_MS` with no round on the head (#104). It never suppresses a Copilot round
+ *   — one that arrives anyway, because somebody requested it from outside the job, still wins — it
+ *   only adds the human-review path.
  * @returns {{state: "landed"|"awaited"|"not-owed", reason: string, awaiting?: "human",
  *            unread?: number[]}}
  *   `unread` lists the reviews a person left on the head whose answer rests on comments nobody has
@@ -386,7 +388,9 @@ export function classifyRound({ reviews, head, draft = false, roundUnobtainable 
     const why =
       declined.length > 0
         ? `Copilot declined to read the diff on ${short}`
-        : `no Copilot round can be requested for ${short} (#58)`;
+        : roundUnobtainable === "stale"
+          ? `no Copilot round has come for ${short} in the time allowed`
+          : `no Copilot round can be requested for ${short} (#58)`;
     const people = allOnHead.filter((r) => isHumanReviewer(r?.user));
     const humans = people.filter(isHumanReview);
     if (humans.length > 0) {
@@ -484,6 +488,16 @@ export const DEFAULT_BUDGET_MS = 10 * 60 * 1000;
 export const DEFAULT_POLL_MS = 30 * 1000;
 
 /**
+ * How long a Copilot request may stand with no round on the head before the check stops waiting for
+ * Copilot and waits for a person's review instead. Measured on #104 on 2026-09-15: the ruleset
+ * requested the round at 10:22Z, a rebase at 10:33Z drew nothing, a fresh request by hand at 10:52Z
+ * drew nothing, and at 11:00Z there was still no round — while every other pull request that day
+ * drew one within seven minutes. Thirty minutes is four times the slowest of those. A run whose
+ * budget expires inside the thirty reports "gave up", as before; the next run reads the age.
+ */
+export const DEFAULT_STALE_AFTER_MS = 30 * 60 * 1000;
+
+/**
  * Wait for the round inside the run we already have — and ask for it if nobody else has.
  *
  * The head is re-read on every poll rather than taken once: a push during the wait must not be
@@ -577,10 +591,14 @@ export const DEFAULT_POLL_MS = 30 * 1000;
  *
  * @param {{api: (path: string) => Promise<any>, sleep: (ms: number) => Promise<void>,
  *          requestRound?: () => Promise<unknown>, isRoundPending?: () => Promise<boolean>,
+ *          requestedFor?: () => Promise<number | null>, staleAfterMs?: number,
  *          budgetMs?: number, pollMs?: number, log?: (line: string) => void}} deps
+ *   `requestedFor` says how long the Copilot request has stood for the current head, in
+ *   milliseconds, or null when none stands or nothing says; read once, at the first look that finds
+ *   a round on order, and aged by the wait since.
  * @returns {Promise<{state: string, reason: string, polls: number}>}
  */
-export async function awaitRound({ api, sleep, requestRound, isRoundPending, budgetMs = DEFAULT_BUDGET_MS, pollMs = DEFAULT_POLL_MS, log = () => {} }) {
+export async function awaitRound({ api, sleep, requestRound, isRoundPending, requestedFor, staleAfterMs = DEFAULT_STALE_AFTER_MS, budgetMs = DEFAULT_BUDGET_MS, pollMs = DEFAULT_POLL_MS, log = () => {} }) {
   let waited = 0;
   let polls = 0;
   let asked = false;
@@ -591,6 +609,16 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
    * request one from outside this job while it waits.
    */
   let roundUnobtainable = false;
+
+  /*
+   * How long the round had been on order at the first look, or null when nothing says. A recorded
+   * request that has stood `staleAfterMs` with no round on the head is a round that is not coming
+   * (#104): the check then takes the path it takes for a request that could not record, and waits
+   * for a person's review of the head. That bounds the loop a silent Copilot used to make of it — a
+   * run to expire, a re-run to read the age, a review — and a Copilot round arriving anyway still
+   * wins.
+   */
+  let requestedAgeMs = null;
 
   for (;;) {
     polls += 1;
@@ -649,6 +677,13 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
 
       if (pending) {
         log("requested already: a Copilot round is on order, waiting for it");
+        if (requestedFor) {
+          try {
+            requestedAgeMs = await requestedFor();
+          } catch (err) {
+            log(`could not read how long the round has been on order (${describeError(err)}) — waiting anyway`);
+          }
+        }
       } else {
         // A failure here must not end the wait. On a pull request from a fork the token is
         // read-only whatever the workflow asks for, so this is expected to fail there — and the
@@ -656,6 +691,7 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
         try {
           const outcome = await requestRound();
           if (outcome?.recorded === false) roundUnobtainable = true;
+          else requestedAgeMs = 0;
           log(await describeRequest(isRoundPending, outcome?.recorded));
         } catch (err) {
           log(`could not request a round (${describeError(err)}) — waiting anyway`);
@@ -663,10 +699,18 @@ export async function awaitRound({ api, sleep, requestRound, isRoundPending, bud
       }
     }
 
+    if (!roundUnobtainable && requestedAgeMs !== null && requestedAgeMs + waited >= staleAfterMs) {
+      roundUnobtainable = "stale";
+      const minutes = Math.round((requestedAgeMs + waited) / 60_000);
+      const short = String(pr?.head?.sha ?? "").slice(0, 8);
+      log(`stale: Copilot has had the request for ${minutes} minutes with no round on ${short} — the review owed is a person's now`);
+    }
+
     /*
-     * Re-decide inside the same poll when the ask just told us no round is coming (#58). Waiting
-     * for the next one would sit out a full poll interval before noticing a human review that is
-     * already on the head — and on a run whose budget is nearly spent, could miss it entirely.
+     * Re-decide inside the same poll when the ask just told us no round is coming (#58), or the
+     * request just went stale (#104). Waiting for the next one would sit out a full poll interval
+     * before noticing a human review that is already on the head — and on a run whose budget is
+     * nearly spent, could miss it entirely.
      */
     if (roundUnobtainable) {
       const again = await decide();
@@ -781,7 +825,7 @@ export const REVIEWER_PAGE = 100;
  *
  * @param {{fetch: typeof globalThis.fetch, token: string, repo: string, pr: string|number}} deps
  */
-export function makeGithubIo({ fetch, token, repo, pr }) {
+export function makeGithubIo({ fetch, token, repo, pr, headArrivedAt, now = Date.now }) {
   const headers = githubHeaders(token, "macos-mail-mcp-copilot-gate");
 
   /*
@@ -914,7 +958,48 @@ export function makeGithubIo({ fetch, token, repo, pr }) {
     return { recorded: Array.isArray(nodes) ? hasPendingRequest(nodes) : null };
   };
 
-  return { api, graphql, isRoundPending, requestRound };
+  /**
+   * How long a Copilot request has stood for the current head, in milliseconds, or null when none
+   * stands or the timeline does not say. `reviewRequests` carries no time, so this reads the pull
+   * request's timeline: the last `review_requested` naming Copilot counts, unless a
+   * `review_request_removed` naming Copilot came after it. A push after the request restarts the
+   * clock — `review_on_push` reviews the new head with no new event, measured on #104, whose one
+   * event at 10:22Z outlived a rebase at 10:33Z — so the start is the later of the request and the
+   * head's arrival. The arrival is when this workflow's own run was created: the push, the reopening
+   * or the readying that started it is what put the head here, and a re-run keeps the creation time
+   * (measured on run 34958585235: created 10:33:33Z, attempt 3 started 11:12:19Z). A commit's own
+   * date would not do — it is when the commit was made, not when it became the head, and a branch
+   * moved to an older commit would read as stale at once (raised by Copilot on #106). The time
+   * arrives as `headArrivedAt`, read by a job of its own with the one scope that read needs, so the
+   * scope is never in the hands of the pull request's code, which this job checks out and runs
+   * (raised by Copilot on #106 as well). Without it this throws rather than guesses, and the loop
+   * widens nothing. `now` is injected so the age is testable without a clock.
+   */
+  const requestedFor = async () => {
+    const events = await readPages({
+      fetch,
+      headers,
+      url: `${API}/repos/${repo}/issues/${pr}/timeline?per_page=${REST_PAGE}`,
+      where: `issues/${pr}/timeline`,
+    });
+    if (!Array.isArray(events)) throw new Error(`GET issues/${pr}/timeline -> not a list`);
+    const namesCopilot = (event) => isCopilotLogin(event?.requested_reviewer?.login);
+    let requestedAt = null;
+    for (const event of events) {
+      if (event?.event === "review_requested" && namesCopilot(event)) requestedAt = Date.parse(event.created_at);
+      else if (event?.event === "review_request_removed" && namesCopilot(event)) requestedAt = null;
+    }
+    if (requestedAt === null || Number.isNaN(requestedAt)) return null;
+    const arrivedAt = Date.parse(headArrivedAt ?? "");
+    if (Number.isNaN(arrivedAt)) {
+      throw new Error(
+        `no arrival time for the head: HEAD_ARRIVED_AT is ${headArrivedAt === undefined ? "unset" : JSON.stringify(headArrivedAt)}, and it should be this run's creation time`
+      );
+    }
+    return Math.max(0, now() - Math.max(requestedAt, arrivedAt));
+  };
+
+  return { api, graphql, isRoundPending, requestRound, requestedFor };
 }
 
 /* c8 ignore start -- CLI arm; everything it calls is exercised above */
@@ -922,17 +1007,19 @@ if (isMain(import.meta.url)) {
   const repo = process.env.GITHUB_REPOSITORY;
   const pr = process.env.PR_NUMBER;
   const token = process.env.GH_TOKEN;
+  const headArrivedAt = process.env.HEAD_ARRIVED_AT;
   if (!repo || !pr || !token) {
     console.error("need GITHUB_REPOSITORY, PR_NUMBER and GH_TOKEN");
     process.exit(1);
   }
 
-  const { api, isRoundPending, requestRound } = makeGithubIo({ fetch, token, repo, pr });
+  const { api, isRoundPending, requestRound, requestedFor } = makeGithubIo({ fetch, token, repo, pr, headArrivedAt });
 
   const { state, reason } = await awaitRound({
     api,
     requestRound,
     isRoundPending,
+    requestedFor,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     log: (line) => console.log(line),
   });

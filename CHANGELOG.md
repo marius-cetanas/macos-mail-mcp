@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an unscoped search can leave Mail.app busy for minutes with nothing able to cancel it (#92); the
   requirement is any MCP client rather than two named ones; and the source tree and the npx cache
   mechanism, which `CONTRIBUTING.md` and `CLAUDE.md` carry, are links rather than copies.
+- `copilot-reviewed` treats a request that has stood thirty minutes with no round on the head as a
+  round that is not coming, and waits for a person's review of the head instead, as it does where the
+  request cannot record. On 2026-09-15 Copilot held #104's request from 10:22Z and delivered nothing
+  on either head for thirty-eight minutes, while every other pull request that day drew a round
+  within seven; two runs of the check expired red, and nothing bounded how many more would. The
+  check now reads how long the request has stood from the pull request's timeline, counting from the
+  head's arrival — the creation of the check's own run, which a re-run keeps — when that is later,
+  since a push restarts Copilot's clock without a new event. A job of its own reads that time and
+  hands it over, so the scope the read needs never reaches the checked-out code the check runs; and
+  a Copilot round that arrives anyway still wins.
 
 ## [2.1.0] - 2026-09-15
 
