@@ -262,7 +262,7 @@ without tests fails the build.
 ## Changelog
 
 Every version's changes are in [CHANGELOG.md](CHANGELOG.md). It ships inside the npm package, so
-an installed copy carries the entries for the version it is, next to its `package.json`; and each
+an installed copy carries its own version's entries alongside its `package.json`; and each
 GitHub release from 2.1.0 on opens its notes with that version's section, the commit list folded
 beneath — when the section was recorded before the tag, which is the procedure here; a version
 recorded late, as 1.3.1 was, gets the commit list alone. The 2.0.0 major changed only the Node.js
