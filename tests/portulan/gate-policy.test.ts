@@ -180,6 +180,39 @@ const ruleset = JSON.parse(read(".portulan/compile/github-ruleset.json"));
 const ruleOf = (type: string) =>
   ruleset.rules.find((r: { type: string }) => r.type === type)?.parameters ?? {};
 
+/**
+ * A table row in the map, as `{ column header: cell }`, found by what its first cell names.
+ *
+ * Cells are read as they render: outer pipes dropped, code-span and emphasis markers stripped, so a
+ * value reads the same bold or plain, in a code span or out of one. A column is known by its header
+ * rather than its position, because swapping the two headers of the divergence table swaps what the
+ * table claims, and a read by position would not notice.
+ */
+const cellsOf = (line: string): string[] =>
+  line
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((cell) => cell.replace(/[`*]/g, "").trim());
+
+const isTableLine = (line: string) => line.trimStart().startsWith("|");
+
+const tableRow = (named: string): Record<string, string> => {
+  const lines = map.split("\n");
+  const found = lines.flatMap((l, i) => (isTableLine(l) && cellsOf(l)[0] === named ? [i] : []));
+  // Exactly one, because a map that states a setting in two rows can state it both ways.
+  if (found.length !== 1) {
+    throw new Error(
+      `gate-map.md should state \`${named}\` in one table row, and has ${found.length}`,
+    );
+  }
+  let header = found[0];
+  while (header > 0 && isTableLine(lines[header - 1])) header--;
+  const headers = cellsOf(lines[header]);
+  const cells = cellsOf(lines[found[0]]);
+  return Object.fromEntries(headers.map((h, i) => [h, cells[i]]));
+};
+
 describe("the exported ruleset and the floor it came from", () => {
   it("protects exactly the branch the policy names", () => {
     expect(ruleset.conditions.ref_name.include).toEqual([`refs/heads/${policy.floor!.branch}`]);
@@ -204,5 +237,25 @@ describe("the exported ruleset and the floor it came from", () => {
   it("warns, in the map, that the export must not be imported as-is", () => {
     expect(map).toContain("must not be imported as-is");
     expect(map).toContain("strict_required_status_checks_policy");
+  });
+
+  /**
+   * The map's half of the divergence, read as a value rather than found as a name.
+   *
+   * The map says the suite fails if it ever stops saying the live floor is `false`, and until
+   * 2026-09-15 nothing here read that value: turning every statement of it to `true` — the table
+   * row, the platform-floor table and the paragraph on `strict` — left the whole suite green. The
+   * table row is what is held, as the one statement that names the setting and gives both values.
+   * The other two restate it in prose and are not read: an edit to either alone still passes.
+   */
+  it("reads `strict` in the map's table as `false` live and `true` in the export", () => {
+    const row = tableRow("strict_required_status_checks_policy");
+    const column = (word: string) => {
+      const headed = Object.keys(row).filter((h) => h.includes(word));
+      expect(headed, `the divergence table should head one column "${word}"`).toHaveLength(1);
+      return row[headed[0]];
+    };
+    expect(column("live"), "the live value the map gives for `strict`").toBe("false");
+    expect(column("export"), "the exported value the map gives for `strict`").toBe("true");
   });
 });

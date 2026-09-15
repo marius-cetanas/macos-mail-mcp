@@ -8,11 +8,11 @@
  * all. Neither answer is the one this repository wants.
  *
  * `strict: true` forces a rebase every time `main` moves, and the gate map already records what that
- * costs: "A rebase invalidates the verdict that preceded it… which creates a new head *after* the
- * last review." With a Copilot round gating the merge, every unrelated commit to `main` therefore
- * spends a full review cycle on a branch whose contents did not change. `strict: false` alone
- * removes the churn and the bound together, and a branch can then drift arbitrarily far from the
- * tree it claims to be tested against.
+ * costs: a rebase invalidates the verdict that preceded it, since a verdict on an earlier head
+ * cannot satisfy `copilot-reviewed`. With a Copilot round gating the merge, every unrelated commit
+ * to `main` therefore spends a full review cycle on a branch whose contents did not change.
+ * `strict: false` alone removes the churn and the bound together, and a branch can then drift
+ * arbitrarily far from the tree it claims to be tested against.
  *
  * So the bound is expressed where a bound with a number in it can live — a check — and `strict` is
  * left off. Some drift is fine. Too much is not.

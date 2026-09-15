@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change to any of those fails on the README. What GitHub does with each request — how soon the
   ruleset asks, whether a request records — is measured rather than tested, and can change without
   failing it. The gate map no longer calls the payload a dependency of the check.
+- The suite now reads the value the gate map gives for `strict` on `main`, not only the setting's
+  name. The map says the suite fails if it ever stops saying the live value is `false`, but the
+  test behind that claim checked only that the warning and the setting's name were present: on
+  2026-09-15, turning all three of the map's statements of the live value to `true` left the suite
+  green. The test now reads the map's table cell by cell, finding each column by its header, and
+  fails unless the live column says `false` and the export column says `true`.
+- `scripts/branch-freshness.mjs` no longer attributes to the gate map a sentence the gate map
+  dropped in #37. It paraphrases what the map records instead of quoting it.
 
 ## [2.0.0] - 2026-09-14
 
