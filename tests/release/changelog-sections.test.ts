@@ -182,6 +182,45 @@ describe("changedSections", () => {
   });
 });
 
+/**
+ * A set difference lost order and repetition, so a tagged section whose lines were only reordered or
+ * repeated failed with "0 line(s) added, 0 removed" and no lines shown, and blank lines were dropped
+ * from the report altogether (raised by Copilot on #98). The failure was right; the report was not.
+ */
+describe("changedSections reports what changed, in order and counting repeats", () => {
+  const VITEST = "- Vitest 4 → 5, with `@vitest/coverage-v8` moved alongside it.";
+  const SECOND = "- A second entry.";
+  const TWO = RECORDED.replace("moved alongside it.\n", `moved alongside it.\n${SECOND}\n`);
+
+  it("reports a reordered line as moved, rather than as nothing", () => {
+    const swapped = TWO.replace(`${VITEST}\n${SECOND}\n`, `${SECOND}\n${VITEST}\n`);
+    const [change] = changedSections(TWO, swapped);
+    expect(change.added).toHaveLength(1);
+    expect(change.removed).toEqual(change.added);
+    expect([VITEST, SECOND]).toContain(change.added[0]);
+  });
+
+  it("reports a repeated line as added", () => {
+    const repeated = TWO.replace(`${SECOND}\n`, `${SECOND}\n${SECOND}\n`);
+    expect(changedSections(TWO, repeated)).toMatchObject([
+      { version: "2.0.0", kind: "changed", added: [SECOND], removed: [] },
+    ]);
+  });
+
+  it("counts and shows an added blank line in the failure", () => {
+    const spaced = TWO.replace(`${VITEST}\n${SECOND}\n`, `${VITEST}\n\n${SECOND}\n`);
+    const result = verdict({
+      changes: changedSections(TWO, spaced),
+      tagged: new Set(["2.0.0"]),
+      subject: "fix(ci): a thing",
+    });
+    expect(result.ok).toBe(false);
+    const text = result.messages.join("\n");
+    expect(text).toContain("1 line(s) added, 0 removed");
+    expect(text).toContain("(blank line)");
+  });
+});
+
 describe("verdict", () => {
   const misfiled = changedSections(RECORDED, MISFILED);
   const subject = "fix(ci): copilot-reviewed reads every page of a pull request's reviews";
