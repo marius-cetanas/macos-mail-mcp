@@ -55,11 +55,13 @@ pull request checked before a release is tagged can merge after it. It can still
 `verify.yml`'s `concurrency` cancels a run when another push to `main` arrives, and #78 and #77 merged
 fifteen seconds apart.
 
-**One measurement was not re-taken here.** The merge commit's parent order, `[base, head]`, was
-measured by Fable on 2026-09-15 on #82 and #83 while both were open. By the time it was checked again,
-#82 had merged, so its `merge_commit_sha` had become the one-parent squash, and #83 was no longer
-mergeable, so GitHub computed no merge commit for it. This pull request's own `changelog` run is the
-check in place: `resolveBase` refuses a commit with other than two parents, and says how many it saw.
+**One measurement could not be re-taken at first, and was once this pull request existed.** The
+merge commit's parent order, `[base, head]`, was measured by Fable on 2026-09-15 on #82 and #83 while
+both were open. By the time it was checked again, #82 had merged, so its `merge_commit_sha` had become
+the one-parent squash, and #83 was no longer mergeable, so GitHub computed no merge commit for it.
+Measured on #98 itself once it was opened: its merge commit `bcfcce5` has parents `[f6e1e9d, bfc0102]`,
+its base and head in that order, and its first `changelog` run compared against `f6e1e9d`.
+`resolveBase` still refuses a commit with other than two parents, and says how many it saw.
 
 ## Working with Fable
 
@@ -157,6 +159,38 @@ exist. The tag's existence is read first, so a 404 from the comparison is refuse
 as "not shipped". The same round's wording nit is fixed too: `verify.yml` no longer says no pull
 request run fires "when only the base moves", which read as a retarget.
 
+**And a fifth, from the reviews of `ed431bd` and `5673c3e`.** Five findings, the timeout raised by
+both; each code change came with tests that failed first, 11 of 61:
+
+- **The diff's cost was the pull request's to set.** `lineDiff` builds a table of the lines before
+  times the lines after for every changed section, and Copilot's inline comment asked for a bound.
+  Measured on 2026-09-15 on Node 26.8.1, a section rewritten whole: 499 lines a side took 2 ms and
+  6 MiB, and 10,000 took 524 ms and 820 MiB. A changed section past `DIFF_LIMIT`, 250,000 cells, is
+  no longer diffed: it still fails if its version has shipped, and the report gives its length
+  instead of its lines. The longest version section on `main` that day was 47 lines.
+- **On push, the override read the commit's message rather than the title.** A merge commit reads
+  "Merge pull request #N from …", and this repository squashes with `COMMIT_OR_PR_TITLE`, which
+  GitHub documents as a lone commit's own title, so a correction titled `docs(changelog): …` could
+  pass its pull request and then fail on `main`. The push run now asks `commits/{sha}/pulls` for the
+  pull request merged as the pushed commit and reads its title, falling back to the message only
+  when there is none. Measured on 2026-09-15: `517d295`, #3's merge commit, and `aa3ca04`, #99's
+  squash, each list one pull request whose `merge_commit_sha` is that commit, and `6afc2e1` lists
+  none. GitHub's table of what an app's token needs puts that read under "Pull requests", so the job
+  now declares `pull-requests: read` beside `contents: read`. Two things are not measured: a rebase
+  merge's `merge_commit_sha`, where a mismatch falls back to the message as before; and the read on
+  a real push run, which nothing before a merge to `main` exercises.
+- **The job had no timeout.** It now has `timeout-minutes: 5`, the bound `branch-freshness` has. The
+  second review also suggested a deadline on each request; not taken, since the job's bound already
+  ends a stall.
+- **Two passages said more than was true.** `CONTRIBUTING.md` said the check fails a change to the
+  section of "a version already tagged"; it now says a version whose tag the base already contains.
+  And the paragraph above on the merge commit's parent order still said the measurement could not be
+  re-taken; it had been, on #98 itself.
+
+The verify recipe with these changes: exit 0, **788 passed across 34 files**, 100% statements
+(263/263), branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
+`npx portulan compile --check` GREEN.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map
@@ -179,7 +213,9 @@ request run fires "when only the base moves", which read as a retarget.
   nothing about the diff to a base the pull request was retargeted to afterwards; raised by
   Copilot on #98.
 
-**Next action.** Nothing outstanding from this change beyond the open questions above.
+**Next action.** Nothing outstanding from this change beyond the open questions above, and one
+thing to look at once it merges: the push run on `main` is the first to read `commits/{sha}/pulls`
+with the job's token, and if that read fails, the run fails red and names the status.
 
 **Recoverability.** Nothing partial: every change is in the pull request titled above, and no tag,
 release or publish was touched.

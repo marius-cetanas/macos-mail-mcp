@@ -132,6 +132,16 @@ jobs:
   changelog:
     name: changelog
     runs-on: ubuntu-latest
+    # A few API reads. Unbounded, a stalled one would hold `verify` pending for GitHub's default of 360
+    # minutes; this fails it in five, the bound `branch-freshness` has (raised by Copilot on #98).
+    timeout-minutes: 5
+    # `pull-requests: read` is for one read, on push: which pull request was merged as the pushed
+    # commit, whose title the override reads. GitHub's table of what an app's token needs, read on
+    # 2026-09-15, lists `commits/{commit_sha}/pulls` under "Pull requests". A job's block replaces the
+    # workflow's, so `contents: read` is repeated.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,6 +153,9 @@ jobs:
 
       # On pull_request `GITHUB_SHA` is the merge commit and the script reads its first parent — the
       # base as it will be merged into — from the commits API; on push the base is `BEFORE`.
+      # `SUBJECT` is the pull request's title on pull_request. On push it is the pushed commit's
+      # message, which need not be the title, so the script reads the title of the pull request merged
+      # as that commit and falls back to the message only when there is none.
       # `GITHUB_REPOSITORY`, `GITHUB_SHA` and `GITHUB_EVENT_NAME` come from the runner.
       - name: No entry sits in a section a tag has already shipped
         env:

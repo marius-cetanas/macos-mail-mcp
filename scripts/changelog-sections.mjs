@@ -99,6 +99,17 @@ export function hasChangelogScope(subject) {
 }
 
 /**
+ * The most cells `lineDiff`'s table may have: 250,000, which is two sections of 499 lines. The table
+ * is the lines before times the lines after, and a pull request sets both, so without a bound the
+ * diff cost whatever a pull request made it cost (raised by Copilot on #98). Measured on 2026-09-15 on
+ * Node 26.8.1, a section rewritten whole: 499 lines a side took 2 ms and 6 MiB, and 10,000 took 524 ms
+ * and 820 MiB, memory growing with the cells. The longest version section on `main` that day was 47
+ * lines, 1.3.0's. A section past the bound is still a change, and still fails if its version has
+ * shipped; the report gives its length instead of its lines.
+ */
+export const DIFF_LIMIT = 250_000;
+
+/**
  * The lines only one side has, in order and counting repeats: a longest-common-subsequence diff over
  * whole lines, blank ones included. A set difference lost order and repetition, so a shipped section
  * whose lines were only reordered or repeated failed with nothing reported as added or removed, and
@@ -146,9 +157,13 @@ const sectionsIn = (text, whose) => {
 
 /**
  * Every version section of `base` that `head` alters or lacks. `[Unreleased]` is not a version and
- * is free to change; a section only `head` has is new, and free too.
+ * is free to change; a section only `head` has is new, and free too. A changed section whose diff
+ * would pass `DIFF_LIMIT` comes back with `diffed: false` and its line counts instead of its lines.
  *
- * @returns {Array<{ version: string, kind: "changed" | "removed", added: string[], removed: string[] }>}
+ * @returns {Array<
+ *   | { version: string, kind: "changed" | "removed", added: string[], removed: string[] }
+ *   | { version: string, kind: "changed", diffed: false, lines: { before: number, after: number } }
+ * >}
  */
 export function changedSections(baseText, headText) {
   const base = sectionsIn(baseText, "the base's");
@@ -161,7 +176,12 @@ export function changedSections(baseText, headText) {
     if (after === undefined) {
       changes.push({ version, kind: "removed", added: [], removed: was });
     } else if (after !== before) {
-      changes.push({ version, kind: "changed", ...lineDiff(was, after.split("\n")) });
+      const is = after.split("\n");
+      changes.push(
+        (was.length + 1) * (is.length + 1) > DIFF_LIMIT
+          ? { version, kind: "changed", diffed: false, lines: { before: was.length, after: is.length } }
+          : { version, kind: "changed", ...lineDiff(was, is) }
+      );
     }
   }
   return changes;
@@ -181,7 +201,7 @@ const indent = (lines) =>
 export function verdict({ changes, tagged, subject }) {
   const messages = [];
   let shipped = 0;
-  for (const { version, kind, added, removed } of changes) {
+  for (const { version, kind, added, removed, diffed, lines } of changes) {
     const tag = `v${version}`;
     if (!tagged.has(version)) {
       messages.push(
@@ -193,6 +213,10 @@ export function verdict({ changes, tagged, subject }) {
     if (kind === "removed") {
       messages.push(
         `## [${version}] shipped before this change (${tag} is reachable from the base), and this change removes it.`
+      );
+    } else if (diffed === false) {
+      messages.push(
+        `## [${version}] shipped before this change (${tag} is reachable from the base), and this change alters it: ${lines.before} lines before and ${lines.after} after, too long to diff here.`
       );
     } else {
       messages.push(
@@ -249,6 +273,23 @@ export async function resolveBase({ event, sha, before }, io) {
 }
 
 /**
+ * The subject the override reads. On `pull_request` it is the pull request's title, which the
+ * workflow passes. On `push` the workflow can pass only the pushed commit's message, and that need not
+ * be the title the pull request was checked with: a merge commit reads "Merge pull request #N from …",
+ * as `517d295`, #3's, does, and as of 2026-09-15 this repository squashes with `COMMIT_OR_PR_TITLE`,
+ * which GitHub documents as a lone commit's own title. A correction scoped in its title would then
+ * pass its pull request and fail on `main` (raised by Copilot on #98). So a push asks which pull
+ * request was merged as the commit, and uses the message only when there is none.
+ *
+ * @param {{ event: string, sha: string, subject?: string }} run
+ * @param {{ pullTitle: (sha: string) => Promise<string | null> }} io
+ */
+export async function resolveSubject({ event, sha, subject }, io) {
+  if (event !== "push") return subject;
+  return (await io.pullTitle(sha)) ?? subject;
+}
+
+/**
  * The whole check over an `io`: the base's file, the sections that changed, one tag probe per
  * changed version and none otherwise, then the verdict.
  *
@@ -266,7 +307,7 @@ export async function check({ io, base, head, subject }) {
 /**
  * The reads, over an injected `fetch`. Every request carries the token and is built here from a
  * path on api.github.com, and none follows a redirect: fetch would otherwise follow a 3xx to another
- * origin and hand back that origin's answer as the file, the parents or the tag. Under
+ * origin and hand back that origin's answer as the file, the parents, the tag or the pull request. Under
  * `redirect: "manual"` the 3xx comes back as a failed read that names its status (raised by Copilot
  * on #98).
  */
@@ -326,6 +367,26 @@ export function makeGithubIo({ fetch, token, repo }) {
       if (status === "behind" || status === "diverged") return false;
       throw new Error(`GET ${path} -> a comparison status of ${JSON.stringify(status)}, which is not an answer`);
     },
+
+    /**
+     * The title of the pull request merged as `sha`, or null if none was.
+     *
+     * GitHub lists, for a commit on the default branch, the merged pull request that introduced it.
+     * Measured on 2026-09-15: `517d295`, #3's merge commit, and `aa3ca04`, #99's squash, each listed
+     * one pull request, whose `merge_commit_sha` was the commit asked about; `6afc2e1`, committed
+     * without one, listed none. The match is on `merge_commit_sha` because the title grants the
+     * override, so only the pull request this push merged may give it. A rebase merge has not been
+     * measured; if one does not match, the push falls back to the commit's message, as it read before.
+     */
+    pullTitle: async (sha) => {
+      const path = `commits/${sha}/pulls`;
+      const res = await get(path);
+      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+      const pulls = await res.json();
+      if (!Array.isArray(pulls)) throw new Error(`GET ${path} -> not a list`);
+      const merged = pulls.find((pull) => pull.merged_at && pull.merge_commit_sha === sha);
+      return merged ? merged.title : null;
+    },
   };
 }
 
@@ -347,9 +408,10 @@ if (isMain(import.meta.url)) {
   const io = makeGithubIo({ fetch, token: GH_TOKEN, repo: GITHUB_REPOSITORY });
   try {
     const base = await resolveBase({ event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, before: BEFORE }, io);
+    const subject = await resolveSubject({ event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, subject: SUBJECT }, io);
     console.log(`${GITHUB_EVENT_NAME}: CHANGELOG.md in the checkout, against ${base}`);
     const head = readFileSync("CHANGELOG.md", "utf8");
-    const { ok, messages } = await check({ io, base, head, subject: SUBJECT });
+    const { ok, messages } = await check({ io, base, head, subject });
     console.log(messages.join("\n"));
     process.exit(ok ? 0 : 1);
   } catch (error) {
