@@ -100,13 +100,14 @@ with a test that failed first (`0c6ff13`, 5 red of 195):
   was considered and rejected, because a skipped job reports success to a required check and could
   stand in for a real failure.
 
-**Declined, and left open for the maintainer:** that the job runs the checker from the pull request's
-own tree, so a pull request could change the checker to pass. True, and true of every check here —
-`verify`'s tests, `copilot-reviewed` and `branch-freshness` all run from the checkout — while the
-boundary `pr-intake.yml` draws is `pull_request_target`, which carries the base repository's token;
-this workflow uses `pull_request`. Hardening one job alone would not change that, so it is recorded as
-a question for the whole repository rather than patched here, and its thread is left unresolved so the
-decision is not taken by default.
+**Declined, and accepted for now by the maintainer:** that the job runs the checker from the pull
+request's own tree, so a pull request could change the checker to pass. True, and true of every check
+here — `verify`'s tests, `copilot-reviewed` and `branch-freshness` all run from the checkout — while
+the boundary `pr-intake.yml` draws is `pull_request_target`, which carries the base repository's
+token; this workflow uses `pull_request`. Hardening one job alone would not change that, so it is
+recorded as a question for the whole repository rather than patched here. Its thread was left
+unresolved so the decision would not be taken by default, and was resolved once the maintainer
+accepted it for now.
 
 The verify recipe at `175892f`: exit 0, **767 passed across 34 files**, 100% statements (263/263),
 branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabilities;
@@ -128,7 +129,8 @@ branches (100/100), functions (64/64) and lines (262/262) on `src/`, 0 vulnerabi
 - Whether the push run's cancellation gap is worth closing. Limiting `cancel-in-progress` to pull
   requests would let every run on `main` finish, at the cost of runner minutes on superseded pushes.
 - Whether checks should run their checker from a trusted revision rather than the pull request's own
-  tree. It would apply to every check here, not only `changelog`; raised by Copilot on #98.
+  tree. It would apply to every check here, not only `changelog`; raised by Copilot on #98, and
+  accepted for now.
 
 **Next action.** Nothing outstanding from this change beyond the open questions above.
 
