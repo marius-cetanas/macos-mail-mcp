@@ -105,6 +105,12 @@ separately from your commit subjects, which is the other reason to write them co
 (`feat:`, `fix:`, `perf:`, `feat!:`) — the version is derived from them too.
 `chore:`/`docs:`/`test:` alone are not releasable.
 
+**Put the entry under `## [Unreleased]`, and look at where it landed after a rebase.** Recording a
+release inserts its heading below `[Unreleased]`, so an entry appended before that can end up under
+the release once your branch is rebased or merged. The `changelog` check fails a pull request that
+changes the section of a version whose tag the base already contains; if that change is a
+deliberate correction, title the pull request with a `changelog` scope, as in `docs(changelog): …`.
+
 **Merging never publishes.** Pull requests can accumulate for as long as you like; shipping
 is always an explicit, separate action. The bump is computed once from everything since the
 last release, so five merged pull requests move 1.0.0 to 1.0.1, not to 1.0.5.

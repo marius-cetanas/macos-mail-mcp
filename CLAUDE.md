@@ -236,6 +236,20 @@ heading below it does.
 The window matters: the workflow never commits to `main`, so a version's entry can only be written
 **before its tag exists**. 1.3.1 shipped with no entry and had to be backfilled from its own commits.
 
+**Once the tag exists, that version's section is closed.** Inserting the heading moves the list
+that was `[Unreleased]`'s under the release, so a branch that had appended an entry to it can merge
+cleanly with the entry filed under a version it did not ship in, and the heading assertions above do
+not notice. The `changelog` job in `verify.yml` runs `scripts/changelog-sections.mjs`, which fails a
+change that alters or removes the section of a version whose tag the change's base already contains,
+asking the API because CI's checkout has no tags. A new section is free, so recording and backfilling
+are unaffected, and so is a section whose tag the base does not contain yet, where an entry merged
+before the tag really is in that release — including when the release tags that commit after it was
+pushed. On `main` it detects rather than prevents: a pull request checked before a release is
+tagged can still merge after it, since `strict` is off and nothing re-runs the check, and the push
+run then fails with the entry already landed. A deliberate correction to a shipped section carries
+a `changelog` scope in its pull request's title, and merges as a squash or a merge commit, because
+on `main` the title counts only for a commit that sits directly on the tip it was merged into.
+
 ### Why the ordering is what it is
 
 npm is published **first**; the tag is pushed only after the registry confirms the version

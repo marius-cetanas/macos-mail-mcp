@@ -80,6 +80,7 @@ Latent: as of this date the most reviews on any pull request here was 18, on #24
   `api` builds.
 - **The origin check is defensive, not measured.** Every `Link` seen stayed on api.github.com. It is
   there because the token, which holds `pull-requests: write` in that job, rides on every request.
+  _(Answered on 2026-09-15: kept, and now measured — see [the 2026-09-15 handoff](2026-09-15-the-questions-81-left-open.md).)_
 - **No new wiring in the CLI arm**, as the brief preferred; the composed tests cover the pairing it
   wires instead.
 
@@ -99,6 +100,7 @@ Resolved by hand into `[Unreleased]` → Internal.
 So for now it is a habit: after rebasing over a release being recorded, read where the entry landed
 rather than trusting a clean rebase. A check is possible but not obvious — an entry under a released
 version is sometimes backfilled on purpose, as 1.3.1's was — so it is left as a question below.
+_(Answered on 2026-09-15: a check now holds a tagged version's section as it shipped — see [the 2026-09-15 handoff](2026-09-15-the-questions-81-left-open.md).)_
 
 ## Found in passing *(not fixed here)*
 
@@ -121,12 +123,16 @@ version is sometimes backfilled on purpose, as 1.3.1's was — so it is left as 
 
 ## Open questions *(human-owned)*
 
-- Whether a check should keep entries out of a released version's section, given that backfilling
-  one is sometimes right.
-- Whether the origin check on `next` is wanted. It is defensive, and it turns a `Link` off
-  api.github.com into a red run.
+Both were answered on 2026-09-15, in [the 2026-09-15 handoff](2026-09-15-the-questions-81-left-open.md).
 
-**Next action.** Nothing outstanding from this change; the open questions above are the maintainer's.
+- Whether a check should keep entries out of a released version's section, given that backfilling
+  one is sometimes right. _Yes: a tagged section stays as it shipped, and a new section — a
+  backfill — is free._
+- Whether the origin check on `next` is wanted. It is defensive, and it turns a `Link` off
+  api.github.com into a red run. _Kept: without it, fetch would carry the token wherever the
+  link pointed._
+
+**Next action.** Nothing outstanding from this change; both open questions above are answered.
 
 **Recoverability.** Nothing partial: every change is in #81, and no tag, release or publish was
 touched.

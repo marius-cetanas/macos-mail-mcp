@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
@@ -1482,6 +1484,100 @@ describe("makeGithubIo", () => {
       );
       expect(g.calls).toHaveLength(1);
     });
+
+    /*
+     * Why the refusal above is not redundant with fetch's own protection, measured on the Node that
+     * runs this suite rather than asserted from one machine. fetch drops a caller-set `authorization`
+     * header only when a redirect crosses origins. A next link is a fresh request, so it keeps the
+     * header — which is what would carry the token off api.github.com if the refusal were removed.
+     * If a Node release ever stops sending it, this fails, and the refusal's reason has changed.
+     */
+    it("would otherwise send the token: fetch keeps it on a fresh request to another origin", async () => {
+      const seen: Array<{ path: string | undefined; authorization: string | null }> = [];
+      const listen = (handle: (req: IncomingMessage, res: ServerResponse) => void) =>
+        new Promise<Server>((resolve) => {
+          const server = createServer(handle);
+          server.listen(0, "127.0.0.1", () => resolve(server));
+        });
+      const origin = (server: Server) => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+      // Two listeners on different ports are two origins.
+      const elsewhere = await listen((req, res) => {
+        seen.push({ path: req.url, authorization: req.headers.authorization ?? null });
+        res.end("[]");
+      });
+      const api = await listen((_req, res) => {
+        res.writeHead(302, { location: `${origin(elsewhere)}/redirected` });
+        res.end();
+      });
+
+      try {
+        const headers = { authorization: "Bearer t" };
+        await (await fetch(`${origin(elsewhere)}/next`, { headers })).text();
+        await (await fetch(`${origin(api)}/redirect`, { headers })).text();
+      } finally {
+        for (const server of [api, elsewhere]) {
+          server.closeAllConnections();
+          server.close();
+        }
+      }
+
+      expect(seen).toEqual([
+        { path: "/next", authorization: "Bearer t" },
+        { path: "/redirected", authorization: null },
+      ]);
+    });
+
+    /*
+     * A redirect is refused rather than followed (raised by Copilot on #98). The origin check above
+     * reads only the link; fetch follows a redirect on its own, and the other origin's answer — the
+     * token dropped on the way, as the test above shows — would still be `ok` and read as a page.
+     * Under `redirect: "manual"` fetch hands back the 3xx itself, which `api` reports as a failed read.
+     */
+    it("follows no redirect, so another origin's answer is never read as a page", async () => {
+      const g = io([{ ok: false, status: 302 }]);
+      await expect(g.api("/reviews")).rejects.toThrow("GET pulls/7/reviews -> 302");
+      expect(g.calls[0].init?.redirect).toBe("manual");
+    });
+
+    // What `redirect: "manual"` does, measured on the Node running the suite: the 3xx comes back, it
+    // is not `ok`, and nothing is sent to the location it names.
+    it("gets the 3xx back under redirect: manual, and nothing reaches the other origin", async () => {
+      const reached: string[] = [];
+      const listen = (handle: (req: IncomingMessage, res: ServerResponse) => void) =>
+        new Promise<Server>((resolve) => {
+          const server = createServer(handle);
+          server.listen(0, "127.0.0.1", () => resolve(server));
+        });
+      const origin = (server: Server) => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+      const elsewhere = await listen((req, res) => {
+        reached.push(req.url ?? "");
+        res.end("[]");
+      });
+      const api = await listen((_req, res) => {
+        res.writeHead(302, { location: `${origin(elsewhere)}/redirected` });
+        res.end();
+      });
+
+      let status = 0;
+      let ok = true;
+      try {
+        const res = await fetch(`${origin(api)}/page`, {
+          headers: { authorization: "Bearer t" },
+          redirect: "manual",
+        });
+        ({ status, ok } = res);
+        await res.text();
+      } finally {
+        for (const server of [api, elsewhere]) {
+          server.closeAllConnections();
+          server.close();
+        }
+      }
+
+      expect({ status, ok, reached }).toEqual({ status: 302, ok: false, reached: [] });
+    });
   });
 
   describe("graphql", () => {
@@ -1618,6 +1714,27 @@ describe("makeGithubIo", () => {
       const g = io([{ body: {} }]);
       await expect(g.requestRound()).rejects.toThrow(/no node id in the response/);
     });
+  });
+
+  // Every request the module makes refuses redirects, not only the paged read Copilot pointed at on
+  // #98: the GraphQL post and the reviewer lookup carry the same token.
+  it("sends every request with redirect: manual", async () => {
+    const g = io([
+      {
+        body: [{ id: 1 }],
+        link: '<https://api.github.com/repositories/1/pulls/7/reviews?per_page=100&page=2>; rel="next"',
+      },
+      { body: [{ id: 2 }] },
+      { body: { data: { ok: 1 } } },
+      { body: { node_id: "BOT_x" } },
+      { body: { data: { repository: { pullRequest: { id: "PR_x" } } } } },
+      { body: { data: { requestReviews: { pullRequest: { reviewRequests: { nodes: [] } } } } } },
+    ]);
+    await g.api("/reviews");
+    await g.graphql("query{x}", {});
+    await g.requestRound();
+    expect(g.calls).toHaveLength(6);
+    expect(g.calls.map((c) => c.init?.redirect)).toEqual(Array(6).fill("manual"));
   });
 });
 

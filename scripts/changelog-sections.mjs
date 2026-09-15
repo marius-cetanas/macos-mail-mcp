@@ -1,0 +1,463 @@
+#!/usr/bin/env node
+/**
+ * Does this change put an entry into a section of `CHANGELOG.md` that a tag has already shipped?
+ *
+ * ## The defect this exists for
+ *
+ * The changelog is kept by hand, and a release is recorded by inserting its heading below the
+ * standing `## [Unreleased]` — so the list that was Unreleased's becomes the release's. A branch
+ * that had appended an entry to that list then merges cleanly, and its entry lands under a release
+ * it is not part of. Measured on 2026-09-14 with `git merge-file`, #81's entry over `main` as #78
+ * left it: zero conflicts, the entry under `## [2.0.0]`, and both test files that read
+ * `CHANGELOG.md` still passing, 12 of 12. It surfaced only because #77 had edited the same lines
+ * and the rebase conflicted.
+ *
+ * ## The tag decides, not the heading
+ *
+ * A recorded section is not yet a shipped one. #77 filed its entry under `## [2.0.0]` fifteen
+ * seconds after #78 recorded the version and four minutes before the tag — correctly, since an
+ * entry merged before the tag is in that release. Over the 21 commits that had touched
+ * `CHANGELOG.md` by 2026-09-14, "a tagged section is frozen" is red on none; "a recorded section is
+ * frozen" is red on #77. So the script asks GitHub whether the change's base already contains
+ * `v{version}`, and only for a section that changed: contains, not merely whether the tag exists by
+ * the time the check runs, because a release can tag the very commit a push brought in after that
+ * push, and the entry is then in that release (raised by Copilot on #98). CI cannot look itself:
+ * `actions/checkout` fetches one commit and no tags.
+ *
+ * ## What is compared
+ *
+ * The base's file against the file in the checkout. On `pull_request` the checkout is the merge
+ * commit and the base is its first parent — measured on 2026-09-15 on #82 and #83, where
+ * `GET commits/{merge_commit_sha}` returned parents `[base.sha, head.sha]`. That is exactly what
+ * merging would change, and the branch's own diff never shows it: against its merge-base, #81's
+ * branch only ever added an entry under `[Unreleased]`. On `push` the base is
+ * `github.event.before`, which also covers a push of several commits, though no one title speaks
+ * for several merges, so such a push gets no override (see `resolveSubject`).
+ *
+ * ## New sections are free, and a `changelog` scope overrides
+ *
+ * Recording a release adds a heading; backfilling one adds a whole section, as 1.3.1's did in #43.
+ * Neither alters a section the base has, so neither is a change here, and neither needs a subject of
+ * any particular shape — which matters, because releases were recorded as `docs:`, `feat:` and
+ * `chore(release):` before 1.3.2, and as `docs(changelog): record X.Y.Z` only since. A deliberate
+ * change to a shipped section — a correction — says so with a `changelog` scope in the subject, as
+ * those later recordings did, and the log says the scope allowed it.
+ */
+import { readFileSync } from "node:fs";
+import { nextPageUrl, REST_PAGE } from "./copilot-round.mjs";
+import { isMain } from "./is-main.mjs";
+
+/**
+ * The `## [name]` sections of a changelog, keyed by name: each from its heading line to the line
+ * before the next heading, trailing blank lines dropped so that inserting a neighbour leaves a
+ * section's text as it was. Text before the first heading belongs to no section. A name heading
+ * more than one section throws, since keeping either copy could hide a change to the other.
+ *
+ * @param {string} text the changelog
+ * @returns {Map<string, string>}
+ */
+export function sectionsOf(text) {
+  const sections = new Map();
+  let name = null;
+  let lines = [];
+  const close = () => {
+    if (name === null) return;
+    // Refused rather than written over: a Map keeps the last value under a key, so an unchanged copy
+    // appended after an altered section would hide the alteration (raised by Copilot on #98).
+    if (sections.has(name)) throw new Error(`more than one section is headed [${name}]`);
+    // Blank lines only. A trailing space is content, and two of them end a Markdown line in a hard
+    // break, so trimming them would let a shipped section change unseen (raised by Copilot on #98).
+    let end = lines.length;
+    while (end > 0 && lines[end - 1].trim() === "") end -= 1;
+    sections.set(name, lines.slice(0, end).join("\n"));
+  };
+  for (const line of text.split("\n")) {
+    const heading = /^## \[([^\]]+)\]/.exec(line);
+    if (heading) {
+      close();
+      name = heading[1];
+      lines = [line];
+    } else if (name !== null) {
+      lines.push(line);
+    }
+  }
+  close();
+  return sections;
+}
+
+/** A section name that is a version — `2.0.0` — as opposed to `Unreleased`. */
+export function isVersion(name) {
+  return /^\d+\.\d+\.\d+$/.test(name);
+}
+
+const firstLine = (subject) => String(subject ?? "").split("\n")[0];
+
+/**
+ * Does a subject carry the `changelog` scope — `docs(changelog): …`? Only the first line is read,
+ * because on a push the subject is the whole squash-merge message.
+ */
+export function hasChangelogScope(subject) {
+  return /^\w+\(changelog\)!?:/.test(firstLine(subject));
+}
+
+/**
+ * The most cells `lineDiff`'s table may have: 250,000, which is two sections of 499 lines. The table
+ * is the lines before times the lines after, and a pull request sets both, so without a bound the
+ * diff cost whatever a pull request made it cost (raised by Copilot on #98). Measured on 2026-09-15 on
+ * Node 26.8.1, a section rewritten whole: 499 lines a side took 2 ms and 6 MiB, and 10,000 took 524 ms
+ * and 820 MiB, memory growing with the cells. The longest version section on `main` that day was 47
+ * lines, 1.3.0's. A section past the bound is still a change, and still fails if its version has
+ * shipped; the report gives its length instead of its lines.
+ */
+export const DIFF_LIMIT = 250_000;
+
+/**
+ * The lines only one side has, in order and counting repeats: a longest-common-subsequence diff over
+ * whole lines, blank ones included. A set difference lost order and repetition, so a shipped section
+ * whose lines were only reordered or repeated failed with nothing reported as added or removed, and
+ * a blank line was left out of the report (raised by Copilot on #98).
+ *
+ * @param {string[]} was
+ * @param {string[]} is
+ * @returns {{ added: string[], removed: string[] }}
+ */
+const lineDiff = (was, is) => {
+  const common = Array.from({ length: was.length + 1 }, () => new Array(is.length + 1).fill(0));
+  for (let i = was.length - 1; i >= 0; i -= 1) {
+    for (let j = is.length - 1; j >= 0; j -= 1) {
+      common[i][j] =
+        was[i] === is[j] ? common[i + 1][j + 1] + 1 : Math.max(common[i + 1][j], common[i][j + 1]);
+    }
+  }
+  const added = [];
+  const removed = [];
+  let i = 0;
+  let j = 0;
+  while (i < was.length && j < is.length) {
+    if (was[i] === is[j]) {
+      i += 1;
+      j += 1;
+    } else if (common[i + 1][j] >= common[i][j + 1]) {
+      removed.push(was[i]);
+      i += 1;
+    } else {
+      added.push(is[j]);
+      j += 1;
+    }
+  }
+  return { added: added.concat(is.slice(j)), removed: removed.concat(was.slice(i)) };
+};
+
+/** `sectionsOf`, with the file a refusal came from named in its message. */
+const sectionsIn = (text, whose) => {
+  try {
+    return sectionsOf(text);
+  } catch (error) {
+    throw new Error(`${whose} CHANGELOG.md: ${error instanceof Error ? error.message : String(error)}`);
+  }
+};
+
+/**
+ * Every version section of `base` that `head` alters or lacks. `[Unreleased]` is not a version and
+ * is free to change; a section only `head` has is new, and free too. A changed section whose diff
+ * would pass `DIFF_LIMIT` comes back with `diffed: false` and its line counts instead of its lines.
+ *
+ * @returns {Array<
+ *   | { version: string, kind: "changed" | "removed", added: string[], removed: string[] }
+ *   | { version: string, kind: "changed", diffed: false, lines: { before: number, after: number } }
+ * >}
+ */
+export function changedSections(baseText, headText) {
+  const base = sectionsIn(baseText, "the base's");
+  const head = sectionsIn(headText, "the checkout's");
+  const changes = [];
+  for (const [version, before] of base) {
+    if (!isVersion(version)) continue;
+    const after = head.get(version);
+    const was = before.split("\n");
+    if (after === undefined) {
+      changes.push({ version, kind: "removed", added: [], removed: was });
+    } else if (after !== before) {
+      const is = after.split("\n");
+      changes.push(
+        (was.length + 1) * (is.length + 1) > DIFF_LIMIT
+          ? { version, kind: "changed", diffed: false, lines: { before: was.length, after: is.length } }
+          : { version, kind: "changed", ...lineDiff(was, is) }
+      );
+    }
+  }
+  return changes;
+}
+
+// A blank line would print as nothing, and a report that shows nothing is what was being fixed.
+const indent = (lines) =>
+  lines.map((line) => `  ${line.trim() === "" ? "(blank line)" : line}`).join("\n");
+
+/**
+ * The answer, from what was measured: the version sections that changed, which of those versions'
+ * tags the base already contains, and the subject. Pure, so every shape is a test.
+ *
+ * @param {{ changes: ReturnType<typeof changedSections>, tagged: Set<string>, subject?: string }} input
+ * @returns {{ ok: boolean, messages: string[] }}
+ */
+export function verdict({ changes, tagged, subject }) {
+  const messages = [];
+  let shipped = 0;
+  for (const { version, kind, added, removed, diffed, lines } of changes) {
+    const tag = `v${version}`;
+    if (!tagged.has(version)) {
+      messages.push(
+        `## [${version}] ${kind === "removed" ? "is removed" : "changed"}, and ${tag} is not reachable from the base, so the section had not shipped when this change was made: allowed.`
+      );
+      continue;
+    }
+    shipped += 1;
+    if (kind === "removed") {
+      messages.push(
+        `## [${version}] shipped before this change (${tag} is reachable from the base), and this change removes it.`
+      );
+    } else if (diffed === false) {
+      messages.push(
+        `## [${version}] shipped before this change (${tag} is reachable from the base), and this change alters it: ${lines.before} lines before and ${lines.after} after, too long to diff here.`
+      );
+    } else {
+      messages.push(
+        [
+          `## [${version}] shipped before this change (${tag} is reachable from the base), and this change alters it: ${added.length} line(s) added, ${removed.length} removed.`,
+          ...(added.length ? ["  added:", indent(added)] : []),
+          ...(removed.length ? ["  removed:", indent(removed)] : []),
+        ].join("\n")
+      );
+    }
+  }
+
+  if (shipped === 0) {
+    if (changes.length === 0) messages.push("no version section of CHANGELOG.md changed against the base.");
+    return { ok: true, messages };
+  }
+  if (hasChangelogScope(subject)) {
+    messages.push(`allowed: the subject carries the changelog scope — "${firstLine(subject)}".`);
+    return { ok: true, messages };
+  }
+  messages.push(
+    "A tag has shipped that section as it was. An entry for a change that has not shipped belongs " +
+      "under ## [Unreleased]; a deliberate change to a shipped section says so with a changelog " +
+      'scope in the subject, as in "docs(changelog): …".'
+  );
+  return { ok: false, messages };
+}
+
+const NULL_SHA = "0".repeat(40);
+
+/**
+ * The commit to compare the checkout against. On `pull_request` `GITHUB_SHA` is the merge commit
+ * and the base is its first parent; on `push` it is `BEFORE`; any other event has no base here.
+ *
+ * @param {{ event: string, sha: string, before?: string }} run
+ * @param {{ parents: (sha: string) => Promise<string[]> }} io
+ */
+export async function resolveBase({ event, sha, before }, io) {
+  if (event === "pull_request") {
+    const parents = await io.parents(sha);
+    if (parents.length !== 2) {
+      throw new Error(
+        `commits/${sha} reports ${parents.length} parent${parents.length === 1 ? "" : "s"}, not the 2 of a merge commit; on pull_request GITHUB_SHA should be the merge commit`
+      );
+    }
+    return parents[0];
+  }
+  if (event === "push") {
+    if (!before) throw new Error("push event with BEFORE unset: nothing to compare against");
+    if (before === NULL_SHA) throw new Error("push event with BEFORE the null SHA: nothing to compare against");
+    return before;
+  }
+  throw new Error(`event ${event}: this check has a base on pull_request and push only`);
+}
+
+/**
+ * The subject the override reads, and where it came from, for the log. On `pull_request` it is the
+ * pull request's title, which the workflow passes. On `push` the workflow can pass only the pushed
+ * commit's message, and that need not be the title the pull request was checked with: a merge commit
+ * reads "Merge pull request #N from …", as `517d295`, #3's, does, and as of 2026-09-15 this repository
+ * squashes with `COMMIT_OR_PR_TITLE`, which GitHub documents as a lone commit's own title. A correction
+ * scoped in its title would then pass its pull request and fail on `main` (raised by Copilot on #98).
+ * So a push asks which pull request was merged as the commit, and uses the message only when there is
+ * none.
+ *
+ * Only for a commit that sits directly on BEFORE, though. A push is judged from BEFORE, and a title
+ * speaks for one pull request's merge: were a push to hold two, the second's title would pass a change
+ * to a shipped section made by the first (raised by Copilot on #98). A squash or a merge commit sits on
+ * the tip it was merged into. Measured on 2026-09-15: each of the nine pushes to `main` the events API
+ * listed had one parent, its `before`, and was one pull request's merge commit; and `main` has no merge
+ * queue. A pushed commit that does not sit on BEFORE, as the last of several merges or of a rebase
+ * merge of several commits would not, reads no subject, and a change to a shipped section in it fails.
+ *
+ * @param {{ event: string, sha: string, before?: string, subject?: string }} run
+ * @param {{ parents: (sha: string) => Promise<string[]>, pullTitle: (sha: string) => Promise<string | null> }} io
+ * @returns {Promise<{ subject: string | null | undefined, source: string }>}
+ */
+export async function resolveSubject({ event, sha, before, subject }, io) {
+  if (event !== "push") return { subject, source: "the pull request's title" };
+  const [first] = await io.parents(sha);
+  if (first !== before) {
+    return {
+      subject: null,
+      source: `nothing, since ${sha}'s first parent is ${first}, not ${before}, so no one pull request accounts for the push`,
+    };
+  }
+  const title = await io.pullTitle(sha);
+  if (title === null) {
+    return { subject, source: "the pushed commit's message, since no pull request was merged as it" };
+  }
+  return { subject: title, source: "the title of the pull request merged as the pushed commit" };
+}
+
+/**
+ * The whole check over an `io`: the base's file, the sections that changed, one tag probe per
+ * changed version and none otherwise, then the verdict.
+ *
+ * @param {{ io: ReturnType<typeof makeGithubIo>, base: string, head: string, subject?: string }} input
+ */
+export async function check({ io, base, head, subject }) {
+  const changes = changedSections(await io.file(base), head);
+  const tagged = new Set();
+  for (const { version } of changes) {
+    if (await io.shippedBefore(version, base)) tagged.add(version);
+  }
+  return verdict({ changes, tagged, subject });
+}
+
+/**
+ * The reads, over an injected `fetch`. Every request carries the token and goes to api.github.com:
+ * built here from a path, or a next page checked to be there before it is asked for. None follows a
+ * redirect: fetch would otherwise follow a 3xx to another origin and hand back that origin's answer as
+ * the file, the parents, the tag or the pull request. Under `redirect: "manual"` the 3xx comes back as
+ * a failed read that names its status (raised by Copilot on #98).
+ */
+export function makeGithubIo({ fetch, token, repo }) {
+  const headers = {
+    authorization: `Bearer ${token}`,
+    accept: "application/vnd.github+json",
+    "user-agent": "macos-mail-mcp-changelog-sections",
+  };
+  const get = (path, accept = headers.accept) =>
+    fetch(`https://api.github.com/repos/${repo}/${path}`, {
+      headers: { ...headers, accept },
+      redirect: "manual",
+    });
+
+  return {
+    /** `CHANGELOG.md` as it is at `ref`, raw. Measured on 2026-09-14 at `17cc876`. */
+    file: async (ref) => {
+      const path = `contents/CHANGELOG.md?ref=${ref}`;
+      const res = await get(path, "application/vnd.github.raw+json");
+      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+      return res.text();
+    },
+
+    /** The parent SHAs of a commit, in the order the commit records them. */
+    parents: async (sha) => {
+      const path = `commits/${sha}`;
+      const res = await get(path);
+      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+      const { parents } = await res.json();
+      return (parents ?? []).map((parent) => parent.sha);
+    },
+
+    /**
+     * Had `v{version}` shipped by `base`, the commit the change is compared against?
+     *
+     * Existence first: 200 is a tag and 404 is none, measured on 2026-09-14 with `v2.0.0` and
+     * `v9.9.9`. Then GitHub's comparison of the tag with the base, because a tag that exists by the
+     * time the check runs may have been cut after the base: a release can tag the very commit a push
+     * brought in, after that push (raised by Copilot on #98). `ahead` and `identical` mean the base
+     * contains the tag's commit; `behind` and `diverged` mean it does not. Measured on 2026-09-15
+     * against `v2.0.0`, an annotated tag on `878af79`: `ahead` from a later commit, `identical` from
+     * `878af79`, `behind` from the commit before it. Anything else, including a 404 from the
+     * comparison once the tag is known to exist, is not an answer, and reading it as one would be a
+     * wrong answer given silently.
+     */
+    shippedBefore: async (version, base) => {
+      const ref = `git/ref/tags/v${version}`;
+      const tag = await get(ref);
+      if (tag.status === 404) return false;
+      if (tag.status !== 200) throw new Error(`GET ${ref} -> ${tag.status}`);
+      const path = `compare/v${version}...${base}`;
+      const res = await get(path);
+      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+      const { status } = await res.json();
+      if (status === "ahead" || status === "identical") return true;
+      if (status === "behind" || status === "diverged") return false;
+      throw new Error(`GET ${path} -> a comparison status of ${JSON.stringify(status)}, which is not an answer`);
+    },
+
+    /**
+     * The title of the pull request merged as `sha`, or null if none was.
+     *
+     * GitHub lists, for a commit on the default branch, the merged pull request that introduced it.
+     * Measured on 2026-09-15: `517d295`, #3's merge commit, and `aa3ca04`, #99's squash, each listed
+     * one pull request, whose `merge_commit_sha` was the commit asked about; `6afc2e1`, committed
+     * without one, listed none. It is still a list, which the docs page 30 at a time, and reading one
+     * page of a list is the defect #81 fixed (raised by Copilot on #98). So every page is read, 100 at
+     * a time, through `copilot-round.mjs`'s `nextPageUrl`; and since the token goes with every request,
+     * a next page off api.github.com is refused before it is asked for, as that reader refuses one.
+     *
+     * The match is on `merge_commit_sha` because the title grants the override, so only the pull
+     * request this push merged may give it. A rebase merge has not been measured; if one does not
+     * match, the push falls back to the commit's message, as it read before.
+     */
+    pullTitle: async (sha) => {
+      const path = `commits/${sha}/pulls`;
+      const pulls = [];
+      let url = `https://api.github.com/repos/${repo}/${path}?per_page=${REST_PAGE}`;
+      for (let page = 1; url; page += 1) {
+        const where = page === 1 ? path : `${path} (page ${page})`;
+        if (new URL(url).origin !== "https://api.github.com") {
+          throw new Error(`GET ${where} -> not followed: ${url} is off api.github.com`);
+        }
+        const res = await fetch(url, { headers, redirect: "manual" });
+        if (!res.ok) throw new Error(`GET ${where} -> ${res.status}`);
+        const list = await res.json();
+        if (!Array.isArray(list)) throw new Error(`GET ${where} -> not a list`);
+        pulls.push(...list);
+        url = nextPageUrl(res.headers.get("link"));
+      }
+      const merged = pulls.find((pull) => pull.merged_at && pull.merge_commit_sha === sha);
+      return merged ? merged.title : null;
+    },
+  };
+}
+
+/** `["a", "b", "c"]` → `a, b and c`. */
+const spoken = (list) =>
+  list.length < 2 ? list.join("") : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+
+/* c8 ignore start -- CLI arm; everything it calls is exercised above */
+if (isMain(import.meta.url)) {
+  const { GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_EVENT_NAME, BEFORE, SUBJECT } = process.env;
+  const missing = Object.entries({ GH_TOKEN, GITHUB_REPOSITORY, GITHUB_SHA, GITHUB_EVENT_NAME })
+    .filter(([, value]) => !value)
+    .map(([name]) => name);
+  if (missing.length > 0) {
+    console.error(`need ${spoken(missing)}`);
+    process.exit(1);
+  }
+
+  const io = makeGithubIo({ fetch, token: GH_TOKEN, repo: GITHUB_REPOSITORY });
+  try {
+    const base = await resolveBase({ event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, before: BEFORE }, io);
+    const { subject, source } = await resolveSubject(
+      { event: GITHUB_EVENT_NAME, sha: GITHUB_SHA, before: BEFORE, subject: SUBJECT },
+      io
+    );
+    console.log(`${GITHUB_EVENT_NAME}: CHANGELOG.md in the checkout, against ${base}; the override reads ${source}`);
+    const head = readFileSync("CHANGELOG.md", "utf8");
+    const { ok, messages } = await check({ io, base, head, subject });
+    console.log(messages.join("\n"));
+    process.exit(ok ? 0 : 1);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+/* c8 ignore stop */

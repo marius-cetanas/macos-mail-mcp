@@ -65,6 +65,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails unless the live column says `false` and the export column says `true`.
 - `scripts/branch-freshness.mjs` no longer attributes to the gate map a sentence the gate map
   dropped in #37. It paraphrases what the map records instead of quoting it.
+- A change to a released version's section of `CHANGELOG.md` now fails CI. Recording a release
+  inserts its heading below `[Unreleased]`, so the list an in-flight branch had appended an entry to
+  becomes the release's, and a clean rebase or merge then files that entry under a version it did
+  not ship in — measured on 2026-09-14 with #81's entry, which merged with no conflict under
+  `## [2.0.0]` while every test that reads this file still passed. A new `changelog` job, which
+  `verify` depends on, fails a change that alters or removes the section of a version whose tag the
+  change's base already contains. New sections — a recording, or a backfill such as 1.3.1's — and
+  sections whose tag the base does not contain yet stay open, so a release that tags a commit after
+  it was pushed does not turn `main` red. A pull request checked before a release is tagged can
+  still merge after it, since nothing re-runs its check; the job then fails on `main`, after the
+  entry has landed there. A pull request titled with a `changelog` scope, such as
+  `docs(changelog): …`, overrides for a deliberate correction. On `main` the check reads the title
+  of the pull request merged as the pushed commit, because that commit's message need not be the
+  title, and only when the commit sits directly on the previous tip, since a push holding more than
+  one merge has no one title; on a pull request it re-runs when the title changes. A file with two
+  sections under the same heading is refused, because the second would hide a change to the first,
+  and a change to a section too long to diff cheaply is reported by the section's length rather than
+  its lines. Over the 21 commits that had touched this file by 2026-09-14, the rule fires on none.
+- The refusal to follow a `Link: rel="next"` off api.github.com, which #81 added as a precaution,
+  now rests on a measurement: fetch drops a caller-set `authorization` header only when a redirect
+  crosses origins, so a next link, being a fresh request, would carry the token wherever it pointed.
+  A test measures that on the Node running the suite. No request either check makes follows a
+  redirect: fetch would follow a 3xx to another origin and hand back that origin's answer, so a
+  redirect is now a failed read that names its status.
+- `branch-freshness` now also re-runs when a pull request is edited, which includes a change of base.
+  Its answer depends on the base, and a pull request retargeted to `main` keeps its head, so the
+  freshness it had passed against the old base used to stand for the new one.
 
 ## [2.0.0] - 2026-09-14
 

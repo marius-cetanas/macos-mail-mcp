@@ -12,7 +12,10 @@ name: branch freshness
 
 on:
   pull_request:
-    types: [opened, reopened, synchronize]
+    # `edited` includes a change of base. A retargeted pull request keeps its head, so without it the
+    # freshness this check passed against the old base would stand for the new one (raised by Copilot
+    # on #98). `BASE` below comes from the event payload, which carries the pull request as edited.
+    types: [opened, reopened, synchronize, edited]
 
 permissions:
   contents: read
