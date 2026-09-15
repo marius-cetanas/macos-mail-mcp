@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
+  copiesOf,
   sectionsOf,
   isVersion,
   hasChangelogScope,
@@ -722,6 +723,8 @@ describe("verify.yml runs it", () => {
 
   it("on both events the script accepts, so a merge that lands after a release is caught on main", () => {
     expect(Object.keys(ci.on)).toEqual(expect.arrayContaining(["push", "pull_request"]));
+    // The push run judges the tip it was pushed to, so it is `main` it has to be listening on.
+    expect(ci.on.push.branches).toEqual(["main"]);
   });
 
   /*
@@ -805,5 +808,85 @@ describe("changelog-sections CLI", () => {
     expect(code).toBe(1);
     expect(err).toMatch(/schedule/);
     expect(err).not.toMatch(/at .*changelog-sections\.mjs:\d+/);
+  });
+});
+
+describe("copiesOf", () => {
+  it("keeps every copy under its name, in order", () => {
+    const twice = `${RECORDED}## [2.0.0] - 2026-09-14\n\n- A copy.\n`;
+    expect(copiesOf(twice).get("2.0.0")).toEqual([
+      "## [2.0.0] - 2026-09-14\n\n### Internal\n\n- Vitest 4 → 5, with `@vitest/coverage-v8` moved alongside it.",
+      "## [2.0.0] - 2026-09-14\n\n- A copy.",
+    ]);
+    expect(copiesOf(RECORDED).get("2.0.0")).toHaveLength(1);
+  });
+});
+
+/**
+ * A duplicate that reached `main`. Two pull requests record the same release, each green against the
+ * old base, and the second merges on its stale check — the race the check documents — so `main`
+ * carries two sections under one version and the push run goes red, as designed. The base of every
+ * pull request after that is a merge commit's first parent, so every checkout inherits the duplicate:
+ * refusing it wherever it was found failed all of them, the one removing it included, and nothing
+ * short of a pull request that also changed this script could pass. (Found in a review of the changes
+ * since 2.0.0, on 2026-09-15.)
+ */
+describe("a duplicate the base already carries", () => {
+  const copy = sectionsOf(RECORDED).get("2.0.0")!;
+  const DOUBLED = `${RECORDED}${copy}\n`;
+
+  it("is passed over when the checkout inherits it unchanged, so an unrelated change is not refused", () => {
+    const unrelated = DOUBLED.replace(
+      "## [Unreleased]\n",
+      "## [Unreleased]\n\n### Internal\n\n- Something else entirely.\n"
+    );
+    expect(changedSections(DOUBLED, unrelated)).toEqual([]);
+  });
+
+  it("is a change to that version when the checkout resolves it, reported by copies rather than lines", () => {
+    expect(changedSections(DOUBLED, RECORDED)).toEqual([
+      { version: "2.0.0", kind: "changed", diffed: false, copies: { before: 2, after: 1 } },
+    ]);
+  });
+
+  it("is removed when the checkout drops every copy", () => {
+    const dropped = RECORDED.replace(`${copy}\n\n`, "");
+    expect(sectionsOf(dropped).has("2.0.0")).toBe(false);
+    expect(changedSections(DOUBLED, dropped)).toEqual([
+      { version: "2.0.0", kind: "removed", diffed: false, copies: { before: 2, after: 0 } },
+    ]);
+  });
+
+  // The bypass stays closed: a change to either copy is not an inherited duplicate.
+  it("is still refused when the checkout alters one of the copies", () => {
+    const altered = `${RECORDED}${copy.replace("moved alongside it.", "moved alongside it, altered.")}\n`;
+    expect(() => changedSections(DOUBLED, altered)).toThrow(
+      "the checkout's CHANGELOG.md: more than one section is headed [2.0.0]"
+    );
+  });
+
+  it("is refused when the checkout adds a third", () => {
+    expect(() => changedSections(DOUBLED, `${DOUBLED}${copy}\n`)).toThrow(
+      "the checkout's CHANGELOG.md: more than one section is headed [2.0.0]"
+    );
+  });
+
+  it("needs the changelog scope to resolve, once that version has shipped", () => {
+    const changes = changedSections(DOUBLED, RECORDED);
+    const shipped = verdict({ changes, tagged: new Set(["2.0.0"]), subject: "docs: tidy" });
+    expect(shipped.ok).toBe(false);
+    expect(shipped.messages.join("\n")).toContain(
+      "the base heads 2 sections [2.0.0] and this change leaves 1, which cannot be compared line by line"
+    );
+    expect(verdict({ changes, tagged: new Set(["2.0.0"]), subject: "docs(changelog): resolve" }).ok).toBe(true);
+    expect(verdict({ changes, tagged: new Set(), subject: "docs: tidy" }).ok).toBe(true);
+  });
+
+  it("passes an unrelated change end to end, over a base that carries the duplicate", async () => {
+    const g = io({ [`contents/CHANGELOG.md?ref=${B}`]: { text: DOUBLED } });
+    const unrelated = DOUBLED.replace("## [Unreleased]\n", "## [Unreleased]\n\n- Something else.\n");
+    const result = await check({ io: g, base: B, head: unrelated, subject: "docs: unrelated" });
+    expect(result.ok).toBe(true);
+    expect(g.calls.map((c) => c.url).filter((u) => u.includes("git/ref/tags/"))).toEqual([]);
   });
 });

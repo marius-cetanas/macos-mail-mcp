@@ -1,7 +1,5 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
 import { join } from "node:path";
 import { parse } from "yaml";
 import {
@@ -24,9 +22,8 @@ import {
   COPILOT_BOT_LOGIN,
   makeGithubIo,
   REVIEWER_PAGE,
-  REST_PAGE,
-  nextPageUrl,
 } from "../../scripts/copilot-round.mjs";
+import { REST_PAGE } from "../../scripts/github-api.mjs";
 
 const HEAD = "a".repeat(40);
 const OLDER = "b".repeat(40);
@@ -1484,50 +1481,6 @@ describe("makeGithubIo", () => {
       );
       expect(g.calls).toHaveLength(1);
     });
-
-    /*
-     * Why the refusal above is not redundant with fetch's own protection, measured on the Node that
-     * runs this suite rather than asserted from one machine. fetch drops a caller-set `authorization`
-     * header only when a redirect crosses origins. A next link is a fresh request, so it keeps the
-     * header — which is what would carry the token off api.github.com if the refusal were removed.
-     * If a Node release ever stops sending it, this fails, and the refusal's reason has changed.
-     */
-    it("would otherwise send the token: fetch keeps it on a fresh request to another origin", async () => {
-      const seen: Array<{ path: string | undefined; authorization: string | null }> = [];
-      const listen = (handle: (req: IncomingMessage, res: ServerResponse) => void) =>
-        new Promise<Server>((resolve) => {
-          const server = createServer(handle);
-          server.listen(0, "127.0.0.1", () => resolve(server));
-        });
-      const origin = (server: Server) => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-
-      // Two listeners on different ports are two origins.
-      const elsewhere = await listen((req, res) => {
-        seen.push({ path: req.url, authorization: req.headers.authorization ?? null });
-        res.end("[]");
-      });
-      const api = await listen((_req, res) => {
-        res.writeHead(302, { location: `${origin(elsewhere)}/redirected` });
-        res.end();
-      });
-
-      try {
-        const headers = { authorization: "Bearer t" };
-        await (await fetch(`${origin(elsewhere)}/next`, { headers })).text();
-        await (await fetch(`${origin(api)}/redirect`, { headers })).text();
-      } finally {
-        for (const server of [api, elsewhere]) {
-          server.closeAllConnections();
-          server.close();
-        }
-      }
-
-      expect(seen).toEqual([
-        { path: "/next", authorization: "Bearer t" },
-        { path: "/redirected", authorization: null },
-      ]);
-    });
-
     /*
      * A redirect is refused rather than followed (raised by Copilot on #98). The origin check above
      * reads only the link; fetch follows a redirect on its own, and the other origin's answer — the
@@ -1538,45 +1491,6 @@ describe("makeGithubIo", () => {
       const g = io([{ ok: false, status: 302 }]);
       await expect(g.api("/reviews")).rejects.toThrow("GET pulls/7/reviews -> 302");
       expect(g.calls[0].init?.redirect).toBe("manual");
-    });
-
-    // What `redirect: "manual"` does, measured on the Node running the suite: the 3xx comes back, it
-    // is not `ok`, and nothing is sent to the location it names.
-    it("gets the 3xx back under redirect: manual, and nothing reaches the other origin", async () => {
-      const reached: string[] = [];
-      const listen = (handle: (req: IncomingMessage, res: ServerResponse) => void) =>
-        new Promise<Server>((resolve) => {
-          const server = createServer(handle);
-          server.listen(0, "127.0.0.1", () => resolve(server));
-        });
-      const origin = (server: Server) => `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-
-      const elsewhere = await listen((req, res) => {
-        reached.push(req.url ?? "");
-        res.end("[]");
-      });
-      const api = await listen((_req, res) => {
-        res.writeHead(302, { location: `${origin(elsewhere)}/redirected` });
-        res.end();
-      });
-
-      let status = 0;
-      let ok = true;
-      try {
-        const res = await fetch(`${origin(api)}/page`, {
-          headers: { authorization: "Bearer t" },
-          redirect: "manual",
-        });
-        ({ status, ok } = res);
-        await res.text();
-      } finally {
-        for (const server of [api, elsewhere]) {
-          server.closeAllConnections();
-          server.close();
-        }
-      }
-
-      expect({ status, ok, reached }).toEqual({ status: 302, ok: false, reached: [] });
     });
   });
 
@@ -1735,52 +1649,6 @@ describe("makeGithubIo", () => {
     await g.requestRound();
     expect(g.calls).toHaveLength(6);
     expect(g.calls.map((c) => c.init?.redirect)).toEqual(Array(6).fill("manual"));
-  });
-});
-
-/**
- * `Link` headers exactly as GitHub sent them for `GET /pulls/24/reviews?per_page=5` on this
- * repository on 2026-09-14: the first page, a middle one, and the last, which names no `next`.
- */
-const LINK_FIRST =
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=2>; rel="next", ' +
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=4>; rel="last"';
-const LINK_MIDDLE =
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="prev", ' +
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3>; rel="next", ' +
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=4>; rel="last", ' +
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="first"';
-const LINK_LAST =
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3>; rel="prev", ' +
-  '<https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=1>; rel="first"';
-
-describe("nextPageUrl", () => {
-  it("reads the next page off the first page's header", () => {
-    expect(nextPageUrl(LINK_FIRST)).toBe(
-      "https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=2"
-    );
-  });
-
-  /*
-   * On a middle page `prev` comes first. A reader that took the first link would go from page 2
-   * back to page 1, whose first link is page 2 again — round and round, never reaching the last.
-   */
-  it("finds next by name, wherever it sits", () => {
-    expect(nextPageUrl(LINK_MIDDLE)).toBe(
-      "https://api.github.com/repositories/1191561833/pulls/24/reviews?per_page=5&page=3"
-    );
-  });
-
-  it("is null on the last page, which names no next", () => {
-    expect(nextPageUrl(LINK_LAST)).toBe(null);
-  });
-
-  // A list that fits on one page sends no `Link` header at all — measured on #24's 18 reviews with
-  // no `per_page` — and neither does the single pull request endpoint.
-  it("is null when there is no header", () => {
-    expect(nextPageUrl(null)).toBe(null);
-    expect(nextPageUrl(undefined)).toBe(null);
-    expect(nextPageUrl("")).toBe(null);
   });
 });
 

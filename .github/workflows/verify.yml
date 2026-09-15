@@ -15,7 +15,7 @@ on:
   # the head, which a retarget does not change, so a re-run would give the same answer; and `analyze`
   # runs only for pull requests into `main`, so one retargeted into `main` has no status to reuse and
   # waits for a push. Whether `copilot-reviewed` should also judge the base is an open question in
-  # the 2026-09-15 handoff.
+  # `.portulan/handoffs/2026-09-15-the-questions-81-left-open.md`.
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
@@ -116,26 +116,30 @@ jobs:
   # commit a push brought in after that push (raised by Copilot on #98). CI cannot look itself: the
   # checkout is one commit with no tags. See `scripts/changelog-sections.mjs`.
   #
-  # It runs on push as well as on pull_request because `strict` is off (`.portulan/gate-map.md`): a
-  # pull request checked before a release is tagged can merge after it, unchanged, because neither a
-  # new commit on `main` nor a new tag starts a pull_request run (raised by Copilot on #98: the old
-  # wording, "when only the base moves", read as a retarget, which `edited` now covers). On push the
-  # comparison is `github.event.before` against the pushed tip, so a misfiling that lands that way
-  # turns `main` red.
+  # It runs on push as well as on pull_request because nothing re-runs a pull request's check when
+  # a tag appears: neither a new commit on `main` nor a new tag starts a pull_request run, so a pull
+  # request checked before a release is tagged can merge after it, unchanged (raised by Copilot on
+  # #98: the old wording, "when only the base moves", read as a retarget, which `edited` now covers).
+  # `strict` being off (`.portulan/gate-map.md`) widens the window to a `main` that has moved, and
+  # turning it on would not close it, since a tag moves no branch. On push the comparison is
+  # `github.event.before` against the pushed tip, so a misfiling that lands that way turns `main` red.
   #
   # Two gaps are known, and this job closes neither. That red is detection, not prevention: the
   # entry is already on `main` when it shows (raised by Copilot on #98). Preventing it needs the
   # check run again as the pull request merges, against the base and tags as they are then, which
-  # needs a branch-protection change such as a merge queue; the 2026-09-15 handoff leaves that open.
+  # needs a branch-protection change such as a merge queue;
+  # `.portulan/handoffs/2026-09-15-the-questions-81-left-open.md` leaves that open.
   # And detection can be missed: `concurrency` above cancels a run in progress when another push to
   # `main` arrives, and if that happens before this job finishes, the next run's `before` already
   # contains the entry. #78 and #77 merged fifteen seconds apart, so pushes that close together do
   # happen here.
   #
-  # No `npm ci`: the script uses only Node built-ins, `scripts/is-main.mjs`, and the page reading it
-  # shares with `scripts/copilot-round.mjs`, which imports nothing more, so the job installs nothing
-  # and caches nothing. It joins `verify`'s dependencies rather than becoming a required check of
-  # its own, so the merge gate covers it without a branch-protection change.
+  # No `npm ci`: the script imports Node built-ins and other files under `scripts/` — the GitHub
+  # reader every check shares among them — and nothing installed, so the job installs nothing and
+  # caches nothing. `tests/workflows/script-imports.test.ts` holds every script a job runs without
+  # `npm ci` to that, because one package import anywhere in the graph would turn a required check
+  # red on every pull request at once. It joins `verify`'s dependencies rather than becoming a
+  # required check of its own, so the merge gate covers it without a branch-protection change.
   changelog:
     name: changelog
     runs-on: ubuntu-latest
