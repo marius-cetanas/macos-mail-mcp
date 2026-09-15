@@ -1,6 +1,8 @@
 # Handoff — a reply is not a review
 
-**State, at session close on 2026-09-14.** Pull request #82 from `claude/goofy-nash-ee3861`, rebased
+**State, as of the end of 2026-09-14.** The session ran past midnight, and
+[the 2026-09-15 handoff](2026-09-15-the-reply-auto-fix-posted.md) holds what followed. Pull request
+#82 from `claude/goofy-nash-ee3861`, rebased
 onto `main` after #81 merged. Merging it is Gated, as every merge here is. The branch keeps the
 change's history: the failing tests alone first, then the fix, the adjustments an independent review
 required, this handoff and its amendments, fixes for the notes in Copilot's rounds, and the change
