@@ -139,6 +139,12 @@ of it passed. It now refuses a repeated name and says which file it was in, with
 first. Neither this branch's `CHANGELOG.md` nor `main`'s has a repeated heading, so no pull request
 starts failing on it.
 
+The same review's suppressed comment was about the report, not the rule. `changedSections` worked out
+added and removed lines with a set difference, so a shipped section whose lines were only reordered or
+repeated failed with "0 line(s) added, 0 removed" and no lines shown, and an added blank line was left
+out of the report. It now diffs in order and counting repeats, and shows a blank line as
+`(blank line)`, with tests that failed first.
+
 ## Found in passing *(not fixed here)*
 
 - `.portulan/dod.md` condition 7 said `strict` forces a rebase whenever `main` moves; the gate map

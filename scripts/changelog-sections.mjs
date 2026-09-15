@@ -96,10 +96,41 @@ export function hasChangelogScope(subject) {
   return /^\w+\(changelog\)!?:/.test(firstLine(subject));
 }
 
-/** The non-blank lines of `lines` that `others` does not contain anywhere. */
-const only = (lines, others) => {
-  const elsewhere = new Set(others);
-  return lines.filter((line) => line.trim() !== "" && !elsewhere.has(line));
+/**
+ * The lines only one side has, in order and counting repeats: a longest-common-subsequence diff over
+ * whole lines, blank ones included. A set difference lost order and repetition, so a shipped section
+ * whose lines were only reordered or repeated failed with nothing reported as added or removed, and
+ * a blank line was left out of the report (raised by Copilot on #98).
+ *
+ * @param {string[]} was
+ * @param {string[]} is
+ * @returns {{ added: string[], removed: string[] }}
+ */
+const lineDiff = (was, is) => {
+  const common = Array.from({ length: was.length + 1 }, () => new Array(is.length + 1).fill(0));
+  for (let i = was.length - 1; i >= 0; i -= 1) {
+    for (let j = is.length - 1; j >= 0; j -= 1) {
+      common[i][j] =
+        was[i] === is[j] ? common[i + 1][j + 1] + 1 : Math.max(common[i + 1][j], common[i][j + 1]);
+    }
+  }
+  const added = [];
+  const removed = [];
+  let i = 0;
+  let j = 0;
+  while (i < was.length && j < is.length) {
+    if (was[i] === is[j]) {
+      i += 1;
+      j += 1;
+    } else if (common[i + 1][j] >= common[i][j + 1]) {
+      removed.push(was[i]);
+      i += 1;
+    } else {
+      added.push(is[j]);
+      j += 1;
+    }
+  }
+  return { added: added.concat(is.slice(j)), removed: removed.concat(was.slice(i)) };
 };
 
 /** `sectionsOf`, with the file a refusal came from named in its message. */
@@ -126,16 +157,17 @@ export function changedSections(baseText, headText) {
     const after = head.get(version);
     const was = before.split("\n");
     if (after === undefined) {
-      changes.push({ version, kind: "removed", added: [], removed: only(was, []) });
+      changes.push({ version, kind: "removed", added: [], removed: was });
     } else if (after !== before) {
-      const is = after.split("\n");
-      changes.push({ version, kind: "changed", added: only(is, was), removed: only(was, is) });
+      changes.push({ version, kind: "changed", ...lineDiff(was, after.split("\n")) });
     }
   }
   return changes;
 }
 
-const indent = (lines) => lines.map((line) => `  ${line}`).join("\n");
+// A blank line would print as nothing, and a report that shows nothing is what was being fixed.
+const indent = (lines) =>
+  lines.map((line) => `  ${line.trim() === "" ? "(blank line)" : line}`).join("\n");
 
 /**
  * The answer, from what was measured: the version sections that changed, which of those versions
