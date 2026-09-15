@@ -111,14 +111,17 @@ jobs:
   #
   # The tag decides, not the heading: #77 filed its entry under a recorded, untagged 2.0.0 fifteen
   # seconds after #78 and four minutes before the tag, correctly. So the script asks GitHub whether
-  # `refs/tags/v{version}` exists, for a section that changed and no other. CI cannot look itself:
-  # the checkout is one commit with no tags. See `scripts/changelog-sections.mjs`.
+  # the change's base already contains `v{version}`, for a section that changed and no other: contains,
+  # not merely whether the tag exists by the time this runs, because a release can tag the very
+  # commit a push brought in after that push (raised by Copilot on #98). CI cannot look itself: the
+  # checkout is one commit with no tags. See `scripts/changelog-sections.mjs`.
   #
   # It runs on push as well as on pull_request because `strict` is off (`.portulan/gate-map.md`): a
-  # pull request checked before a release is tagged can merge after it, unchanged, and no
-  # pull_request run fires when only the base moves. On push the comparison is `github.event.before`
-  # against the pushed tip, so a misfiling that lands that way turns `main` red — detection, where
-  # the pull_request run is prevention. One gap remains: `concurrency` above cancels a run in
+  # pull request checked before a release is tagged can merge after it, unchanged, because neither a
+  # new commit on `main` nor a new tag starts a pull_request run (raised by Copilot on #98: the old
+  # wording, "when only the base moves", read as a retarget, which `edited` now covers). On push the
+  # comparison is `github.event.before` against the pushed tip, so a misfiling that lands that way
+  # turns `main` red — detection, where the pull_request run is prevention. One gap remains: `concurrency` above cancels a run in
   # progress when another push to `main` arrives, and if that happens before this job finishes, the
   # next run's `before` already contains the entry. #78 and #77 merged fifteen seconds apart, so
   # pushes that close together do happen here.

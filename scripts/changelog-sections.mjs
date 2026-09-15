@@ -18,9 +18,11 @@
  * seconds after #78 recorded the version and four minutes before the tag — correctly, since an
  * entry merged before the tag is in that release. Over the 21 commits that had touched
  * `CHANGELOG.md` by 2026-09-14, "a tagged section is frozen" is red on none; "a recorded section is
- * frozen" is red on #77. So the script asks GitHub whether `refs/tags/v{version}` exists, and only
- * for a section that changed. CI cannot look itself: `actions/checkout` fetches one commit and no
- * tags.
+ * frozen" is red on #77. So the script asks GitHub whether the change's base already contains
+ * `v{version}`, and only for a section that changed: contains, not merely whether the tag exists by
+ * the time the check runs, because a release can tag the very commit a push brought in after that
+ * push, and the entry is then in that release (raised by Copilot on #98). CI cannot look itself:
+ * `actions/checkout` fetches one commit and no tags.
  *
  * ## What is compared
  *
@@ -170,8 +172,8 @@ const indent = (lines) =>
   lines.map((line) => `  ${line.trim() === "" ? "(blank line)" : line}`).join("\n");
 
 /**
- * The answer, from what was measured: the version sections that changed, which of those versions
- * are tagged, and the subject. Pure, so every shape is a test.
+ * The answer, from what was measured: the version sections that changed, which of those versions'
+ * tags the base already contains, and the subject. Pure, so every shape is a test.
  *
  * @param {{ changes: ReturnType<typeof changedSections>, tagged: Set<string>, subject?: string }} input
  * @returns {{ ok: boolean, messages: string[] }}
@@ -180,20 +182,22 @@ export function verdict({ changes, tagged, subject }) {
   const messages = [];
   let shipped = 0;
   for (const { version, kind, added, removed } of changes) {
-    const tag = `refs/tags/v${version}`;
+    const tag = `v${version}`;
     if (!tagged.has(version)) {
       messages.push(
-        `## [${version}] ${kind === "removed" ? "is removed" : "changed"}, and ${tag} does not exist, so the section has not shipped: allowed.`
+        `## [${version}] ${kind === "removed" ? "is removed" : "changed"}, and ${tag} is not reachable from the base, so the section had not shipped when this change was made: allowed.`
       );
       continue;
     }
     shipped += 1;
     if (kind === "removed") {
-      messages.push(`## [${version}] is tagged (${tag} exists) and this change removes it.`);
+      messages.push(
+        `## [${version}] shipped before this change (${tag} is reachable from the base), and this change removes it.`
+      );
     } else {
       messages.push(
         [
-          `## [${version}] is tagged (${tag} exists) and this change alters it: ${added.length} line(s) added, ${removed.length} removed.`,
+          `## [${version}] shipped before this change (${tag} is reachable from the base), and this change alters it: ${added.length} line(s) added, ${removed.length} removed.`,
           ...(added.length ? ["  added:", indent(added)] : []),
           ...(removed.length ? ["  removed:", indent(removed)] : []),
         ].join("\n")
@@ -254,13 +258,13 @@ export async function check({ io, base, head, subject }) {
   const changes = changedSections(await io.file(base), head);
   const tagged = new Set();
   for (const { version } of changes) {
-    if (await io.tagged(version)) tagged.add(version);
+    if (await io.shippedBefore(version, base)) tagged.add(version);
   }
   return verdict({ changes, tagged, subject });
 }
 
 /**
- * The three reads, over an injected `fetch`. Every request carries the token and is built here from a
+ * The reads, over an injected `fetch`. Every request carries the token and is built here from a
  * path on api.github.com, and none follows a redirect: fetch would otherwise follow a 3xx to another
  * origin and hand back that origin's answer as the file, the parents or the tag. Under
  * `redirect: "manual"` the 3xx comes back as a failed read that names its status (raised by Copilot
@@ -297,16 +301,30 @@ export function makeGithubIo({ fetch, token, repo }) {
     },
 
     /**
-     * Does `refs/tags/v{version}` exist? 200 is yes and 404 is no — measured on 2026-09-14 with
-     * `v2.0.0` and `v9.9.9`. Anything else is not an answer, and reading it as one would be a
+     * Had `v{version}` shipped by `base`, the commit the change is compared against?
+     *
+     * Existence first: 200 is a tag and 404 is none, measured on 2026-09-14 with `v2.0.0` and
+     * `v9.9.9`. Then GitHub's comparison of the tag with the base, because a tag that exists by the
+     * time the check runs may have been cut after the base: a release can tag the very commit a push
+     * brought in, after that push (raised by Copilot on #98). `ahead` and `identical` mean the base
+     * contains the tag's commit; `behind` and `diverged` mean it does not. Measured on 2026-09-15
+     * against `v2.0.0`, an annotated tag on `878af79`: `ahead` from a later commit, `identical` from
+     * `878af79`, `behind` from the commit before it. Anything else, including a 404 from the
+     * comparison once the tag is known to exist, is not an answer, and reading it as one would be a
      * wrong answer given silently.
      */
-    tagged: async (version) => {
-      const path = `git/ref/tags/v${version}`;
+    shippedBefore: async (version, base) => {
+      const ref = `git/ref/tags/v${version}`;
+      const tag = await get(ref);
+      if (tag.status === 404) return false;
+      if (tag.status !== 200) throw new Error(`GET ${ref} -> ${tag.status}`);
+      const path = `compare/v${version}...${base}`;
       const res = await get(path);
-      if (res.status === 200) return true;
-      if (res.status === 404) return false;
-      throw new Error(`GET ${path} -> ${res.status}`);
+      if (!res.ok) throw new Error(`GET ${path} -> ${res.status}`);
+      const { status } = await res.json();
+      if (status === "ahead" || status === "identical") return true;
+      if (status === "behind" || status === "diverged") return false;
+      throw new Error(`GET ${path} -> a comparison status of ${JSON.stringify(status)}, which is not an answer`);
     },
   };
 }

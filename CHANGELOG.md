@@ -70,13 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry to becomes the release's, and a clean rebase or merge then files that entry under a version
   it did not ship in — measured on 2026-09-14 with #81's entry, which merged with no conflict under
   `## [2.0.0]` while every test that reads this file still passed. A new `changelog` job, which
-  `verify` depends on, fails a change that alters or removes the section of a version whose tag
-  exists. New sections — a recording, or a backfill such as 1.3.1's — and sections not yet tagged
-  stay open, and a subject with a `changelog` scope, such as `docs(changelog): …`, overrides for a
-  deliberate correction; the workflow re-runs when a pull request's title changes, because the
-  override reads the title. A file with two sections under the same heading is refused, because the
-  second would hide a change to the first. Over the 21 commits that had touched this file by
-  2026-09-14, the rule fires on none.
+  `verify` depends on, fails a change that alters or removes the section of a version whose tag the
+  change's base already contains. New sections — a recording, or a backfill such as 1.3.1's — and
+  sections whose tag the base does not contain yet stay open, so a release that tags a commit after
+  it was pushed does not turn `main` red. A subject with a `changelog` scope, such as
+  `docs(changelog): …`, overrides for a deliberate correction; the workflow re-runs when a pull
+  request's title changes, because the override reads the title. A file with two sections under the
+  same heading is refused, because the second would hide a change to the first. Over the 21 commits
+  that had touched this file by 2026-09-14, the rule fires on none.
 - The refusal to follow a `Link: rel="next"` off api.github.com, which #81 added as a precaution,
   now rests on a measurement: fetch drops a caller-set `authorization` header only when a redirect
   crosses origins, so a next link, being a fresh request, would carry the token wherever it pointed.

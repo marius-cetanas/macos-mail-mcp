@@ -240,10 +240,11 @@ The window matters: the workflow never commits to `main`, so a version's entry c
 that was `[Unreleased]`'s under the release, so a branch that had appended an entry to it can merge
 cleanly with the entry filed under a version it did not ship in, and the heading assertions above do
 not notice. The `changelog` job in `verify.yml` runs `scripts/changelog-sections.mjs`, which fails a
-change that alters or removes the section of a tagged version, asking the API about the tag because
-CI's checkout has none. A new section is free, so recording and backfilling are unaffected, and so
-is a section recorded but not yet tagged, where an entry merged before the tag really is in that
-release. A deliberate correction to a shipped section carries a `changelog` scope in its subject.
+change that alters or removes the section of a version whose tag the change's base already contains,
+asking the API because CI's checkout has no tags. A new section is free, so recording and backfilling
+are unaffected, and so is a section whose tag the base does not contain yet, where an entry merged
+before the tag really is in that release — including when the release tags that commit after it was
+pushed. A deliberate correction to a shipped section carries a `changelog` scope in its subject.
 
 ### Why the ordering is what it is
 

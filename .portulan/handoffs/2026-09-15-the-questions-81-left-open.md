@@ -35,7 +35,8 @@ The hazard, measured on 2026-09-14: recording a release inserts its heading belo
 clean rebase or merge can file an in-flight entry under the released version, and no test notices.
 `scripts/changelog-sections.mjs`, run by a new `changelog` job that `verify` depends on, compares the
 base's `CHANGELOG.md` with the checkout's and fails a change to the section of a version whose tag
-exists. New sections and untagged ones stay open, and a `changelog` scope in the subject overrides.
+exists — since refined to a tag the change's base contains; see below. New sections and untagged
+ones stay open, and a `changelog` scope in the subject overrides.
 
 Why that rule, measured on 2026-09-14:
 
@@ -144,6 +145,17 @@ added and removed lines with a set difference, so a shipped section whose lines 
 repeated failed with "0 line(s) added, 0 removed" and no lines shown, and an added blank line was left
 out of the report. It now diffs in order and counting repeats, and shows a blank line as
 `(blank line)`, with tests that failed first.
+
+**And a fourth, from the same round's suppressed comments.** The check asked whether a version's
+tag existed when it ran, not whether the change's base already contained it. A release that tags
+the very commit a push brought in, after that push, would then have turned `main` red over an entry
+that is in that release: #77's timing, with the push run checked late. It now counts a section as
+shipped only when GitHub's comparison of the tag with the base answers `ahead` or `identical`.
+Measured on 2026-09-15 against `v2.0.0`, an annotated tag on `878af79`: `ahead` from a later commit,
+`identical` from `878af79`, `behind` from the commit before it, and 404 for a tag that does not
+exist. The tag's existence is read first, so a 404 from the comparison is refused rather than read
+as "not shipped". The same round's wording nit is fixed too: `verify.yml` no longer says no pull
+request run fires "when only the base moves", which read as a retarget.
 
 ## Found in passing *(not fixed here)*
 
