@@ -6,6 +6,8 @@ import {
   classifyRound,
   emptyRound,
   isHumanReviewer,
+  isHumanReview,
+  readComments,
   describeRequest,
   DECLINED_DIFF,
   ERRORED,
@@ -330,6 +332,379 @@ describe("classifyRound when no round can be requested at all (#58)", () => {
   });
 });
 
+/**
+ * A reply to a review thread is not a review — measured on #73.
+ *
+ * GitHub records a reply to a thread as a pull request review of its own. On #73, review 5198788557
+ * is `COMMENTED`, has an empty body, carries the head it was posted against, and holds exactly one
+ * comment, 4006098256, whose `in_reply_to_id` is 4006046306. The reviews list shows only the first
+ * three of those facts, so a check reading the list alone cannot tell a reply from a review — and
+ * where no Copilot round is coming, one reply from any account that is not a bot satisfied the gate
+ * that exists so a person reads the diff.
+ */
+const PERSON = { login: "marius-cetanas", type: "User" };
+
+/** 4006098256 on #73, trimmed to the fields that decide the answer. */
+const REPLY = { id: 4006098256, pull_request_review_id: 5198788557, in_reply_to_id: 4006046306 };
+
+/**
+ * A top-level comment — one that starts a thread. The key is **absent**, not null: measured through
+ * the same endpoint on twelve of Copilot's reviews. The ids here are illustrative; the shape is not.
+ */
+const TOP_LEVEL = { id: 4006000001, pull_request_review_id: 5198788557 };
+
+/** Review 5198788557 as the reviews list returns it; `extra` overrides or adds fields. */
+const personReview = (extra: Record<string, unknown> = {}) => ({
+  id: 5198788557,
+  user: PERSON,
+  commit_id: HEAD,
+  state: "COMMENTED",
+  body: "",
+  ...extra,
+});
+
+const DECLINED_ROUND = round("Copilot", HEAD, DECLINED_BODY);
+
+describe("classifyRound on a person's review that is only a thread reply", () => {
+  /** Both ways no Copilot round is coming reach the same branch, so both are held to the rule. */
+  it.each([
+    { label: "a declined diff", reviews: [DECLINED_ROUND], roundUnobtainable: false },
+    { label: "a round that cannot be requested", reviews: [], roundUnobtainable: true },
+  ])(
+    "does not let an empty-body COMMENTED review whose comments are all replies satisfy it, on $label",
+    ({ reviews, roundUnobtainable }) => {
+      const r = classifyRound({
+        reviews: [...reviews, personReview({ comments: [REPLY] })],
+        head: HEAD,
+        roundUnobtainable,
+      });
+      expect(r.state).toBe("awaited");
+      expect(r.awaiting).toBe("human");
+    }
+  );
+
+  it("lets an empty-body COMMENTED review with a top-level inline comment satisfy it", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ comments: [TOP_LEVEL] })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("landed");
+    expect(r.reason).toMatch(/1 human review\(s\)/);
+  });
+
+  it("lets one satisfy it that holds a top-level comment beside its replies", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ comments: [REPLY, TOP_LEVEL] })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("landed");
+  });
+
+  /*
+   * A verdict is a statement on its own, so nothing else has to be read. Measured shape: review
+   * 5199013512 on #75 — `APPROVED`, body "", no comments.
+   */
+  it("lets an empty-body APPROVED review satisfy it", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ id: 5199013512, state: "APPROVED" })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("landed");
+  });
+
+  it("lets an empty-body CHANGES_REQUESTED review satisfy it", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ state: "CHANGES_REQUESTED" })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("landed");
+  });
+
+  /*
+   * The deadlock guard stays. GitHub refuses an approval on your own pull request, so a `COMMENTED`
+   * review with something in it has to count, whatever else it holds.
+   */
+  it("lets a COMMENTED review with a body satisfy it, even when its comments are replies", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ body: "Read the lockfile diff.", comments: [REPLY] })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("landed");
+  });
+
+  it("does not read whitespace as a body", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ body: " \n\t", comments: [REPLY] })],
+      head: HEAD,
+    });
+    expect(r.state).toBe("awaited");
+  });
+
+  /* Dismissal withdraws the verdict and leaves the rest, so the review counts for what remains. */
+  it("counts a dismissed review only for what it still says", () => {
+    const empty = personReview({ state: "DISMISSED", comments: [] });
+    const said = personReview({ state: "DISMISSED", body: "Looked; see the thread." });
+    expect(classifyRound({ reviews: [DECLINED_ROUND, empty], head: HEAD }).state).toBe("awaited");
+    expect(classifyRound({ reviews: [DECLINED_ROUND, said], head: HEAD }).state).toBe("landed");
+  });
+
+  /*
+   * Every comment GitHub returns carries a numeric `id`, so an entry without one is not taken for a
+   * top-level comment just because it has no `in_reply_to_id` either.
+   */
+  it("does not take a malformed entry for a top-level comment", () => {
+    for (const comment of [
+      null,
+      "a string",
+      42,
+      {},
+      [],
+      { in_reply_to_id: null },
+      // GitHub's ids start at 1, so none of these is a comment it sent. (Raised by Copilot on #82.)
+      { id: 0 },
+      { id: -5 },
+      { id: 1.5 },
+      // A present key is not an absent one, whatever it holds. (Raised by Copilot on #82.)
+      { id: 1, in_reply_to_id: null },
+    ]) {
+      const r = classifyRound({
+        reviews: [DECLINED_ROUND, personReview({ comments: [comment] })],
+        head: HEAD,
+      });
+      expect(r.state, JSON.stringify(comment)).toBe("awaited");
+      // Nor diagnosed as a reply: the reason names what the review lacks, and says nothing of
+      // replies unless its comments are replies. (Raised by Copilot on #82, twice.)
+      expect(r.reason, JSON.stringify(comment)).toMatch(
+        /no verdict, no body beyond whitespace and no top-level comment$/
+      );
+      expect(r.reason, JSON.stringify(comment)).not.toMatch(/repl/);
+    }
+  });
+
+  /*
+   * Fail closed: a review whose comments have not been read has not shown that it says anything.
+   * It is named, so the loop can read it, rather than refused for good.
+   */
+  it("does not count a review whose comments are unread, and names it for reading", () => {
+    const r = classifyRound({ reviews: [DECLINED_ROUND, personReview()], head: HEAD });
+    expect(r).toMatchObject({ state: "awaited", awaiting: "human", unread: [5198788557] });
+  });
+
+  it("names for reading only a person's review on the head whose answer rests on its comments", () => {
+    const r = classifyRound({
+      reviews: [
+        DECLINED_ROUND,
+        personReview({ id: 1 }),
+        personReview({ id: 2, commit_id: OLDER }),
+        personReview({ id: 3, user: { login: "dependabot[bot]", type: "Bot" } }),
+        personReview({ id: 4, comments: [REPLY] }),
+        personReview({ id: undefined }),
+        personReview({ id: 0 }),
+      ],
+      head: HEAD,
+    });
+    expect(r.unread).toEqual([1]);
+  });
+
+  it("names nothing for reading while it is Copilot the check is waiting on", () => {
+    const r = classifyRound({ reviews: [personReview()], head: HEAD });
+    expect(r.reason).toMatch(/no Copilot round yet/);
+    expect(r.unread).toBeUndefined();
+  });
+
+  /*
+   * The person who replied on the head is exactly who reads this log, and "waiting for a human
+   * review" alone reads to them as a broken check.
+   */
+  it("says why a person's reply on the head does not clear it", () => {
+    const r = classifyRound({
+      reviews: [DECLINED_ROUND, personReview({ comments: [REPLY] })],
+      head: HEAD,
+    });
+    expect(r.reason).toMatch(
+      /waiting for a human review of it; 1 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 1 of them only replies to threads — a reply is not a review$/
+    );
+  });
+
+  /*
+   * Told of every refused review, "a reply is not a review" read as a diagnosis of an empty or
+   * malformed one too. It is said only of a review whose comments are all replies, counted apart
+   * from the rest. (Raised by Copilot on #82.)
+   */
+  it("says a reply is not a review only of reviews whose comments are all replies", () => {
+    const reason = (...reviews: object[]) =>
+      classifyRound({ reviews: [DECLINED_ROUND, ...reviews], head: HEAD }).reason;
+    expect(reason(personReview({ comments: [] }))).not.toMatch(/repl/);
+    expect(reason(personReview({ comments: [REPLY, {}] }))).not.toMatch(/repl/);
+    // A parent that is not a GitHub id makes no reply either. (Raised by Copilot on #82.)
+    for (const in_reply_to_id of [0, -1, 1.5, "4006046306", true]) {
+      const r = reason(personReview({ comments: [{ id: 1, in_reply_to_id }] }));
+      expect(r, String(in_reply_to_id)).not.toMatch(/repl/);
+    }
+    expect(
+      reason(personReview({ id: 11, comments: [REPLY] }), personReview({ id: 12, comments: [] }))
+    ).toMatch(
+      /; 2 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 1 of them only replies to threads — a reply is not a review$/
+    );
+  });
+
+  it("adds nothing to the reason when no person has left a review on the head", () => {
+    expect(classifyRound({ reviews: [DECLINED_ROUND], head: HEAD }).reason).toMatch(
+      /waiting for a human review of it$/
+    );
+  });
+});
+
+describe("awaitRound reading a person's review before counting it", () => {
+  const noSleep = async () => {};
+  const COMMENTS = "/comments";
+
+  /** Serves the pull request, its reviews and any review's comments; records every path asked for. */
+  const serving = (reviews: object[], comments: Record<string, unknown> = {}) => {
+    const asked: string[] = [];
+    const api = async (suffix: string) => {
+      asked.push(suffix);
+      if (suffix === "") return { head: { sha: HEAD } };
+      if (suffix === "/reviews") return reviews;
+      if (suffix in comments) return comments[suffix];
+      throw new Error(`GET pulls/7${suffix} -> 404`);
+    };
+    return { api, asked, reads: () => asked.filter((s) => s.includes("/comments")).length };
+  };
+
+  it("reads the comments of a person's review whose answer rests on them", async () => {
+    const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [REPLY] });
+    await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(s.asked).toContain(COMMENTS);
+  });
+
+  /*
+   * One read of the pull request's review comments answers for every review waiting on them. Read
+   * per review, each poll cost a request for every such review and repeated them all. (Raised by
+   * Copilot on #82.)
+   */
+  it("reads the pull request's comments once, however many reviews wait on them", async () => {
+    const replyInAnother = { id: 4006098257, pull_request_review_id: 5198788558, in_reply_to_id: 4006046306 };
+    const s = serving([DECLINED_ROUND, personReview(), personReview({ id: 5198788558 })], {
+      [COMMENTS]: [REPLY, replyInAnother],
+    });
+    const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(s.reads()).toBe(1);
+    expect(result.reason).toMatch(
+      /; 2 review\(s\) by a person on it have no verdict, no body beyond whitespace and no top-level comment, 2 of them only replies to threads/
+    );
+  });
+
+  it("keeps waiting, and expires, when that review holds only replies", async () => {
+    const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [REPLY] });
+    const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(result.state).toBe("expired");
+    expect(result.reason).toMatch(
+      /no top-level comment, 1 of them only replies to threads — a reply is not a review/
+    );
+  });
+
+  it("lands in the same poll when the review holds a top-level comment", async () => {
+    const s = serving([DECLINED_ROUND, personReview()], { [COMMENTS]: [TOP_LEVEL] });
+    const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(result).toMatchObject({ state: "landed", polls: 1 });
+    expect(s.reads()).toBe(1);
+  });
+
+  /*
+   * A reply on the head is ordinary while Copilot is still owed a round — it is how a round gets
+   * answered — so reading it there would put a new call, and a new way to fail, on the path every
+   * pull request takes, for an answer nothing on that path uses.
+   */
+  it("reads nothing while the check is still waiting on Copilot", async () => {
+    const s = serving([personReview()]);
+    const result = await awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 });
+    expect(result.reason).toMatch(/no Copilot round yet/);
+    expect(s.reads()).toBe(0);
+  });
+
+  /*
+   * Once the request proves unobtainable, every poll decides twice (see `awaitRound`). A review's
+   * comments are read once per poll, not once per decision.
+   */
+  it("reads a review's comments once per poll, not once per decision", async () => {
+    const s = serving([personReview()], { [COMMENTS]: [REPLY] });
+    const result = await awaitRound({
+      api: s.api,
+      requestRound: async () => ({ recorded: false }),
+      isRoundPending: async () => false,
+      sleep: noSleep,
+      budgetMs: 30_000,
+      pollMs: 30_000,
+    });
+    expect(result).toMatchObject({ state: "expired", polls: 2 });
+    expect(s.reads()).toBe(2);
+  });
+
+  /*
+   * A check that could not see a review has not seen it say nothing. The read fails the run the
+   * way the loop's other reads do, naming the call, rather than answering either way.
+   */
+  it("fails loudly, rather than counting or refusing, when the read itself fails", async () => {
+    const s = serving([DECLINED_ROUND, personReview()]);
+    await expect(awaitRound({ api: s.api, sleep: noSleep, budgetMs: 0 })).rejects.toThrow(
+      `GET pulls/7${COMMENTS} -> 404`
+    );
+  });
+
+  /*
+   * Through `makeGithubIo`'s own `api`, which is all the workflow passes: the read needs nothing the
+   * CLI arm would have to wire, and that arm is the one part of the script the suite cannot run.
+   * That `api` reads every page of a list (#81), so this fake pages the pull request's review
+   * comments the way the reviews fake beside #81's tests pages reviews — a `Link` header naming the
+   * next page — and a top-level comment on the second page has to count.
+   */
+  const githubWithComments = (pages: object[][]) => {
+    const urls: string[] = [];
+    const fetch = async (url: string) => {
+      urls.push(url);
+      const u = new URL(url);
+      const headers = new Headers();
+      const answer = (body: unknown) => ({ ok: true, status: 200, headers, json: async () => body });
+      if (u.pathname.endsWith("/comments")) {
+        const n = Number(u.searchParams.get("page") ?? 1);
+        if (n < pages.length) {
+          headers.set(
+            "link",
+            `<https://api.github.com/repositories/1191561833/pulls/7/comments?per_page=100&page=${n + 1}>; rel="next"`
+          );
+        }
+        return answer(pages[n - 1] ?? []);
+      }
+      if (u.pathname.endsWith("/reviews")) return answer([DECLINED_ROUND, personReview()]);
+      if (url === "https://api.github.com/repos/o/r/pulls/7?per_page=100") return answer({ head: { sha: HEAD } });
+      return { ok: false, status: 404, headers, json: async () => ({}) };
+    };
+    return { urls, fetch: fetch as unknown as typeof globalThis.fetch };
+  };
+
+  const throughGithubIo = (gh: ReturnType<typeof githubWithComments>) =>
+    awaitRound({
+      api: makeGithubIo({ fetch: gh.fetch, token: "t", repo: "o/r", pr: "7" }).api,
+      sleep: noSleep,
+      budgetMs: 0,
+    });
+
+  it("asks GitHub for the pull request's review comments through the api the workflow passes", async () => {
+    const gh = githubWithComments([[REPLY]]);
+    const result = await throughGithubIo(gh);
+    expect(gh.urls).toContain("https://api.github.com/repos/o/r/pulls/7/comments?per_page=100");
+    expect(result.state).toBe("expired");
+  });
+
+  it("reads every page of those comments, so a top-level comment past the first page counts", async () => {
+    const gh = githubWithComments([[REPLY], [TOP_LEVEL]]);
+    const result = await throughGithubIo(gh);
+    expect(result).toMatchObject({ state: "landed", polls: 1 });
+    expect(gh.urls.filter((u) => new URL(u).pathname.endsWith("/comments"))).toHaveLength(2);
+  });
+});
+
 describe("isHumanReviewer", () => {
   it("accepts a person", () => {
     expect(isHumanReviewer({ login: "marius-cetanas", type: "User" })).toBe(true);
@@ -366,6 +741,94 @@ describe("isHumanReviewer", () => {
     expect(isHumanReviewer({})).toBe(false);
     expect(isHumanReviewer({ login: "" })).toBe(false);
     expect(isHumanReviewer({ login: 42 })).toBe(false);
+  });
+});
+
+describe("isHumanReview", () => {
+  it("requires a person before anything in the review counts", () => {
+    for (const user of [{ login: "dependabot[bot]", type: "Bot" }, { login: "Copilot" }, undefined]) {
+      const review = personReview({ user, state: "APPROVED", body: "lgtm", comments: [TOP_LEVEL] });
+      expect(isHumanReview(review), JSON.stringify(user)).toBe(false);
+    }
+  });
+
+  it("counts a verdict, a body, or a top-level comment, each on its own", () => {
+    expect(isHumanReview(personReview({ state: "APPROVED" }))).toBe(true);
+    expect(isHumanReview(personReview({ state: "CHANGES_REQUESTED" }))).toBe(true);
+    expect(isHumanReview(personReview({ body: "lgtm" }))).toBe(true);
+    expect(isHumanReview(personReview({ comments: [TOP_LEVEL] }))).toBe(true);
+  });
+
+  it("refuses a review holding only replies, holding nothing, or whose comments are unread", () => {
+    expect(isHumanReview(personReview({ comments: [REPLY] }))).toBe(false);
+    expect(isHumanReview(personReview({ comments: [] }))).toBe(false);
+    expect(isHumanReview(personReview())).toBe(false);
+  });
+
+  /*
+   * Only an absent key makes a comment top-level: absence is the one shape measured. A key that is
+   * present reads as not top-level whatever it holds — `null` included, which used to count, and a
+   * value that is not a number. An unmeasured shape is refused rather than counted. (Raised by
+   * Copilot on #82.)
+   */
+  it("reads a comment as top-level only when in_reply_to_id is absent", () => {
+    for (const in_reply_to_id of [4006046306, "4006046306", 0, false, null]) {
+      const review = personReview({ comments: [{ id: 1, in_reply_to_id }] });
+      expect(isHumanReview(review), String(in_reply_to_id)).toBe(false);
+    }
+    expect(isHumanReview(personReview({ comments: [{ id: 1 }] }))).toBe(true);
+  });
+
+  it("takes only a positive integer for a comment's id, as GitHub's ids are", () => {
+    for (const id of [0, -1, 1.5, "1"]) {
+      expect(isHumanReview(personReview({ comments: [{ id }] })), String(id)).toBe(false);
+    }
+  });
+
+  it("takes only the two verdict states as a statement on their own, compared exactly", () => {
+    for (const state of ["COMMENTED", "DISMISSED", "PENDING", "approved", "", undefined]) {
+      expect(isHumanReview(personReview({ state })), String(state)).toBe(false);
+    }
+  });
+
+  it("refuses a malformed review rather than throwing", () => {
+    for (const review of [undefined, null, {}, { user: PERSON, comments: "x" }, { user: PERSON, body: 42 }]) {
+      expect(isHumanReview(review), JSON.stringify(review)).toBe(false);
+    }
+  });
+});
+
+describe("readComments", () => {
+  it("reads the pull request's comments once and gives each listed review its own", async () => {
+    const asked: string[] = [];
+    const replyInReview2 = { id: 4006098257, pull_request_review_id: 2, in_reply_to_id: 4006046306 };
+    const api = async (suffix: string) => {
+      asked.push(suffix);
+      return [REPLY, replyInReview2, { id: 4006098258 }];
+    };
+    const unlisted = personReview({ id: 3 });
+    const [first, second, untouched] = await readComments(
+      api,
+      [personReview(), personReview({ id: 2 }), unlisted],
+      [5198788557, 2]
+    );
+    expect(asked).toEqual(["/comments"]);
+    expect(first).toMatchObject({ id: 5198788557, comments: [REPLY] });
+    // A comment naming no review is given to none of them.
+    expect(second).toMatchObject({ id: 2, comments: [replyInReview2] });
+    expect(untouched).toBe(unlisted);
+  });
+
+  it("reads a payload that is not a list as no comments, so the review is refused, not re-read", async () => {
+    const [read] = await readComments(async () => ({ message: "odd" }), [personReview()], [5198788557]);
+    expect(read).toMatchObject({ comments: [] });
+    expect(isHumanReview(read)).toBe(false);
+  });
+
+  it("does not modify the reviews it was given", async () => {
+    const given = personReview();
+    await readComments(async () => [TOP_LEVEL], [given], [5198788557]);
+    expect(given).not.toHaveProperty("comments");
   });
 });
 
@@ -431,7 +894,13 @@ describe("describeRequest (#58)", () => {
     // Names the list it actually read — `reviewRequests`, not the reviews. (Raised by Copilot on #63.)
     expect(line).toMatch(/does not list Copilot among the pull request's requested reviewers/);
     expect(line).toMatch(/No round is coming from this job/);
-    expect(line).toMatch(/a human review of this head now satisfies the check/);
+    // A thread reply is the first thing someone reading this on a Dependabot pull request might
+    // post, and it does not satisfy the check, so the line says what does — a body that is not
+    // blank, since whitespace is not one. (Raised by Copilot on #82.)
+    expect(line).toMatch(/a person's review of this head now satisfies the check instead/);
+    expect(line).toMatch(
+      /one with a verdict, a non-blank body or a top-level comment, since a reply to a thread is not a review/
+    );
     expect(line).toMatch(/still lands and still counts/);
     expect(line).not.toMatch(/will expire/);
     // No hedging on GitHub's answer, though — unlike the poll, that reading has no innocent one.
