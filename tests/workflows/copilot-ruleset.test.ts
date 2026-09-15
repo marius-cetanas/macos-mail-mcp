@@ -237,36 +237,38 @@ describe("copilot-reviewed without the Copilot review ruleset", () => {
 
   /**
    * A Dependabot pull request, where the request resolves and GitHub's response does not list
-   * Copilot (#58). The review carries a body, as a review somebody actually wrote does.
+   * Copilot (#58). Since #82 a person's review counts only when it says something of its own — a
+   * verdict, a non-blank body or a top-level comment — so one with a body lands and an empty one does
+   * not, and the README names the three. The rebase over #82 applied cleanly and left the README's "a
+   * person's review" broader than that; reading it against the merged code is what found it.
    */
-  it("says a person's review of the head satisfies the check when the request does not record", async () => {
-    const unrecorded = async () => ({ recorded: false });
-    const person = {
-      user: { login: "a-maintainer", type: "User" },
-      commit_id: HEAD,
-      body: "Read the diff.",
-    };
-
-    const reviewed = await awaitRound({
-      api: pullRequest([person]),
-      requestRound: unrecorded,
+  it("says which person's review of the head satisfies the check when the request does not record", async () => {
+    const person = { user: { login: "a-maintainer", type: "User" }, state: "COMMENTED", commit_id: HEAD };
+    const wait = {
+      requestRound: async () => ({ recorded: false }),
       isRoundPending: nothingPending,
       sleep: noSleep,
       budgetMs: 0,
+    };
+
+    const reviewed = await awaitRound({
+      api: pullRequest([{ ...person, id: 1, body: "Read the diff." }]),
+      ...wait,
     });
     expect(reviewed.state, `${README} says a person's review of the head satisfies the check`).toBe(
       "landed"
     );
 
-    const unreviewed = await awaitRound({
-      api: pullRequest(),
-      requestRound: unrecorded,
-      isRoundPending: nothingPending,
-      sleep: noSleep,
-      budgetMs: 0,
-    });
+    const empty = await awaitRound({ api: pullRequest([{ ...person, id: 2, body: "" }]), ...wait });
+    expect(
+      empty.state,
+      `${README} says the review has to carry a verdict, a non-blank body or a top-level comment`
+    ).toBe("expired");
+
+    const unreviewed = await awaitRound({ api: pullRequest(), ...wait });
     expect(unreviewed.state).toBe("expired");
     expect(readme).toContain("a person's review of the head then satisfies the check");
+    expect(readme).toContain("a verdict, a non-blank body or a top-level comment");
   });
 
   // The file is what was sent, not what is live — the README says as much — so this holds the README

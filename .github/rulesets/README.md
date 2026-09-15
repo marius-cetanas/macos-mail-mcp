@@ -27,7 +27,8 @@ Without the ruleset, case by case:
   author who has one, as #49's did.
 - **A Dependabot pull request.** Nothing changes, because the ruleset draws no round there either.
   The check's request is accepted and records nothing (#58); GitHub's own response to it says so,
-  and the job logs that. Since #64 a person's review of the head then satisfies the check instead.
+  and the job logs that. Since #64 a person's review of the head then satisfies the check instead,
+  and since #82 only one that says something: a verdict, a non-blank body or a top-level comment.
 - **A pull request from a fork.** The job's token is read-only there, so the check's request is
   expected to fail. The log names the failure, `could not request a round (…) — waiting anyway`,
   and the check keeps waiting: a round requested by hand still counts if it lands before the budget

@@ -1,14 +1,16 @@
 # Handoff — a README that outlived the fix it described
 
 **State, dated 2026-09-15 at session close.** Branch `docs/rulesets-readme-no-longer-a-pair` is open
-as #83, rebased onto `main` at `c02b598` after #79, #80 and #81 merged under this session. It is
-**not merged**: merging is Gated. Copilot's thread on the test was addressed in the last push and
-left unresolved, because replying to it and resolving it post as the maintainer; see *Open
-questions*.
+as #83, rebased onto `main` at `f6e1e9d` after #79, #80, #81 and #82 merged under this session. It is
+**not merged**: merging is Gated.
+
+Copilot's thread on the test is addressed in the pushed commits. Replying to it and resolving it come
+after the push, at the maintainer's instruction to address Copilot's feedback. The thread, not this
+file, records that they happened.
 
 The verify recipe at the pushed head:
 
-- exit 0, **685 passed across 33 files**, none skipped;
+- exit 0, **720 passed across 33 files**, none skipped;
 - 100% statements (263/263), branches (100/100), functions (64/64) and lines (262/262) on `src/`;
 - 0 vulnerabilities;
 - `npx portulan compile --check` GREEN.
@@ -63,14 +65,16 @@ summary:
     Dependabot opens (#47);
   - that the job decides once, and only about a Copilot round;
   - what the check does without the ruleset, for a person's pull request, a Dependabot one and a
-    fork's.
+    fork's;
+  - for the Dependabot case, which person's review satisfies the check since #82.
 - **`tests/workflows/copilot-ruleset.test.ts`**, 19 tests:
   - Each thing the README says the check does is driven through `awaitRound`:
     - it asks once, and decides once;
     - where a person's review is owed, it asks Copilot for nothing;
     - a failed request keeps it waiting;
     - a round has to land in time;
-    - an unrecorded request lets a person's review land.
+    - after an unrecorded request, a person's review that says something lands, and an empty one
+      does not.
   - The quoted log line is derived from the log.
   - The ruleset description, and its Dependabot exception, are held to the payload.
   - Every gate map quotation is held to the gate map.
@@ -93,7 +97,7 @@ summary:
   request records, are GitHub's behaviour, and injected I/O cannot see them. The test's docblock and
   the changelog both say so. The changelog said otherwise in the first pass, and that was the first
   review's one required change.
-- **A new file, not a block in `copilot-round.test.ts`.** #81 and #82 both rewrite that file. Its
+- **A new file, not a block in `copilot-round.test.ts`.** #81 and #82 both rewrote that file. Its
   subject is the script, and this test's subject is the README's claims about it.
 - **Quote the gate map rather than restate it.** A quotation can be checked; a paraphrase can only be
   re-read.
@@ -101,9 +105,15 @@ summary:
   gate map's "the dependency" was fixed anyway, because the README now links that section as its
   authority, which put the contradiction one click away, and because two reviewers asked. Its larger
   gap is left for a decision; see below.
-- **Worded to survive #82.** The README does not quote the `recorded === false` log line, which #82
-  rewrites, and says "a person's review" rather than "any human review", because #82 narrows what
-  counts.
+- **Worded to survive #82, and read against it once it merged.** The README never quoted the
+  `recorded === false` log line #82 rewrote, and it said "a person's review" rather than "any human
+  review". That survived the rebase textually, and every test stayed green.
+  - It still left one sentence broader than #82's rule. A person's review counts only with a verdict,
+    a non-blank body or a top-level comment, so an empty review, submitted on the README's word, would
+    wait on a gate that cannot pass.
+  - #82's own handoff warns that a rebase can apply cleanly and leave claims false. Reading the merged
+    code against the README is what found this one.
+  - The README now names the three, and the test holds an empty review refused.
 - **A changelog entry, on #77's precedent over #59's.** Both are documentation corrections. #77
   shipped a test and cited `CONTRIBUTING.md`'s ask for an entry in every pull request, and this ships
   a test too.
@@ -119,10 +129,11 @@ summary:
     - `review_on_push` set to false;
     - three of the old paragraph's phrasings restated in `CLAUDE.md`, one at a time;
     - the README's "requested in time" and "whenever" wordings restored;
-    - its "Copilot round owed" narrowed back to "round owed", and its person's-review sentence
-      removed;
+    - its "Copilot round owed" narrowed back to "round owed";
+    - its person's-review sentence removed, and its rule for which person's review counts removed;
     - the job re-deciding after a pending first look;
     - the job asking Copilot where a person's review is owed;
+    - the script counting any person's review, empty ones included;
     - the Dependabot exception removed;
     - a round landing after the budget counted;
     - the gate map's "the dependency" restored.
@@ -187,31 +198,31 @@ written to.
   beneath" the ruleset. On a Dependabot pull request, asking records nothing, and the floor is a
   person's review. Both of the first reviewers read it as implying that asking closes both holes. The
   README quotes only the sentence about the common path, which holds there.
-- **`origin/main` moved under this session twice.**
-  - #80 first, which also added an `[Unreleased]` → Internal entry. That rebase came before the first
-    push, so it cost no review round.
-  - Then #79 and #81, after #83 was open. That rebase needed a force-push with a lease and cost
-    Copilot's round on `6dbe003`.
-  - Each rebase conflicted only in `CHANGELOG.md`, and every entry was kept in merge order.
+- **`origin/main` moved under this session three times**, and each rebase conflicted only in
+  `CHANGELOG.md`, where every entry was kept in merge order.
+  - #80 first, before the first push, where it cost no review round.
+  - Then #79 and #81, after #83 was open, which needed a force-push with a lease.
+  - Then #82, while Copilot's feedback was being addressed, which needed another. The freshness guard
+    stopped a push that would have gone out behind it.
 - **#81 rewrote `makeGithubIo`'s `api` to follow pages.** This test injects its own `api` into
   `awaitRound` rather than going through `makeGithubIo`, so paging cannot reach its stubs. That was
   read from #81's diff before rebasing, not assumed.
-- **#82 adds another entry in the same place**, so whichever merges second conflicts there again.
+  - #82's comments read goes through the same injected `api`.
+  - A non-list answer reads as no comments there, so the stub refuses an empty review rather than
+    erroring.
+- **Replying to Copilot's thread follows #82's own practice.** Its handoff records Auto-fix answering
+  Copilot through the maintainer's account, and since #82 such a reply counts as no review.
 - **`node_modules/` was absent from this worktree at session start again**, so the Portulan hooks could
   not start before `npm ci`. That is the previous handoff's first finding, recurring.
 
 ## Open questions *(human-owned)*
 
-- **Whether to reply to and resolve Copilot's thread on the test.** `main` requires conversation
-  resolution, so #83 cannot merge while it stands. A reply posted from an agent session goes out under
-  the maintainer's account, which is the concern #79 and #82 record, so it was not posted unasked.
 - Whether "The platform floor" should name #58 and #64, so it stops reading as if asking closes the
   bot-author hole.
 - Whether to measure the fork case, which would turn the README's "expected" into a measurement. For
   example, a pull request from a second account's fork.
 
-**Next action.** #83 awaits Copilot's round on its new head, the thread's resolution, and review;
-merging is Gated.
+**Next action.** #83 awaits Copilot's round on its new head, and review; merging is Gated.
 
 **Recoverability.** Nothing partial: every change is on the pushed branch, and no tag, release or
 publish was touched.
