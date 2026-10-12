@@ -33,8 +33,8 @@ On core's floor: a green verify, and nothing reported done that you could not ex
 
 ## Records
 
-Close a change with `git add <new files> && node <plugin root>/cli/finish.mjs -m "<subject>" -m "<why>"` after writing its changelog entry, a one-bullet file `changes/<slug>.<section>.md`: it commits and pushes only when every verify recipe passes.
-A session ending with work not committed and pushed leaves a dated handoff in `.portulan/handoffs/`.
+Close a change with `git add <new files> && node node_modules/@sleepy_panda_srl/portulan/cli/finish.mjs -m "<subject>" -m "<why>"` after writing its changelog entry, a one-bullet file `changes/<slug>.<section>.md`: it commits and pushes only when every verify recipe passes.
+Every session ends with a dated handoff in `.portulan/handoffs/`, whether or not its work is committed and pushed; read the most recent before starting.
 
 ## What is enforced here, and what is not
 
