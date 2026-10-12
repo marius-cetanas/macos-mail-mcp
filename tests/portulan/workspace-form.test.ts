@@ -131,4 +131,33 @@ describe("the boot card", () => {
     expect(read(`${RULES}/boot.md`)).not.toMatch(MACHINE_LOCAL);
     expect(read(".portulan/context/boot.md")).not.toMatch(MACHINE_LOCAL);
   });
+
+  /**
+   * The card is drafted for any workspace, and two of its lines were not true of this one. Both
+   * are loaded into every session beside `CLAUDE.md`, so a difference is two instructions.
+   */
+  describe("says what this repository does, where the draft said otherwise", () => {
+    const card = read(".portulan/context/boot.md");
+
+    // Drafted as a handoff only for work left uncommitted, which is what the Stop gate enforces
+    // and less than the contract here.
+    it("ends every session with a handoff, as CLAUDE.md does", () => {
+      expect(read("CLAUDE.md")).toContain("Every session ends with one");
+      expect(card).toContain("Every session ends with a dated handoff");
+      expect(card).not.toContain("work not committed and pushed leaves");
+    });
+
+    // Drafted as `<plugin root>`, which only a session with the plugin installed can resolve.
+    it("names the closing command where `npm ci` puts it", () => {
+      const CLI = "node_modules/@sleepy_panda_srl/portulan/cli/finish.mjs";
+      expect(card).not.toContain("<plugin root>");
+      expect(card).toContain(`node ${CLI}`);
+      expect(existsSync(join(ROOT, CLI))).toBe(true);
+    });
+
+    it("tells CLAUDE.md's reader what the placeholder the card cannot remove stands for", () => {
+      expect(read(`${RULES}/boot.md`)).toContain("<plugin root>");
+      expect(read("CLAUDE.md")).toContain("`<plugin root>`");
+    });
+  });
 });

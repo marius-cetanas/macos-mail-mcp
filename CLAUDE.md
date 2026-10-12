@@ -26,7 +26,9 @@ of the Sleepy Panda portfolio workspace.
 - [`.portulan/context/boot.md`](.portulan/context/boot.md) — the boot card. `portulan compile` writes
   it out as `.claude/rules/portulan/boot.md`, which Claude Code loads in every session with the
   identity, the principles, the gates and the definition of done in full. Edit the card, never the
-  rule, and recompile: `gate-policy` fails on a rule that differs from its card.
+  rule, and recompile: `gate-policy` fails on a rule that differs from its card. One section of the
+  rule is not the card's: the reading rules come from the installed Portulan, and name its CLI as
+  `<plugin root>`. Here that is `node_modules/@sleepy_panda_srl/portulan`, the dev dependency.
 - [`.portulan/verify/comments.sh`](.portulan/verify/comments.sh) — the `comments` recipe. It counts
   the comment lines that record a change's history (a date, a pull request or issue number, who
   raised something in review) and fails above `LIMIT`, which is only ever lowered. That history
@@ -237,9 +239,13 @@ commit to it. **An entry is a file of its own under `changes/`**, named `<slug>.
 the section one of `added`, `changed`, `deprecated`, `removed`, `fixed` or `security`, and holding
 one top-level bullet; `changes/README.md` says the rest. Two open pull requests then never edit the
 same lines of the changelog. There is no `internal` section: a change to CI or the tooling is a
-`changed` fragment that says what it is, and `### Internal` survives only in the releases that
-already carry it. The `gate-policy` job runs `portulan index --check --changes changes`, so a
-fragment the cut could not read fails its own pull request.
+`changed` fragment that says what it is, and in `CHANGELOG.md` `### Internal` survives only in the
+releases that already carry it. The commit list folded beneath a release's notes is a different
+thing and is unchanged: `scripts/release-notes.mjs` groups commits by their type, and still puts
+`chore`, `test`, `ci` and `style` under a heading of its own named Internal. So one release's notes
+can file the same work under Changed above the fold and under Internal below it. The `gate-policy`
+job runs `portulan index --check --changes changes`, so a fragment the cut could not read fails its
+own pull request.
 
 GitHub release notes are built from `CHANGELOG.md` by `scripts/release-notes.mjs`: the
 version's section, when one was recorded before the tag, then the commit range grouped by

@@ -96,11 +96,9 @@ back in the message.
 
 ## Not done, and why
 
-- **The card's Records section is as drafted.** It says a session leaves a handoff when it ends with
-  work not committed and pushed, which is also what the 0.2.0 Stop gate asks for; `CLAUDE.md` says
-  every session ends with one. The stricter rule was followed here. It also names
-  `<plugin root>/cli/finish.mjs`, a placeholder the plugin resolves; in this repository the CLI is
-  under `node_modules`. Neither line was edited: a later step may look for the card's text.
+- **The reading rules in the compiled rule still say `<plugin root>`.** That section is not the
+  card's: `compile` writes it from the installed Portulan's own text, so editing it here would be
+  drift. `CLAUDE.md` says what the placeholder stands for in this repository.
 - **`sessions.cache_lifetime` was not declared.** `upgrade` offers five-minute cache writes and
   prints the trade-off; it is a choice about how sessions here are run.
 - **No section of `CLAUDE.md` was marked `<!-- portulan: on-read -->`.** `doctor` names "Releasing"
@@ -108,7 +106,11 @@ back in the message.
 
 ## Open questions *(human-owned)*
 
-- Whether `CLAUDE.md` or the card states the handoff rule, since they now differ.
+- Whether every session should end with a handoff, as `CLAUDE.md` and now the card say, or only one
+  that leaves work uncommitted, which is what the 0.2.0 Stop gate enforces and the card was drafted
+  to say.
+- Whether the release notes' commit list should go on calling `chore`, `test`, `ci` and `style`
+  Internal, now that the changelog files the same work under Changed.
 - Whether to mark sections of `CLAUDE.md` on-read, now that the always tier is about 12,000 tokens.
 - Whether Portulan should take a workspace's own section names, which would bring `Internal` back.
 - Whether the cache lifetime should be declared.
@@ -122,7 +124,48 @@ on it with their content unchanged. The recipe was run again on the rebased head
 38232970494 checked out `c12877d`, ran the four steps and passed: `found 0 vulnerabilities`. That is
 the `workflow_dispatch` half; the first run the schedule itself starts is the next 05:23 UTC.
 
-**Next action.** Read this pull request and its Copilot round; merging it is the maintainer's.
+## Amended later on 2026-10-12: Copilot's rounds on #119, answered after it merged
+
+**#119 merged as `9e91fa2` at 10:03Z, from `7679bb6`, and what follows is not in it.** Copilot's
+round on `0234d64` landed at 09:58Z and recommended changes; its round on `7679bb6` at 10:01Z asked
+for a closer look at the same things. The maintainer merged at 10:03:06Z. The fix was pushed
+thirteen seconds later, to a branch the merge had already deleted, so the push made the branch
+again and reached no pull request. It travels in the pull request this amendment is in.
+
+Across the two rounds Copilot raised four things. Three were right:
+
+- **The card and `CLAUDE.md` gave two handoff rules**, both loaded into every session. The card was
+  drafted to ask for a handoff when work is left uncommitted and unpushed; `CLAUDE.md` asks for one
+  from every session. The first version of this file listed that as an open question and left the
+  card as drafted, on the guess that a later step might look for its text. Nothing does: the two
+  lines are in `draftCard`'s template in `cli/form.mjs` and nowhere else. The card now states the
+  contract this repository already had. Which rule it should be is still the maintainer's, above.
+- **The closing command could not be run as written.** The card named
+  `<plugin root>/cli/finish.mjs`, which only a session with the plugin installed can resolve. It
+  names `node_modules/@sleepy_panda_srl/portulan/cli/finish.mjs` now, and `--help` was run from
+  there.
+- **The changelog and the release notes name internal work differently.** `scripts/release-notes.mjs`
+  groups the commit list by type and puts `chore`, `test`, `ci` and `style` under Internal. That
+  grouping is of commits, not of entries, and was left alone; `CLAUDE.md` said `### Internal`
+  survives only in past releases, which was true of `CHANGELOG.md` and read as though it were true
+  of the notes. It says both now.
+
+One was not, and the card keeps its wording there. The second round said `git add <new files>`
+stages only new paths and leaves modified and deleted ones out of the commit. `finish.mjs` stages
+those itself, with `git add -u`, and stops on an untracked path nobody staged, so naming the new
+files is the whole of what the caller owes it.
+
+`tests/portulan/workspace-form.test.ts` holds the two corrected lines, shown to fail with the draft
+put back.
+
+**A mistake of this session's own, in a shape the 2026-09-15 handoff already names.** The reply to
+Copilot's thread said the fix was in `ad4e621`, and the thread was resolved, in the same command as
+the push. That push printed `* [new branch]`, which was the sign that the pull request was gone,
+and nothing read it before the reply was sent. The reply named a commit no pull request held, on a
+thread resolved over a finding `main` still had. It was edited to name the follow-up once that
+existed. A reply chained to a push reports the push that was meant.
+
+**Next action.** Read the follow-up pull request and its Copilot round; merging it is the maintainer's.
 
 **Recoverability.** Nothing partial: every change is on the branch. The upgrade can be read back
 with `npx portulan upgrade --check .portulan`, which answers that the workspace owes nothing.
