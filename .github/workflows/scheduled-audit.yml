@@ -1,0 +1,47 @@
+# `main` is audited every day, whether or not anything was pushed to it.
+#
+# An advisory is published against a version, not against a commit, so the lockfile on `main` can
+# go from clean to vulnerable without a diff. CI audits on push and on pull_request only, and
+# nothing pushes to `main` between merges: the `audit` there stays green on the commit it last ran
+# against, and the first place the advisory shows is the next pull request, red on a check its own
+# change cannot fix. This run is the one that goes red against `main` itself, on the day.
+#
+# It measures what the merge gate measures: the steps of the `audit` job in verify.yml, held equal
+# by tests/workflows/scheduled-audit.test.ts. A different threshold here would report a `main` no
+# pull request is held to.
+name: scheduled audit
+
+on:
+  schedule:
+    # Daily, and off the hour: GitHub delays scheduled runs under load and may drop them, and the
+    # start of an hour is when the load is.
+    #
+    # GitHub disables a scheduled workflow in a public repository after 60 days without repository
+    # activity, so on an idle repository this stops running and reports nothing. It is enabled
+    # again from its page in the Actions tab, and `workflow_dispatch` below runs it by hand.
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Not named `audit`: CI's push run reports a check of that name on the same commit, and a red one
+  # there should say which of the two it is.
+  scheduled-audit:
+    name: scheduled-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - name: npm audit (fail on high or critical)
+        run: npm audit --audit-level=high

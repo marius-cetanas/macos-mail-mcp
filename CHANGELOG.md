@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   26.5.1 → 26.6.5, `codeql-action` 4.38.0 → 4.38.3, and Portulan 0.1.2 → 0.2.0, whose compiler
   writes its restart advisory into `.claude/settings.json` from the same policy: two hooks and a
   status line beside the six `ask` permissions and two gate hooks already there.
+- `main` is audited every day by a scheduled workflow, `scheduled-audit.yml`, which runs the steps
+  of the merge gate's `audit` job. An advisory is published against a version, so the lockfile on
+  `main` can become vulnerable without a commit, and CI audits only on a push or a pull request:
+  twice, on 2026-09-14 and 2026-10-12, the first sign was a batch of Dependabot pull requests red
+  on an audit none of them could fix. `tests/workflows/scheduled-audit.test.ts` holds the copy to
+  the original, so the two cannot come to measure different thresholds.
 
 ## [2.1.1] - 2026-09-15
 

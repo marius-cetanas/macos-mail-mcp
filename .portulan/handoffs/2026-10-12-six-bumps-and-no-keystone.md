@@ -124,3 +124,46 @@ passed by a version here.
 **Recoverability.** Nothing partial: every change is on the branch and in its pull request. The
 `refs/remotes/pr/112` and `refs/remotes/pr/114` refs fetched for the cherry-picks are local to this
 worktree's repository and can be deleted with `git update-ref -d`.
+
+## Amended later on 2026-10-12
+
+The state paragraph above was true when written. Since then:
+
+- **The sweep merged as #117**, `61a32f6`, by the maintainer at 09:34Z, from the head the recipe was
+  run on, `11fb2a7`: the two trees are identical. CI passed on Node 22 and 24, which the local run
+  had not covered. Copilot's round on that head had 0 findings and was headed "Needs a closer
+  look", naming the dependency changes and the new hooks as the maintainer's to read;
+  `copilot-reviewed` passed on it.
+- **The six Dependabot pull requests were closed**, at the maintainer's instruction and after the
+  merge rather than before, since Dependabot deletes a closed pull request's branch and it cannot
+  then be reopened. Each carries a comment naming the version `main` holds. `main`'s push run was
+  green on `audit`, and the repository's open Dependabot alerts went from two to none.
+- **GitHub auto-merge is off for this repository**, so "merge once green" could not be armed from
+  the session: `Auto merge is not allowed for this repository`. The setting was left as it is.
+
+The maintainer then asked for two of the open questions above to be taken.
+
+**The scheduled audit** is the pull request this amendment travels in.
+`.github/workflows/scheduled-audit.yml` runs daily at 05:23 UTC and by hand, on `main`, and its
+steps are the merge gate's `audit` job's, held equal by `tests/workflows/scheduled-audit.test.ts`.
+Each assertion was shown to fail first: the threshold lowered to `critical`, the cron moved onto
+the hour, the job renamed `audit`, a `pull_request` trigger added. What it does not do:
+
+- **It has not run.** A `schedule` trigger fires only from the default branch, and so does
+  `workflow_dispatch` for a workflow the default branch does not have yet, so nothing can run it
+  before it merges. Its steps are the ones `audit` already runs on every pull request. The first
+  evidence is a run dispatched by hand after the merge, or the next 05:23 UTC.
+- **A red run opens nothing.** It fails, which shows on the run, on the commit of `main` it ran
+  against, and in whatever notification GitHub sends for a failed scheduled run. Opening an issue
+  would take `issues: write` and a script to keep from opening one a day; not built.
+- **GitHub disables it after 60 days without repository activity**, as it does any scheduled
+  workflow in a public repository. The workflow's comment says so.
+
+**The three `portulan upgrade` steps** are a separate pull request with a handoff of its own, since
+the first of them changes how the changelog is kept.
+
+**Open questions** *(human-owned)*, as they stand now:
+
+- Whether a red scheduled audit should open an issue.
+- Whether to turn on "Allow auto-merge" for the repository.
+- Whether to keep Portulan 0.2.0's status line here, or set one in `.claude/settings.local.json`.
