@@ -144,8 +144,9 @@ The state paragraph above was true when written. Since then:
 The maintainer then asked for two of the open questions above to be taken.
 
 **The scheduled audit** is the pull request this amendment travels in.
-`.github/workflows/scheduled-audit.yml` runs daily at 05:23 UTC and by hand, on `main`, and its
-steps are the merge gate's `audit` job's, held equal by `tests/workflows/scheduled-audit.test.ts`.
+`.github/workflows/scheduled-audit.yml` runs on `main` daily at 05:23 UTC, and by hand on the ref it
+is dispatched on, which is `main` unless another is chosen. Its steps are the merge gate's `audit`
+job's, held equal by `tests/workflows/scheduled-audit.test.ts`.
 Each assertion was shown to fail first: the threshold lowered to `critical`, the cron moved onto
 the hour, the job renamed `audit`, a `pull_request` trigger added. What it does not do:
 

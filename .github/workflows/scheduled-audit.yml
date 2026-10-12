@@ -20,6 +20,8 @@ on:
     # activity, so on an idle repository this stops running and reports nothing. It is enabled
     # again from its page in the Actions tab, and `workflow_dispatch` below runs it by hand.
     - cron: "23 5 * * *"
+  # By hand it audits the ref it is dispatched on, which is `main` unless another is chosen, and
+  # reports on that ref's commit. Only the schedule is bound to `main`.
   workflow_dispatch:
 
 permissions:
