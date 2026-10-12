@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The lockfile no longer carries the eight advisories `npm audit` reported against it on
+  2026-10-12, in five packages: `proxy-addr` (one critical), `@modelcontextprotocol/sdk` (one high),
+  `source-map-js` (one high), `ip-address` (four moderate) and `fast-uri` (one moderate). `npm audit`
+  reports 0 vulnerabilities. Dependabot's #115 proposed SDK 1.30.1, the last version
+  GHSA-6qxp-vccf-f47h covers, so the lockfile holds 1.32.1 instead. That advisory is in the SDK's
+  OAuth client, and this server imports `McpServer` and `StdioServerTransport` from the SDK and
+  nothing else. The published package ships no lockfile and its dependency ranges already admitted
+  the patched versions; what moved is this repository's own CI and development tree, where `audit`
+  had turned red on `main` between 2026-09-29 and 2026-10-06 and on every pull request with it.
+
+### Internal
+
+- Dependency and action-pin sweep in place of Dependabot's #110 and #112 to #116, none of which
+  could go green alone: each inherited `main`'s red audit, and #116 also needed the gate artifact
+  recompiled. Vitest and `@vitest/coverage-v8` 5.0.0 → 5.0.3, `zod` 4.6.2 → 4.6.5, `@types/node`
+  26.5.1 → 26.6.5, `codeql-action` 4.38.0 → 4.38.3, and Portulan 0.1.2 → 0.2.0, whose compiler
+  writes its restart advisory into `.claude/settings.json` from the same policy: two hooks and a
+  status line beside the six `ask` permissions and two gate hooks already there.
+
 ## [2.1.1] - 2026-09-15
 
 No change to the server: this release carries the README's Known issues and Changelog sections,
