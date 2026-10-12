@@ -23,6 +23,14 @@ of the Sleepy Panda portfolio workspace.
   that produced it.
 - [`.portulan/handoffs/`](.portulan/handoffs/) — the session record, dated `YYYY-MM-DD-{slug}.md`.
   Every session ends with one; read the most recent before starting.
+- [`.portulan/context/boot.md`](.portulan/context/boot.md) — the boot card. `portulan compile` writes
+  it out as `.claude/rules/portulan/boot.md`, which Claude Code loads in every session with the
+  identity, the principles, the gates and the definition of done in full. Edit the card, never the
+  rule, and recompile: `gate-policy` fails on a rule that differs from its card.
+- [`.portulan/verify/comments.sh`](.portulan/verify/comments.sh) — the `comments` recipe. It counts
+  the comment lines that record a change's history (a date, a pull request or issue number, who
+  raised something in review) and fails above `LIMIT`, which is only ever lowered. That history
+  goes in the commit message. `gate-policy` runs it, so it is part of the merge gate.
 
 It declares `tree: "../"`, so `doctor` lints the gate map's claims against this repository — it
 checks that the required status check `verify` is one a workflow here actually reports. Nothing in
@@ -197,6 +205,7 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 npm run build        # tsc + copy .applescript files to build/
 npm test             # Run the suite
 npm run test:coverage # Tests + coverage; fails below the 100% thresholds
+./.portulan/verify/comments.sh # Comment lines that record history, held at a limit
 npm run test:watch   # Watch mode
 npm run dev          # TypeScript watch mode
 ```
@@ -224,7 +233,15 @@ The consequence to remember: **the version in `package.json` is not the released
 Read the tag, the GitHub release, or npm.
 
 `CHANGELOG.md` is maintained by hand in ordinary pull requests, since the workflow cannot
-commit to it. GitHub release notes are built from it by `scripts/release-notes.mjs`: the
+commit to it. **An entry is a file of its own under `changes/`**, named `<slug>.<section>.md` with
+the section one of `added`, `changed`, `deprecated`, `removed`, `fixed` or `security`, and holding
+one top-level bullet; `changes/README.md` says the rest. Two open pull requests then never edit the
+same lines of the changelog. There is no `internal` section: a change to CI or the tooling is a
+`changed` fragment that says what it is, and `### Internal` survives only in the releases that
+already carry it. The `gate-policy` job runs `portulan index --check --changes changes`, so a
+fragment the cut could not read fails its own pull request.
+
+GitHub release notes are built from `CHANGELOG.md` by `scripts/release-notes.mjs`: the
 version's section, when one was recorded before the tag, then the commit range grouped by
 conventional-commit type in a collapsed block beneath it. A version with no section gets the
 commit list and a `::warning::` in the run — which is how 2.0.0 shipped, and what #96 asked to
@@ -232,19 +249,25 @@ end. The notes are prepared before anything irreversible, so a dry run previews 
 summary. Writing the changelog is still a separate act from releasing: the workflow reads the
 file and never writes it, and the file ships in the package.
 
-It carries a **standing `## [Unreleased]` heading**, and at release time the version heading is
-**inserted below it, not renamed from it**. Renaming is the natural move and it silently removes
-the standing heading, leaving the next change nowhere to land. Both halves are asserted in
-`tests/release/changelog.test.ts` — the heading exists, sits at the top, carries no date, and every
-heading below it does.
+It carries a **standing `## [Unreleased]` heading**, which holds a pointer to `changes/` and no
+entries. **Recording a release** is one pull request, titled `docs(changelog): record X.Y.Z`: insert
+`## [X.Y.Z] - YYYY-MM-DD` **below** `[Unreleased]`, paste what `npx portulan index --changes changes`
+prints beneath it, and delete the fragments, keeping `changes/README.md` so the directory stays
+tracked. The version heading is inserted, not renamed from `[Unreleased]`: renaming is the natural
+move and it silently removes the standing heading and its pointer. `tests/release/changelog.test.ts`
+asserts the heading exists, sits at the top, carries no date, and that every heading below it does;
+`tests/portulan/workspace-form.test.ts` asserts it holds no entry.
 
 The window matters: the workflow never commits to `main`, so a version's entry can only be written
 **before its tag exists**. 1.3.1 shipped with no entry and had to be backfilled from its own commits.
 
-**Once the tag exists, that version's section is closed.** Inserting the heading moves the list
-that was `[Unreleased]`'s under the release, so a branch that had appended an entry to it can merge
-cleanly with the entry filed under a version it did not ship in, and the heading assertions above do
-not notice. The `changelog` job in `verify.yml` runs `scripts/changelog-sections.mjs`, which fails a
+**Once the tag exists, that version's section is closed.** Before entries were fragments,
+inserting the heading moved the list that was `[Unreleased]`'s under the release, so a branch that
+had appended an entry to it could merge cleanly with the entry filed under a version it did not ship
+in. A fragment cannot be taken that way: one merged after a release is recorded waits in `changes/`
+for the next. What can still land in a shipped section is an edit to `CHANGELOG.md` itself: a
+correction, or a branch older than the move. The `changelog` job in `verify.yml` runs
+`scripts/changelog-sections.mjs`, which fails a
 change that alters or removes the section of a version whose tag the change's base already contains,
 asking the API because CI's checkout has no tags. A new section is free, so recording and backfilling
 are unaffected, and so is a section whose tag the base does not contain yet, where an entry merged

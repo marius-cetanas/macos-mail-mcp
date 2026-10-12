@@ -263,7 +263,10 @@ describe("verdict", () => {
     expect(text).toContain("## [2.0.0]");
     expect(text).toContain("v2.0.0 is reachable from the base");
     expect(text).toContain(ENTRY);
-    expect(text).toContain("## [Unreleased]");
+    // The remedy it names is where an entry goes now, and `workspace-form.test.ts` holds that the
+    // file is there to be read.
+    expect(text).toContain("changes/README.md");
+    expect(text).not.toContain("## [Unreleased]");
   });
 
   /**

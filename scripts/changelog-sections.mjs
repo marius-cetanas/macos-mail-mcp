@@ -12,6 +12,10 @@
  * `CHANGELOG.md` still passing, 12 of 12. It surfaced only because #77 had edited the same lines
  * and the rebase conflicted.
  *
+ * Entries are fragments under `changes/` now, pasted under the new heading when a release is
+ * recorded, so a branch no longer appends to that list. What still edits `CHANGELOG.md`, and what
+ * this checks, is the recording itself, a correction, and a branch older than the move.
+ *
  * ## The tag decides, not the heading
  *
  * A recorded section is not yet a shipped one. #77 filed its entry under `## [2.0.0]` fifteen
@@ -281,8 +285,8 @@ export function verdict({ changes, tagged, subject }) {
   }
   messages.push(
     "A tag has shipped that section as it was. An entry for a change that has not shipped belongs " +
-      "under ## [Unreleased]; a deliberate change to a shipped section says so with a changelog " +
-      'scope in the subject, as in "docs(changelog): …".'
+      "in a file of its own under changes/, which changes/README.md describes; a deliberate change " +
+      'to a shipped section says so with a changelog scope in the subject, as in "docs(changelog): …".'
   );
   return { ok: false, messages };
 }

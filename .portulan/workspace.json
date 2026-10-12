@@ -1,32 +1,41 @@
 {
   "portulan": {
-    "spec": "2.7",
+    "spec": "2.10",
     "workspace": "0.1.0"
   },
   "name": "macos-mail-mcp",
   "summary": "One maintainer's MCP server bridging Claude to macOS Mail.app over AppleScript, published to npm. A single public repository, governed by its own workspace rather than a portfolio's.",
   "kind": "repository",
-
   "tree": "../",
-
   "slots": {
     "identity": "identity.md",
     "principles": "principles.md",
     "gates": "gate-map.md",
     "dod": "dod.md",
-    "handoffs": "handoffs/"
+    "handoffs": "handoffs/",
+    "context": "context/"
   },
-
   "gates": "gates.json",
-
   "verify": {
     "default": "repo",
     "recipes": [
       {
         "id": "repo",
         "run": "npm run build && npm run test:coverage && npm audit --audit-level=high",
-        "requires": ["node", "npm"],
+        "requires": [
+          "node",
+          "npm"
+        ],
         "doc": "identity.md"
+      },
+      {
+        "id": "comments",
+        "run": "./.portulan/verify/comments.sh",
+        "requires": [
+          "bash",
+          "git",
+          "node"
+        ]
       }
     ]
   }

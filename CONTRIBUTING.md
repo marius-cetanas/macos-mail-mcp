@@ -63,6 +63,11 @@ tests/                               # Vitest unit tests (mocked bridge)
 - **`sanitize()`** strips newlines/carriage returns from string params to prevent AppleScript syntax errors.
 - **`escapeForAppleScript()`** runs automatically via `substituteParams()` — don't call it in handlers.
 - **Error handling:** Use `toolError()` for consistent MCP error formatting.
+- **A comment says what the code cannot; a change's history goes in its commit message.** The
+  `gate-policy` check counts the comment lines that record history (a date, a pull request or
+  issue number, who raised something in review) and fails a pull request that takes the count above
+  `LIMIT` in `.portulan/verify/comments.sh`. Run that script to see the count; a red run lists the
+  lines.
 
 ## Running Tests
 
@@ -105,11 +110,15 @@ release notes open with the version's section of it. The commit subjects are lis
 which is the other reason to write them conventionally (`feat:`, `fix:`, `perf:`, `feat!:`) —
 the version is derived from them too. `chore:`/`docs:`/`test:` alone are not releasable.
 
-**Put the entry under `## [Unreleased]`, and look at where it landed after a rebase.** Recording a
-release inserts its heading below `[Unreleased]`, so an entry appended before that can end up under
-the release once your branch is rebased or merged. The `changelog` check fails a pull request that
-changes the section of a version whose tag the base already contains; if that change is a
-deliberate correction, title the pull request with a `changelog` scope, as in `docs(changelog): …`.
+**The entry is a new file under `changes/`, not an edit to `CHANGELOG.md`.** Name it
+`<slug>.<section>.md`, the section one of `added`, `changed`, `deprecated`, `removed`, `fixed` or
+`security`, and write one top-level bullet in it; [`changes/README.md`](changes/README.md) says the
+rest. A file per entry means two open pull requests never edit the same lines. The `gate-policy`
+check fails a pull request whose fragment is misnamed or holds more than one bullet. Recording a
+release pastes the fragments under the new version's heading and deletes them, so do not edit
+`CHANGELOG.md` yourself: the `changelog` check fails a pull request that changes the section of a
+version whose tag the base already contains, and if that change is a deliberate correction, title
+the pull request with a `changelog` scope, as in `docs(changelog): …`.
 
 **Merging never publishes.** Pull requests can accumulate for as long as you like; shipping
 is always an explicit, separate action. The bump is computed once from everything since the

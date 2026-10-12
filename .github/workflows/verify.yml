@@ -100,7 +100,25 @@ jobs:
       - name: The compiled artifacts match .portulan/gates.json
         run: npx portulan compile --check
 
+      # A changelog entry is a file under `changes/`, which the release cut pastes into
+      # `CHANGELOG.md`. A fragment the cut cannot read, one named for a section that is none of the
+      # six or holding more than one bullet, would otherwise be found at the cut, by whoever is
+      # cutting, in a file somebody else wrote.
+      - name: Every changelog fragment is one the cut can paste
+        run: npx portulan index --check --changes changes
+
+      # The workspace's other verify recipe; the default one is the `test` and `audit` jobs. It
+      # holds the comment lines that record a change's history at a count, and a count nothing
+      # runs is exceeded by the next change, after which the recipe is red for everyone.
+      - name: No more comment lines record a change's history than the rail allows
+        run: ./.portulan/verify/comments.sh
+
   # No entry lands in a section of `CHANGELOG.md` that a tag has already shipped.
+  #
+  # An entry is a fragment under `changes/` now, pasted under the new heading when a release is
+  # recorded, so a branch no longer appends to a list a release can take with it. This check stays
+  # for what still edits `CHANGELOG.md`: the recording itself, a correction to a shipped section,
+  # and a branch older than the move. What follows is the defect as it was found.
   #
   # The changelog is kept by hand, and a release is recorded by inserting its heading below
   # `## [Unreleased]` — so the list that was Unreleased's becomes the release's, and a branch that
