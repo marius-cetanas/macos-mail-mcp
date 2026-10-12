@@ -118,8 +118,9 @@ back in the message.
 the tree `fe5f8b3` had, and `git rebase --onto origin/main fe5f8b3` left this branch's own commits
 on it with their content unchanged. The recipe was run again on the rebased head.
 
-**The scheduled audit is on `main` and has not run yet.** It can be dispatched by hand now, which
-would be the first evidence that it does; otherwise the next 05:23 UTC is.
+**The scheduled audit has run once, by hand.** Dispatched on `main` after #118 merged, run
+38232970494 checked out `c12877d`, ran the four steps and passed: `found 0 vulnerabilities`. That is
+the `workflow_dispatch` half; the first run the schedule itself starts is the next 05:23 UTC.
 
 **Next action.** Read this pull request and its Copilot round; merging it is the maintainer's.
 
