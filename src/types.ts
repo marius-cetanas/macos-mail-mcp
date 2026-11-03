@@ -52,6 +52,7 @@ export interface MessageDetail extends MessageSummary {
 }
 
 export interface Recipient {
+  /** Empty when Mail reports a missing display name. */
   name: string;
   address: string;
 }

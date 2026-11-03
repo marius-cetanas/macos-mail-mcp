@@ -1,0 +1,1 @@
+- Return empty recipient names for Mail's `missing value` sentinel in both `get_message` lookup routes, preserving known names, addresses, order and JSON escaping across to/cc/bcc recipients.

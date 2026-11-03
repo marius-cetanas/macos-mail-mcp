@@ -135,6 +135,23 @@ describe("messages tool registration", () => {
     });
   });
 
+  describe.each(["INBOX", undefined])("get_message recipients with mailbox %s", (mailboxName) => {
+    it("preserves normalized recipient names and addresses through MCP", async () => {
+      const response = { toRecipients: [{ name: "", address: "to@example.invalid" }], ccRecipients: [], bccRecipients: [] };
+      mockRunAppleScript.mockResolvedValueOnce(response);
+      const result = await tools.get("get_message")!.handler({ messageId: 1, accountName: "Google", mailboxName });
+      expect(payload(result)).toEqual(response);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("propagates recipient property errors through MCP", async () => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error("recipient property unavailable"));
+      const result = await tools.get("get_message")!.handler({ messageId: 1, accountName: "Google", mailboxName });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain("recipient property unavailable");
+    });
+  });
+
   describe("read_attachment extension handling", () => {
     it("refuses a binary extension", async () => {
       const result = await tools.get("read_attachment")!.handler({

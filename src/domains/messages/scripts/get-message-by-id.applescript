@@ -36,7 +36,9 @@ on buildRecipientsJson(recipientList)
     using terms from application "Mail"
         set recipJson to ""
         repeat with r in recipientList
-            set rName to my escapeForJson(name of r as text)
+            set rName to ""
+            set rawName to name of r
+            if rawName is not missing value then set rName to my escapeForJson(rawName as text)
             set rAddr to my escapeForJson(address of r as text)
             if recipJson is not "" then set recipJson to recipJson & ", "
             set recipJson to recipJson & "{\"name\": \"" & rName & "\", \"address\": \"" & rAddr & "\"}"
