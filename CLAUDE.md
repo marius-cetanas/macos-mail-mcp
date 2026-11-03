@@ -227,9 +227,12 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 ## Known Gotchas
 
 - **Nested mailbox creation** — Resolve the requested parent, obtain its `mailboxFullName`, and
-  create the full slash path at the account. `create_mailbox` validates the new mailbox's full
-  path readback and returns that path in `mailboxName`. Production path/guard tests and full
-  template compilation run on macOS; native Mail/provider creation remains unexercised.
+  check the full slash path at the account. `create_mailbox` reuses an existing target with
+  `created:false, alreadyExisted:true` or creates an absent one with the inverse booleans. Both
+  paths validate full-path readback and return it in `mailboxName`. Existence errors propagate;
+  there is no lookup catch that treats permission failures as missing mailboxes. Production path,
+  branch/status fixture tests and full compilation run on macOS; native Mail/provider creation
+  remains unexercised.
 - **Exchange accounts** return `missing value` for server/port/SSL properties. Always wrap these in `try`/`on error` in AppleScript.
 - **Message IDs are volatile** — Mail.app can reassign IDs after reindexing. Always fetch fresh IDs before operating on messages.
 - **Gmail labels vs folders** — `move_message` adds the destination label but may not remove the original.

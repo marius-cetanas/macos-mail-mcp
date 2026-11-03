@@ -61,8 +61,23 @@ describe("mailboxes tool registration", () => {
   });
 
   describe("create_mailbox", () => {
+    it.each([true, false])("returns explicit existing=%s metadata through MCP", async (alreadyExisted) => {
+      const response = { success: true, created: !alreadyExisted, alreadyExisted, mailboxName: "Parent/Child", accountName: "Google" };
+      mockRunAppleScript.mockResolvedValueOnce(response);
+      const result = await tools.get("create_mailbox")!.handler({ accountName: "Google", mailboxName: "Child", parentMailboxName: "Parent" });
+      expect(payload(result)).toEqual(response);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("propagates lookup permission errors through MCP", async () => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error("lookup permission denied"));
+      const result = await tools.get("create_mailbox")!.handler({ accountName: "Google", mailboxName: "Archive" });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain("lookup permission denied");
+    });
+
     it("returns the unambiguous full path supplied by Mail readback", async () => {
-      const response = { success: true, mailboxName: "Projects/2026/Q2", accountName: "Google" };
+      const response = { success: true, created: true, alreadyExisted: false, mailboxName: "Projects/2026/Q2", accountName: "Google" };
       mockRunAppleScript.mockResolvedValueOnce(response);
       const result = await tools.get("create_mailbox")!.handler({
         accountName: "Google", mailboxName: "Q2", parentMailboxName: "Projects/2026",
