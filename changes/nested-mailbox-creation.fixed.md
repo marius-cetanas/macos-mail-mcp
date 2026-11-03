@@ -1,0 +1,1 @@
+- Create nested mailboxes at the account using the resolved parent's full slash path, validate the mailbox path read back from Mail, and return that unambiguous full path.

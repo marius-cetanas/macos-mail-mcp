@@ -60,14 +60,14 @@ export function registerMailboxesTools(server: McpServer): void {
 
   server.tool(
     "create_mailbox",
-    "Create a new mailbox (folder) in a Mail.app account. Can create top-level or nested mailboxes.",
+    "Create a new mailbox (folder) in a Mail.app account. For nesting, resolve the parent and create its full slash path at the account. Returns the full mailbox path read back from Mail.",
     {
       accountName: z.string().describe("The name of the account to create the mailbox in"),
-      mailboxName: z.string().describe("The name of the new mailbox to create"),
+      mailboxName: z.string().describe("The child name to create, or a full slash path when parentMailboxName is omitted"),
       parentMailboxName: z
         .string()
         .optional()
-        .describe("The name of the parent mailbox for nesting; omit for top-level"),
+        .describe("An existing parent mailbox name or full path for nesting; omit to create directly at the account"),
     },
     async ({ accountName, mailboxName, parentMailboxName }) => {
       try {
