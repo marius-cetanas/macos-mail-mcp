@@ -100,6 +100,7 @@ describe("SHARED_HANDLER_FILES", () => {
       "read-utf8-file.applescript",
       "integer-for-json.applescript",
       "date-to-utc-iso.applescript",
+      "attachment-mime.applescript",
     ]);
   });
 });

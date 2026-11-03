@@ -70,13 +70,18 @@ describe("handlers the bridge prepends are reserved names", () => {
     // If the bridge is ever restructured, this must fail rather than silently check nothing.
     expect([...reserved.keys()].sort()).toEqual([
       "assertComposeReady",
+      "attachmentMimeType",
       "dateToUtcIso",
       "escapeForJson",
       "integerForJson",
+      "isInlineTextMime",
       "joinStrings",
       "mailboxFullName",
+      "mimeFromExtension",
       "readUtf8File",
+      "requireReadableAttachment",
       "resolveMailbox",
+      "trimMimeWhitespace",
     ]);
   });
 

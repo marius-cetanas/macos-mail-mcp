@@ -229,10 +229,28 @@ describe("messages tools - attachments", () => {
     expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
   });
 
-  it("read_attachment rejects binary file extensions", async () => {
+  it("read_attachment delegates MIME admission for .ics instead of rejecting its extension", async () => {
+    mockRunAppleScript.mockResolvedValue({ name: "calendar.ics", content: "BEGIN:VCALENDAR" });
     const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
-    await expect(handleReadAttachment(123, "INBOX", "Gmail", "photo.jpg"))
-      .rejects.toThrow("Binary file type");
+    await expect(handleReadAttachment(123, "INBOX", "Gmail", "calendar.ics"))
+      .resolves.toEqual({ name: "calendar.ics", content: "BEGIN:VCALENDAR" });
+    expect(mockWriteFile).toHaveBeenCalledWith(expect.stringContaining("attname.txt"), "calendar.ics", "utf8");
+  });
+
+  it.each(["README", "photo.jpg"])("cleans the name file after the script rejects MIME for %s", async (name) => {
+    mockRunAppleScript.mockRejectedValue(new Error("Inline reading is not supported for MIME type application/octet-stream. Use save_attachment instead."));
+    const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    await expect(handleReadAttachment(123, "INBOX", "Gmail", name)).rejects.toThrow("application/octet-stream");
+    expect(mockRunAppleScript).toHaveBeenCalledTimes(1);
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
+  });
+
+  it("cleans the name-file directory when writing fails before any Mail call", async () => {
+    mockWriteFile.mockRejectedValueOnce(new Error("name file write failed"));
+    const { handleReadAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    await expect(handleReadAttachment(123, "INBOX", "Gmail", "calendar.ics")).rejects.toThrow("name file write failed");
+    expect(mockRunAppleScript).not.toHaveBeenCalled();
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
   });
 });
 

@@ -1,6 +1,6 @@
 set saveSucceeded to false
 set tempPath to ""
-set tempDir to do shell script "mktemp -d"
+set tempDir to ""
 -- Read attachment name from temp file to avoid AppleScript string escaping issues
 set targetAttName to my readUtf8File("{{attNameFile}}")
 
@@ -18,16 +18,23 @@ tell application "Mail"
         end repeat
 
         if targetAttachment is missing value then
-            tell me to do shell script "rm -rf " & quoted form of tempDir
-            return "{\"error\": \"Attachment not found\", \"errorNumber\": -1}"
+            error "Attachment not found" number -1
         end if
 
         if downloaded of targetAttachment is false then
-            tell me to do shell script "rm -rf " & quoted form of tempDir
-            return "{\"error\": \"Attachment is not yet downloaded. Open the message in Mail.app first.\", \"errorNumber\": -2}"
+            error "Attachment is not yet downloaded. Open the message in Mail.app first." number -2
         end if
 
         set attName to name of targetAttachment as text
+        set rawMime to missing value
+        try
+            set rawMime to MIME type of targetAttachment
+        on error
+            set rawMime to missing value
+        end try
+        set attMime to my attachmentMimeType(attName, rawMime)
+        my requireReadableAttachment(attName, attMime)
+        tell me to set tempDir to do shell script "mktemp -d"
         set tempPath to tempDir & "/" & attName
         save targetAttachment in POSIX file tempPath
         set saveSucceeded to true
