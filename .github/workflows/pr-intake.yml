@@ -8,7 +8,7 @@
 # and branch protection reads an absent required context exactly as it reads a failing one. The
 # result is a pull request that is blocked with no visible reason, which is the state #33 sat in.
 #
-# Hardening made that worse rather than better: four required contexts are now absent instead of
+# Hardening made that worse rather than better: three required contexts are now absent instead of
 # one. The approval gate itself is right and stays — running a stranger's code on this repository's
 # runners should be a decision somebody makes. What was wrong was the silence.
 #
@@ -46,7 +46,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
 

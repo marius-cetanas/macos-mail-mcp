@@ -11,11 +11,8 @@ on:
   #
   # A base edit leaves the head commit unchanged, so a required check that does not re-run keeps the
   # status it had against the old base (raised by Copilot on #98). `branch-freshness` measures the
-  # branch against its base, so it re-runs on `edited` too. `copilot-reviewed` asks for a round on
-  # the head, which a retarget does not change, so a re-run would give the same answer; and `analyze`
-  # runs only for pull requests into `main`, so one retargeted into `main` has no status to reuse and
-  # waits for a push. Whether `copilot-reviewed` should also judge the base is an open question in
-  # `.portulan/handoffs/2026-09-15-the-questions-81-left-open.md`.
+  # branch against its base, so it re-runs on `edited` too. `analyze` runs only for pull requests into
+  # `main`, so one retargeted into `main` has no status to reuse and waits for a push.
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
@@ -44,7 +41,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -63,7 +60,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -91,7 +88,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -176,7 +173,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
 

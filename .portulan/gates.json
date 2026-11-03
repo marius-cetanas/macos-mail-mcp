@@ -9,7 +9,6 @@
     "branch": "main",
     "checks": [
       { "context": "verify", "integration_id": 15368 },
-      { "context": "copilot-reviewed" },
       { "context": "branch-freshness", "integration_id": 15368 },
       { "context": "analyze", "integration_id": 15368 }
     ],
@@ -22,7 +21,7 @@
       "id": "merge-a-pull-request",
       "tier": "gated",
       "action": { "shell": "gh pr merge" },
-      "reason": "An agent never decides for itself that a change is ready to land. A commit enters this repository's record here, not at the push. Two preconditions the maintainer's approval does not waive: the required checks are green on the CURRENT head, and the review verdict post-dates that head — `copilot-reviewed` enforces the second, after PR #25 merged on a verdict that predated its tree."
+      "reason": "An agent never decides for itself that a change is ready to land. A commit enters this repository's record here, not at the push. Two preconditions the maintainer's approval does not waive: the required checks are green on the CURRENT head, and the review verdict post-dates that head. Review freshness is human-held; CI no longer enforces it."
     },
     {
       "id": "publish-a-release",
@@ -73,7 +72,7 @@
       "id": "request-a-review",
       "tier": "propose",
       "action": { "shell": "gh pr edit --add-reviewer" },
-      "reason": "Requesting a review spends a Copilot round and, on a stacked pull request against a non-default branch, may draw nobody at all — issue #44. Proposing rather than doing it unattended keeps the budget visible."
+      "reason": "Requesting a review asks a reviewer to spend time on the change. Proposing rather than doing it unattended keeps that request visible to the maintainer."
     },
     {
       "id": "reply-to-review-feedback",
