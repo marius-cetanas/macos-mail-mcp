@@ -4,9 +4,8 @@ import type { AddressInfo } from "node:net";
 import { API, REST_PAGE, githubHeaders, nextPageUrl, readPages } from "../../scripts/github-api.mjs";
 
 /**
- * The reader every check shares. `copilot-round.mjs` had it, `changelog-sections.mjs` imported it
- * from there, and `check-freshness.mjs` had its own fetch that followed redirects; each script's
- * tests still drive its own reads through this, and what is held here is the contract itself — paging,
+ * The reader the changelog and branch-freshness checks share. Each script's tests still drive its
+ * own reads through this, and what is held here is the contract itself — paging,
  * the two refusals, and the two things about fetch the refusals rest on, measured on the Node that
  * runs the suite rather than asserted from one machine.
  */

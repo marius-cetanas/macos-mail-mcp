@@ -15,7 +15,7 @@
 set -uo pipefail
 cd -- "$(dirname -- "$0")"/../.. || exit 2
 
-LIMIT=296
+LIMIT=124
 
 for need in git node; do
     command -v "$need" >/dev/null 2>&1 || {

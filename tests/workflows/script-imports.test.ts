@@ -5,13 +5,13 @@ import { dirname, join, relative, resolve } from "node:path";
 import { parse } from "yaml";
 
 /**
- * Four jobs run a script from `scripts/` without `npm ci` — `changelog` and `copilot-reviewed`,
- * which are required checks, by way of `verify` and directly, and `branch-freshness` and `intake` —
+ * Three jobs run a script from `scripts/` without `npm ci` — `changelog`, covered by `verify`,
+ * and `branch-freshness` and `intake` —
  * and the release job runs `check-npmrc.mjs` before its own `npm ci`, as a preflight. They install
  * nothing first because the scripts need nothing installed. That is a claim about an import graph,
- * and until this test it was a sentence in `verify.yml`: the changelog check reads pages through a
- * module the Copilot gate also uses, so one package import anywhere in that graph would break a job
- * that installs nothing, and every pull request would go red on a required check at once.
+ * and until this test it was a sentence in `verify.yml`: one package import anywhere in that graph
+ * would break a job that installs nothing, and every pull request would go red on a required check
+ * at once.
  *
  * So the jobs are read from the workflows rather than listed here, step by step: a script run before
  * the job's first install — in an earlier step, or earlier in the same `run:` block — is held, and
@@ -122,7 +122,6 @@ describe("the scripts CI runs without npm ci", () => {
     expect(found).toEqual(
       expect.arrayContaining([
         "changelog:changelog-sections.mjs",
-        "copilot-reviewed:copilot-round.mjs",
         "branch-freshness:check-freshness.mjs",
         "intake:pr-intake.mjs",
         "release:check-npmrc.mjs",
