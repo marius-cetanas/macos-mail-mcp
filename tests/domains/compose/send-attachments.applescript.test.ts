@@ -25,7 +25,7 @@ function handler(name: string): string {
 function run(body: string): string {
   const helpers = ["readAttachmentPaths", "requireAttachmentCount", "requireSendAccepted"].map(handler).join("\n");
   return execFileSync("osascript", ["-"], {
-    input: `${sharedSources[0]}\n${helpers}\n${body}`,
+    input: composeScript(sharedSources, `${helpers}\n${body}`),
     encoding: "utf8",
     timeout: 20_000,
   }).trimEnd();
@@ -45,6 +45,7 @@ function withPathList(paths: string[], body: (file: string) => void): void {
 describe("send attachment safety wiring", () => {
   it("checks the parsed count and outgoing rich-text attachments before send", () => {
     expect(template).toContain('my readAttachmentPaths("{{attachmentPathsFile}}", {{attachmentCount}})');
+    expect(template).toContain("set pathList to paragraphs of attachmentData");
     expect(template).toContain("tell content of newMsg");
     const check = template.indexOf("my requireAttachmentCount(count of attachments of content of newMsg, {{attachmentCount}})");
     expect(check).toBeGreaterThan(template.indexOf("make new attachment"));
@@ -61,7 +62,7 @@ describe("send attachment safety wiring", () => {
 });
 
 describe.skipIf(!onMacOS)("send attachment helpers, executed", () => {
-  it.each([1, 2, 3])("reads all %i LF-separated paths after shell line-ending conversion", (count) => {
+  it.each([1, 2, 3])("reads all %i LF-separated paths through the native UTF-8 reader", (count) => {
     const paths = ["/tmp/one.txt", "/tmp/two.csv", "/tmp/three.png"].slice(0, count);
     withPathList(paths, (file) => {
       const result = run([

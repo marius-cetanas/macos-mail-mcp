@@ -92,6 +92,7 @@ describe("SHARED_HANDLER_FILES", () => {
       "escape-for-json.applescript",
       "resolve-mailbox.applescript",
       "compose-guards.applescript",
+      "read-utf8-file.applescript",
     ]);
   });
 });
