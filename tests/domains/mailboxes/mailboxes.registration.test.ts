@@ -61,6 +61,25 @@ describe("mailboxes tool registration", () => {
   });
 
   describe("create_mailbox", () => {
+    it("returns the unambiguous full path supplied by Mail readback", async () => {
+      const response = { success: true, mailboxName: "Projects/2026/Q2", accountName: "Google" };
+      mockRunAppleScript.mockResolvedValueOnce(response);
+      const result = await tools.get("create_mailbox")!.handler({
+        accountName: "Google", mailboxName: "Q2", parentMailboxName: "Projects/2026",
+      });
+      expect(payload(result)).toEqual(response);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("surfaces a path readback mismatch as an MCP error", async () => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error("Mail returned a different mailbox path."));
+      const result = await tools.get("create_mailbox")!.handler({
+        accountName: "Google", mailboxName: "Child", parentMailboxName: "Parent",
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toContain("Mail returned a different mailbox path");
+    });
+
     it("creates a top-level mailbox with the __NONE__ parent sentinel", async () => {
       await tools.get("create_mailbox")!.handler({
         accountName: "Google",
