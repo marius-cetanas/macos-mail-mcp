@@ -1,0 +1,1 @@
+- Reuse existing account-scoped mailboxes without another creation request and return explicit `created`/`alreadyExisted` booleans, preserving full-path readback and propagating lookup failures.

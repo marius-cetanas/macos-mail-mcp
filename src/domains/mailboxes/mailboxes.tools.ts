@@ -60,7 +60,7 @@ export function registerMailboxesTools(server: McpServer): void {
 
   server.tool(
     "create_mailbox",
-    "Create a new mailbox (folder) in a Mail.app account. For nesting, resolve the parent and create its full slash path at the account. Returns the full mailbox path read back from Mail.",
+    "Ensure a mailbox (folder) exists in a Mail.app account. For nesting, resolve the parent and use its full slash path at the account. Returns the full path read back from Mail and explicit created/alreadyExisted booleans; an existing mailbox is reused.",
     {
       accountName: z.string().describe("The name of the account to create the mailbox in"),
       mailboxName: z.string().describe("The child name to create, or a full slash path when parentMailboxName is omitted"),

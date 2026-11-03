@@ -27,14 +27,14 @@ describe("mailboxes tools", () => {
   });
 
   it("create_mailbox passes accountName and mailboxName", async () => {
-    mockRunAppleScript.mockResolvedValue({ success: true, mailboxName: "Archive", accountName: "Gmail" });
+    mockRunAppleScript.mockResolvedValue({ success: true, created: true, alreadyExisted: false, mailboxName: "Archive", accountName: "Gmail" });
     const { handleCreateMailbox } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");
     await handleCreateMailbox("Gmail", "Archive");
     expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/create-mailbox.applescript", { accountName: "Gmail", mailboxName: "Archive", parentMailboxName: "__NONE__" });
   });
 
   it("create_mailbox passes parentMailboxName when provided", async () => {
-    mockRunAppleScript.mockResolvedValue({ success: true, mailboxName: "Projects/Q2", accountName: "Gmail" });
+    mockRunAppleScript.mockResolvedValue({ success: true, created: true, alreadyExisted: false, mailboxName: "Projects/Q2", accountName: "Gmail" });
     const { handleCreateMailbox } = await import("../../../src/domains/mailboxes/mailboxes.tools.js");
     await handleCreateMailbox("Gmail", "Q2", "Projects");
     expect(mockRunAppleScript).toHaveBeenCalledWith("mailboxes/scripts/create-mailbox.applescript", { accountName: "Gmail", mailboxName: "Q2", parentMailboxName: "Projects" });

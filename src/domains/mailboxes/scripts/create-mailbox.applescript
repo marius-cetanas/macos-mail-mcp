@@ -9,12 +9,19 @@ tell application "Mail"
             set requestedPath to my mailboxCreationPath(my mailboxFullName(parentMbox), "{{mailboxName}}")
         end if
 
-        set newMbox to make new mailbox with properties {name:requestedPath} at theAccount
+        set alreadyExisted to (exists mailbox requestedPath of theAccount)
+        if alreadyExisted then
+            set newMbox to mailbox requestedPath of theAccount
+            set statusJson to "\"created\": false, \"alreadyExisted\": true"
+        else
+            set newMbox to make new mailbox with properties {name:requestedPath} at theAccount
+            set statusJson to "\"created\": true, \"alreadyExisted\": false"
+        end if
         set actualPath to my mailboxFullName(newMbox)
         my assertCreatedMailboxPath(requestedPath, actualPath)
         set mboxName to my escapeForJson(actualPath)
         set acctName to my escapeForJson(name of theAccount)
-        return "{\"success\": true, \"mailboxName\": \"" & mboxName & "\", \"accountName\": \"" & acctName & "\"}"
+        return "{\"success\": true, " & statusJson & ", \"mailboxName\": \"" & mboxName & "\", \"accountName\": \"" & acctName & "\"}"
     on error errMsg number errNum
         return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
