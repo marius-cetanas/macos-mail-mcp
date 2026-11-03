@@ -237,6 +237,9 @@ ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFr
 - **Message IDs are volatile** — Mail.app can reassign IDs after reindexing. Always fetch fresh IDs before operating on messages.
 - **Gmail labels vs folders** — `move_message` adds the destination label but may not remove the original.
 - **MIME type** often returns `missing value` from Mail.app. Scripts use `mimeFromExtension()` as fallback.
+- **Recipient display names** can be `missing value`. Both get-message serializers check the raw
+  name before text coercion and return an empty name for that sentinel in to/cc/bcc recipients;
+  genuine names, addresses, ordering and property-error propagation are preserved.
 - **Attachment names with quotes/backslashes** — handled via temp file matching to avoid escaping mismatches.
 - **`whose` clause performance** — Mail.app loads ALL matching messages into memory before applying limits. Warn users to scope searches by account/mailbox.
 - **`full name` of an account** can be `missing value`; scripts wrap it in `try` and fall back to an empty string, which makes `resolveSender()` emit a bare address instead of `"Name <address>"`. Mail accepts both.

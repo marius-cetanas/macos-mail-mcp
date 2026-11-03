@@ -154,6 +154,9 @@ Omit the parent to address the account directly.
 | `flag_message` | Set/clear flag with optional color index (0-6) |
 | `mark_read` | Mark message as read or unread |
 
+In `get_message` results, an absent recipient display name is the empty string in `name`.
+The to/cc/bcc arrays preserve known names, addresses and recipient order.
+
 `move_messages` validates every ID before looking up mailboxes or moving messages. Its result
 reports `moved`, `failed` and an `errors` list containing each failed numeric ID and error text.
 Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
@@ -303,6 +306,10 @@ unexercised.
 and readback guards and compiles the complete creation template. It executes the production
 existence/status branches and response assembly with fixture Mail primitives, checking existing/new
 statuses and lookup/creation errors. Native mailbox creation and provider behavior remain unexercised.
+
+`tests/domains/messages/recipient-names.applescript.test.ts` executes both production recipient
+serializers and message JSON assembly using local recipient records, and compiles both lookup
+templates. It does not read native Mail messages.
 
 ## Changelog
 
