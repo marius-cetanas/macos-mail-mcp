@@ -10,6 +10,104 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each entry for the next release is a file in [`changes/`](changes/), so two open changes never edit the
 same lines; `portulan index --changes changes` prints them as the cut pastes them.
 
+## [3.0.0] - 2026-11-03
+
+This release fixes the message, mailbox, compose and attachment findings from issues #84–#95,
+updates dependencies, and removes automated Copilot review from CI.
+
+### Upgrade notes
+
+- **Search results:** `search_messages` now returns an object. Read matches from `messages` and
+  inspect its partial-result metadata. Supply `accountName` and `mailboxName` for default searches;
+  broad or large-mailbox searches need `allowSlow: true`, and content searches also need both
+  scope names. The result limit is capped at 200. See [search safety and partial results](README.md#search-safety-and-partial-results).
+- **Account metadata:** accept raw account type strings beyond the canonical names and handle
+  `null` for unavailable `serverName`, `port` and `usesSsl`. A backend-reported `unknown` stays
+  unknown; no provider is inferred from an account name.
+- Message `dateReceived` values now use UTC ISO 8601 seconds ending in `Z`; parse them as absolute
+  instants and render local time in the client.
+
+### Changed
+
+- An earlier dependency and action-pin sweep replaced Dependabot's #110 and #112 to #116, none of which
+  could go green alone: each inherited `main`'s red audit, and #116 also needed the gate artifact
+  recompiled. Vitest and `@vitest/coverage-v8` 5.0.0 → 5.0.3, `zod` 4.6.2 → 4.6.5, `@types/node`
+  26.5.1 → 26.6.5, `codeql-action` 4.38.0 → 4.38.3, and Portulan 0.1.2 → 0.2.0, whose compiler
+  writes its restart advisory into `.claude/settings.json` from the same policy: two hooks and a
+  status line beside the six `ask` permissions and two gate hooks already there.
+  A later consolidation in this release brings the final lockfile to MCP SDK 1.32.2, Zod 4.6.7,
+  Vitest and its coverage provider 5.0.5, `@types/node` 26.6.5, TypeScript 7.0.2, YAML 2.9.1
+  and Portulan 0.2.0. The final action pins are setup-node 7.1.0 and CodeQL 4.39.0.
+
+- `main` is audited every day by a scheduled workflow, `scheduled-audit.yml`, which runs the steps
+  of the merge gate's `audit` job. An advisory is published against a version, so the lockfile on
+  `main` can become vulnerable without a commit, and CI audits only on a push or a pull request:
+  twice, on 2026-09-14 and 2026-10-12, the first sign was a batch of Dependabot pull requests red
+  on an audit none of them could fix. `tests/workflows/scheduled-audit.test.ts` holds the copy to
+  the original, so the two cannot come to measure different thresholds.
+
+- Remove automated Copilot review from CI and the required merge checks. Keep `verify`, `branch-freshness` and `analyze` pinned to GitHub Actions; review freshness remains the maintainer's responsibility.
+
+- The Portulan workspace is in the form Portulan 0.2.0 keeps its own in, taken with
+  `portulan upgrade`. A changelog entry is a file of its own under `changes/`, pasted under the
+  version's heading when a release is recorded, so two open pull requests no longer edit the same
+  lines of this file. `Internal` is not one of the six sections a fragment can name, so a change to
+  CI or the tooling is filed under Changed from here on, and says what it is. A session boots from
+  a card compiled into `.claude/rules/portulan/boot.md`. A `comments` recipe was introduced with a limit of 296
+  historical comment lines; removing Copilot automation reduced the count and the enforced limit
+  to 124. Change history belongs in commit messages. The merge gate runs the recipe and checks every fragment, and the
+  `changelog` check sends a misfiled entry to `changes/` rather than to `[Unreleased]`.
+
+### Fixed
+
+- **Breaking:** Preserve raw Mail account types beyond canonical IMAP/POP/iCloud/SMTP values, and return nullable `serverName`, `port` and `usesSsl` for unsupported or unavailable metadata instead of fabricated defaults; backend-reported `unknown` remains unknown.
+
+- Prepare attachment save directories recursively with actionable path errors before contacting Mail, and report unknown message IDs with plain decimal IDs and requested account/mailbox context while preserving unrelated native errors and partial bulk-move results.
+
+- **Breaking:** Return structured partial search results, require safe default account/mailbox/count scopes or explicit slow-search opt-in, cap results at 200, and bound serial work to 45 seconds overall/10 seconds per target while honoring request cancellation; already-queued Mail Apple events remain uncancellable.
+
+- Reuse existing account-scoped mailboxes without another creation request and return explicit `created`/`alreadyExisted` booleans, preserving full-path readback and propagating lookup failures.
+
+- Preserve partial `move_messages` results and exact failed IDs with locale-independent integer JSON formatting across all scripts; validate the complete move-ID list before any Mail lookup or move.
+
+- Read text attachments using supported MIME types as well as existing text extensions, share the metadata filename fallback for missing MIME (including .ics calendars), and include the effective MIME type when inline reading is unsupported.
+
+- Preserve multiple `send_message` attachment paths, reject invalid or unreadable files before composing, and fail before sending when Mail's outgoing attachment count differs from the request; require Mail to accept the send command before reporting success.
+
+- Create nested mailboxes at the account using the resolved parent's full slash path, validate the mailbox path read back from Mail, and return that unambiguous full path.
+
+- Return empty recipient names for Mail's `missing value` sentinel in both `get_message` lookup routes, preserving known names, addresses, order and JSON escaping across to/cc/bcc recipients.
+
+- Preserve valid UTF-8 text, line endings, trailing newlines and BOMs in inline attachment content and all compose/attachment temp-file reads using a shared native reader and lossless JSON escaping.
+
+- Insert reply and forward body text into Mail's rich text instead of replacing the original content. Refuse to send if readback loses the body, quoted text or inherited attachments, if recipients are empty, or if Mail rejects sending. Native Mail insertion and delivered MIME still require an end-to-end check.
+
+- Emit unambiguous UTC `dateReceived` values with second precision and `Z` across all message output paths using isolated UTC script environments and a fail-closed date formatter, preserving historical DST and repeated-hour instants.
+
+### Security
+
+- The lockfile no longer carries the eight advisories `npm audit` reported against it on
+  2026-10-12, in five packages: `proxy-addr` (one critical), `@modelcontextprotocol/sdk` (one high),
+  `source-map-js` (one high), `ip-address` (four moderate) and `fast-uri` (one moderate). `npm audit`
+  reports 0 vulnerabilities. Dependabot's #115 proposed SDK 1.30.1, the last version
+  GHSA-6qxp-vccf-f47h covers, so the initial remediation selected 1.32.1. The later consolidation
+  in this release advances it to 1.32.2. That advisory is in the SDK's
+  OAuth client, and this server imports `McpServer` and `StdioServerTransport` from the SDK and
+  nothing else. The published package ships no lockfile and its dependency ranges already admitted
+  the patched versions; what moved is this repository's own CI and development tree, where `audit`
+  had turned red on `main` between 2026-09-29 and 2026-10-06 and on every pull request with it.
+
+- Update the MCP SDK, Zod, Vitest and its coverage provider, and transitive dependencies, including security fixes in body-parser, fast-uri, hono and ip-address; update setup-node to 7.1.0 and CodeQL to 4.39.0.
+
+### Validation boundary
+
+The source changes have automated coverage for production helpers, generated-date and local
+filesystem fixtures, substituted transport flows, registered tools, and complete Mail-dictionary
+compilation. Native Mail/provider behavior, mailbox creation, compose readback, attachment saving
+and delivery remain unexercised. Killing a search subprocess cannot cancel Apple events already
+queued in Mail; MIME/filename admission does not prove that bytes are text, and filesystem
+preflight does not establish Mail's own permissions.
+
 ## [2.1.1] - 2026-09-15
 
 No change to the server: this release carries the README's Known issues and Changelog sections,

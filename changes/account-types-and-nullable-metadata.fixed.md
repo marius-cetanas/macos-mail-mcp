@@ -1,1 +1,0 @@
-- **Breaking:** Preserve raw Mail account types beyond canonical IMAP/POP/iCloud/SMTP values, and return nullable `serverName`, `port` and `usesSsl` for unsupported or unavailable metadata instead of fabricated defaults; backend-reported `unknown` remains unknown.

@@ -1,1 +1,0 @@
-- Preserve valid UTF-8 text, line endings, trailing newlines and BOMs in inline attachment content and all compose/attachment temp-file reads using a shared native reader and lossless JSON escaping.

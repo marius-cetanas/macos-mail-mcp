@@ -1,1 +1,0 @@
-- Insert reply and forward body text into Mail's rich text instead of replacing the original content. Refuse to send if readback loses the body, quoted text or inherited attachments, if recipients are empty, or if Mail rejects sending. Native Mail insertion and delivered MIME still require an end-to-end check.

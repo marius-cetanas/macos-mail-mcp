@@ -1,1 +1,0 @@
-- Update the MCP SDK, Zod, Vitest and its coverage provider, and transitive dependencies, including security fixes in body-parser, fast-uri, hono and ip-address; update setup-node to 7.1.0 and CodeQL to 4.39.0.

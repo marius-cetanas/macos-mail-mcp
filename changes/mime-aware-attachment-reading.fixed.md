@@ -1,1 +1,0 @@
-- Read text attachments using supported MIME types as well as existing text extensions, share the metadata filename fallback for missing MIME (including .ics calendars), and include the effective MIME type when inline reading is unsupported.

@@ -1,1 +1,0 @@
-- Preserve partial `move_messages` results and exact failed IDs with locale-independent integer JSON formatting across all scripts; validate the complete move-ID list before any Mail lookup or move.
