@@ -124,6 +124,9 @@ on escapeForJson(theString)
             set esc to "\\n"
         else if pt = 13 then
             set esc to "\\r"
+        else if pt = 65279 then
+            -- Native list-to-text coercion can discard a leading U+FEFF.
+            set esc to "\\ufeff"
         else if pt >= 0 and pt <= 31 then
             -- The rest of C0. JSON requires these escaped and gives them no short form.
             set hi to (pt div 16) + 1

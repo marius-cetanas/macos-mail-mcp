@@ -57,7 +57,9 @@ checks that the required status check `verify` is one a workflow here actually r
   `tests/bridge/escape-for-json.applescript.test.ts` executes the escaping handler through
   `osascript` for real. `tests/domains/compose/send-attachments.applescript.test.ts` also executes
   the attachment path parser and count/send guards, and compiles the full send template with
-  shared handlers without executing Mail. Neither suite exercises native Mail attachment
+  shared handlers without executing Mail. `tests/bridge/read-utf8-file.applescript.test.ts`
+  executes all seven production file-read expressions through JSON escaping, exercises the
+  native UTF-8 reader, and compiles every affected template. None exercises native Mail attachment
   insertion, enumeration or delivery. These executable checks **run only on macOS and are skipped elsewhere, including CI**, so
   those assertions run on a maintainer's machine and never in the merge gate. Run
   `npm run test:coverage` locally before touching anything under `src/**/*.applescript`; the runner
@@ -120,13 +122,20 @@ Two details in it are guards rather than optimisations, and both are pinned by t
 
 ### Multi-line Content via Temp Files
 
-AppleScript string literals cannot span multiple lines. Any content that may contain newlines is written to a temp file in TypeScript and read via `do shell script "cat ..."` in AppleScript:
+Content that may contain newlines is written to a UTF-8 temp file in TypeScript and read through
+the shared `my readUtf8File(path)` AppleScript handler. Native reads preserve LF, CRLF, lone CR
+and trailing newlines; `do shell script "cat ..."` alters line endings and strips a trailing newline. The
+helper handles empty files and restores a leading UTF-8 BOM removed by the native decoder.
+`escapeForJson` escapes U+FEFF explicitly so native list-to-text coercion cannot discard it.
+
 - **Email body** — compose tools write to `body.txt`
 - **Attachment paths** — send_message writes to `attachments.txt` (one path per line). It checks
   absolute paths, regular-file status and read access before sender lookup or temp setup, and
-  rejects CR, LF and NUL in a path. The send script reads shell output as `paragraphs`, which
-  accepts the LF-to-CR conversion, and checks the parsed count against the requested count.
+  rejects CR, LF and NUL in a path. The send script parses the native file read as `paragraphs`
+  and checks the parsed count against the requested count.
 - **Attachment names** — save/read_attachment write to `attname.txt`
+- **Inline attachment content** — read_attachment saves the attachment then reads its UTF-8
+  text with the same helper. Other encodings and binary preservation are outside this reader's contract.
 
 Always clean up temp files in a `finally` block.
 

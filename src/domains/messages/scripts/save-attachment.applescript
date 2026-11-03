@@ -1,6 +1,6 @@
 set saveFolderPath to "{{savePath}}"
 -- Read attachment name from temp file to avoid AppleScript string escaping issues
-set targetAttName to do shell script "cat " & quoted form of "{{attNameFile}}"
+set targetAttName to my readUtf8File("{{attNameFile}}")
 
 tell application "Mail"
     try

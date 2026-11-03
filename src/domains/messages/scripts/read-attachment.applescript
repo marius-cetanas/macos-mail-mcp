@@ -2,7 +2,7 @@ set saveSucceeded to false
 set tempPath to ""
 set tempDir to do shell script "mktemp -d"
 -- Read attachment name from temp file to avoid AppleScript string escaping issues
-set targetAttName to do shell script "cat " & quoted form of "{{attNameFile}}"
+set targetAttName to my readUtf8File("{{attNameFile}}")
 
 tell application "Mail"
     try
@@ -43,7 +43,7 @@ end tell
 
 if saveSucceeded then
     try
-        set fileContent to do shell script "cat " & quoted form of tempPath
+        set fileContent to my readUtf8File(tempPath)
         set escapedName to my escapeForJson(attName)
         set escapedContent to my escapeForJson(fileContent)
         do shell script "rm -rf " & quoted form of tempDir

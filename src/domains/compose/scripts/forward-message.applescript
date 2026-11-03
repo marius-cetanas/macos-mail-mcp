@@ -1,6 +1,6 @@
 set bodyContent to ""
 if "{{bodyFile}}" is not "__NONE__" then
-    set bodyContent to do shell script "cat " & quoted form of "{{bodyFile}}"
+    set bodyContent to my readUtf8File("{{bodyFile}}")
 end if
 
 tell application "Mail"
