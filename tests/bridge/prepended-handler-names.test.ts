@@ -69,6 +69,7 @@ describe("handlers the bridge prepends are reserved names", () => {
   it("finds the prepended handlers at all, so an empty set cannot pass vacuously", () => {
     // If the bridge is ever restructured, this must fail rather than silently check nothing.
     expect([...reserved.keys()].sort()).toEqual([
+      "assertComposeReady",
       "escapeForJson",
       "joinStrings",
       "mailboxFullName",

@@ -101,6 +101,19 @@ describe("compose tool registration", () => {
 
   describe("reply_to_message and forward_message accountName", () => {
     it.each(["reply_to_message", "forward_message"])(
+      "%s surfaces a pre-send validation failure as an MCP error",
+      async (toolName) => {
+        mockRunAppleScript.mockRejectedValue(new Error("Mail did not retain the supplied body; nothing was sent."));
+        const result = await tools.get(toolName)!.handler({
+          messageId: 123, mailboxName: "INBOX", accountName: "Gmail",
+          body: "Thanks", replyAll: false, to: "fixture@example.invalid",
+        });
+        expect(result.isError).toBe(true);
+        expect(result.content[0]!.text).toContain("nothing was sent");
+      }
+    );
+
+    it.each(["reply_to_message", "forward_message"])(
       "%s documents accountName as a lookup, not a sender selector",
       (toolName) => {
         const schema = tools.get(toolName)!.schema as unknown as Record<
