@@ -41,6 +41,23 @@ export interface MessageSummary {
 
 export interface SearchResult extends MessageSummary {
   mailboxName: string;
+  accountName: string;
+}
+
+export interface SearchScope {
+  accountName: string | null;
+  mailboxName: string | null;
+}
+
+export interface SearchResponse {
+  messages: SearchResult[];
+  partial: boolean;
+  cancelled: boolean;
+  limitReached: boolean;
+  timedOut: SearchScope[];
+  skipped: Array<SearchScope & { reason: "timeout" | "cancelled" | "error" | "limit" }>;
+  errors: Array<SearchScope & { message: string }>;
+  warnings: string[];
 }
 
 export interface MessageDetail extends MessageSummary {

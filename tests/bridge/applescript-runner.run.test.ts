@@ -136,6 +136,46 @@ describe("runAppleScript", () => {
   });
 
   describe("execution failures", () => {
+    it("does no file or process setup when already aborted", async () => {
+      const controller = new AbortController(); controller.abort(new Error("cancelled"));
+      await expect(runAppleScript("x.applescript", {}, { signal: controller.signal })).rejects.toThrow("cancelled");
+      expect(mockReadFile).not.toHaveBeenCalled();
+      expect(mockMkdtemp).not.toHaveBeenCalled();
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it("cleans an allocated temp dir if cancelled during setup", async () => {
+      const controller = new AbortController();
+      mockMkdtemp.mockImplementationOnce(async () => { controller.abort(new Error("cancelled")); return "/tmp/macos-mail-mcp-test"; });
+      await expect(runAppleScript("x.applescript", {}, { signal: controller.signal })).rejects.toThrow("cancelled");
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(mockRm).toHaveBeenCalled();
+    });
+
+    it("does not allocate temp files after cancellation while loading sources", async () => {
+      const controller = new AbortController();
+      mockReadFile.mockImplementation(async () => { controller.abort(new Error("cancelled")); return "-- source"; });
+      await expect(runAppleScript("x.applescript", {}, { signal: controller.signal })).rejects.toThrow("cancelled");
+      expect(mockMkdtemp).not.toHaveBeenCalled();
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+
+    it("does not start a process after cancellation during the script write", async () => {
+      const controller = new AbortController();
+      mockWriteFile.mockImplementationOnce(async () => { controller.abort(new Error("cancelled")); });
+      await expect(runAppleScript("x.applescript", {}, { signal: controller.signal })).rejects.toThrow("cancelled");
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(mockRm).toHaveBeenCalled();
+    });
+
+    it("forwards cancellation with SIGKILL for opted-in search execution and cleans up", async () => {
+      const controller = new AbortController();
+      mockExec.mockImplementationOnce(async () => { controller.abort(new Error("cancelled")); throw new Error("aborted"); });
+      await expect(runAppleScript("x.applescript", {}, { timeout: 10_000, signal: controller.signal })).rejects.toThrow("cancelled");
+      expect(mockExec).toHaveBeenCalledWith("osascript", expect.any(Array), { timeout: 10_000, signal: controller.signal, killSignal: "SIGKILL" });
+      expect(mockRm).toHaveBeenCalled();
+    });
+
     it("reports a timeout in seconds when the process was killed", async () => {
       mockExec.mockRejectedValue(Object.assign(new Error("killed"), { killed: true }));
       await expect(

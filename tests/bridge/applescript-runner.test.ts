@@ -85,6 +85,11 @@ describe("composeScript", () => {
 });
 
 describe("SHARED_HANDLER_FILES", () => {
+  it("retains AppleScript error numbers for timeout classification", () => {
+    let caught: unknown;
+    try { parseAppleScriptOutput('{"error":"AppleEvent timed out","errorNumber":-1712}'); } catch (error) { caught = error; }
+    expect(caught).toMatchObject({ message: "AppleEvent timed out", errorNumber: -1712 });
+  });
   it("includes the escapeForJson and resolveMailbox handlers, in that order", () => {
     // resolve-mailbox must be present so every script can call `my resolveMailbox(...)`;
     // order matters because mailboxFullName/resolveMailbox are defined here and used elsewhere.

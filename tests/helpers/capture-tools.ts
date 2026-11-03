@@ -7,7 +7,7 @@ export interface ToolResult {
 export interface RegisteredTool {
   description: string;
   schema: Record<string, unknown>;
-  handler: (args: Record<string, unknown>) => Promise<ToolResult>;
+  handler: (args: Record<string, unknown>, extra?: { signal: AbortSignal }) => Promise<ToolResult>;
 }
 
 /**

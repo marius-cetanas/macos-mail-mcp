@@ -1,0 +1,1 @@
+- **Breaking:** Return structured partial search results, require safe default account/mailbox/count scopes or explicit slow-search opt-in, cap results at 200, and bound serial work to 45 seconds overall/10 seconds per target while honoring request cancellation; already-queued Mail Apple events remain uncancellable.

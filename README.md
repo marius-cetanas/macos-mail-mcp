@@ -155,7 +155,7 @@ Omit the parent to address the account directly.
 |---|---|
 | `list_messages` | List messages with pagination (limit/offset) and optional date filtering (after/before) |
 | `get_message` | Get full message content, headers, recipients, attachments. Mailbox name is optional — omit to search all mailboxes in the account. |
-| `search_messages` | Search by subject, sender, or content with optional date filtering (after/before). Results include the mailbox name. |
+| `search_messages` | Bounded serial search with explicit slow-search opt-in and partial-result metadata; results identify account and full mailbox path |
 | `move_message` | Move a message to a different mailbox |
 | `move_messages` | Bulk move multiple messages to a different mailbox in a single operation |
 | `delete_message` | Delete a message (moves to Trash) |
@@ -170,6 +170,39 @@ reports `moved`, `failed` and an `errors` list containing each failed numeric ID
 Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
 The shared formatter rejects invalid or out-of-range values. Account metadata treats an
 unrepresentable port as unavailable and returns `port: null`.
+
+### Search safety and partial results
+
+**Breaking search contract:** `search_messages` returns an object instead of an array, and `limit`
+is now capped at 200 (default 50). Subject/sender searches require `accountName` and `mailboxName`
+by default. A bounded mailbox-info preflight permits at most 1,000 messages; an unavailable or
+invalid count requires deliberate `allowSlow: true`. That opt-in also permits subject/sender
+searches across an account or all accounts. `mailboxName` always requires `accountName`.
+Content searches require both scope names and `allowSlow: true`. Supply nonblank query text or
+an `after`/`before` date filter. Date bounds are inclusive.
+
+Search has a 45 second overall server budget, including discovery/preflight, with at most
+10 seconds per stage/mailbox. This leaves headroom below the 60 second Cowork client ceiling
+reported in the original issue. Opting in does not extend these budgets. Mailboxes run serially
+in discovery order; results retain Mail's order within each mailbox. Duplicate account+message-ID
+pairs are removed, retaining the first mailbox path; equal IDs in different accounts are distinct.
+
+The response always contains `messages`, `partial`, `cancelled`, `limitReached`, `timedOut`,
+`skipped`, `errors` and `warnings`. Messages include `accountName` and the full `mailboxName`.
+`timedOut` identifies the active scope that exceeded its budget. `errors` contains operational
+failures with scope and message. `skipped` identifies known scopes not completed/scheduled, with
+reason `timeout`, `cancelled`, `error` or `limit`; discovery failures can leave later scopes unknown.
+A scope can have null account/mailbox names for broad discovery. `partial` means interruption,
+an operational failure or skipped scopes. `limitReached` means the requested cap was reached;
+more matches may exist even when `partial` is false. Invalid requests/count gates are MCP errors;
+operational failures return the structured response, preserving earlier results.
+
+The server stops scheduling after the first timeout, cancellation or operational failure. It
+honors the MCP request's cancellation signal and terminates its search `osascript` process. The
+SDK suppresses replies after client cancellation, so callers cannot rely on receiving partial
+results after cancelling. **Queued Apple events inside Mail cannot be cancelled:** Mail may keep
+working after the process stops. After a timeout, wait for Mail to recover or restart Mail before
+retrying; repeated immediate searches can queue more work.
 
 ### Attachments (4)
 
@@ -245,7 +278,10 @@ This MCP communicates with Mail.app via AppleScript, which is a stable but legac
 
 ### Performance
 
-- **Large mailbox searches** — `search_messages` uses Mail.app's `whose` clause, which performs a linear scan and loads all matching messages into memory before applying the limit. Searching by `content` (message bodies) on very large IMAP mailboxes (50K+ messages) can be slow or timeout. Prefer searching by `subject` or `sender` when possible, and narrow results with `accountName` and `mailboxName`. An unscoped or `content` search can outlast the client's timeout and leave Mail.app busy for around ten minutes afterwards, with nothing able to cancel it (#92).
+- **Large mailbox searches** — Mail's `whose` query may scan/load matches before applying the
+  result limit. The [search safeguards](#search-safety-and-partial-results) refuse risky defaults,
+  bound server waiting and retain completed scopes; they cannot cancel Apple events already
+  queued inside Mail. Opted-in searches can still leave Mail busy after the tool stops.
 - **IMAP attachment downloads** — Attachments on IMAP accounts may not be downloaded locally. The tools check download status and report clearly when an attachment needs to be opened in Mail.app first.
 
 ### Message IDs
@@ -328,6 +364,11 @@ templates. It does not read native Mail messages.
 account JSON with local records/getter fixtures, checks unavailable metadata and supported values,
 and compiles both account templates. It does not query native accounts. SMTP server settings are
 declared by Mail's dictionary; this does not establish that SMTP servers appear in account queries.
+
+Search controller tests use fake clocks/bridge calls to exercise budgets, count gates, partial
+results and SDK cancellation. Bridge tests verify abort checks, search-process SIGKILL options
+and temp cleanup; the search template's pure guards execute and its complete script compiles.
+These checks do not run native Mail searches or demonstrate cancellation of queued Apple events.
 
 ## Changelog
 
