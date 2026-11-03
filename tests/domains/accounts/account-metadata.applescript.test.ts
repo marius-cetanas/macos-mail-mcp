@@ -97,6 +97,10 @@ describe.skipIf(!onMacOS)("get_account_detail nullable server metadata", () => {
     expect(accountFixture("get-account-detail", "imap", ["missing value", "missing value", "missing value"], 3)).toMatchObject({ serverName: null, port: null, usesSsl: null });
   });
 
+  it.each(["1.5", "9007199254740992"])("reports an unrepresentable port %s as null", (port) => {
+    expect(accountFixture("get-account-detail", "imap", ['"imap.example.invalid"', port, "true"], 3)).toMatchObject({ serverName: "imap.example.invalid", port: null, usesSsl: true });
+  });
+
   it.each([0, 1, 2])("reports unavailable getter %i as null while preserving other settings", (index) => {
     const values = ['"imap.example.invalid"', "993", "true"];
     values[index] = 'error "metadata unavailable" number -1728';

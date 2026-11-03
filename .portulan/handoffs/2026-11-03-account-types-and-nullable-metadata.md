@@ -47,3 +47,10 @@ No native Mail account reads occurred. Native Exchange/provider behavior and SMT
 unexercised, with that boundary stated in docs. Shared runtime helpers and CI/release settings are
 unchanged. Changes are frozen and uncommitted for fresh root pre-commit review before a separate
 breaking issue commit on PR #132. Next is #92. Merging and publishing remain gated.
+## Published-head review follow-up
+
+The fresh combined review of the individual PRs approved the source with one adjustment:
+qualify the general numeric-error documentation for nullable account ports. The README now
+states that exception, and production fixture cases cover fractional and unsafe ports becoming
+null while other settings remain available. This follow-up is part of the same account fix.
+

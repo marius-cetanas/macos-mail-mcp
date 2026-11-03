@@ -168,7 +168,8 @@ The to/cc/bcc arrays preserve known names, addresses and recipient order.
 `move_messages` validates every ID before looking up mailboxes or moving messages. Its result
 reports `moved`, `failed` and an `errors` list containing each failed numeric ID and error text.
 Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
-invalid or out-of-range numeric values raise an error.
+The shared formatter rejects invalid or out-of-range values. Account metadata treats an
+unrepresentable port as unavailable and returns `port: null`.
 
 ### Attachments (4)
 
