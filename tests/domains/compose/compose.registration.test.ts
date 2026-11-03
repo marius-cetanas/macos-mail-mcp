@@ -103,6 +103,13 @@ describe("compose tool registration", () => {
   );
 
   describe("reply_to_message and forward_message accountName", () => {
+    it.each(["reply_to_message", "forward_message"])("%s preserves an actionable missing-ID error through MCP", async (toolName) => {
+      const message = 'Message 999999999 not found in account "Gmail", mailbox "INBOX".';
+      mockRunAppleScript.mockRejectedValueOnce(new Error(message));
+      const result = await tools.get(toolName)!.handler({ messageId: 999999999, mailboxName: "INBOX", accountName: "Gmail", to: "fixture@example.invalid", replyAll: false });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toBe("Error: " + message);
+    });
     it.each(["reply_to_message", "forward_message"])(
       "%s surfaces a pre-send validation failure as an MCP error",
       async (toolName) => {

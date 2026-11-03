@@ -61,12 +61,13 @@ function readFlow(options: { name?: string; mime?: string; getterError?: boolean
       .replace('tell application "Mail"', 'using terms from application "Mail"')
       .replace(/^end tell$/m, "end using terms from")
       .replace('my resolveMailbox("Fixture", "INBOX")', '"Fixture/INBOX"')
-      .replace("(first message of theMailbox whose id is 1)", '"message fixture"')
+      .replace('my requireMessage(theMailbox, 1, "Fixture", "INBOX")', '"message fixture"')
       .replace("mail attachments of msg", "fixtureAttachments")
       .replace("MIME type of targetAttachment", "my fixtureMime(targetAttachment)")
       .replace('do shell script "mktemp -d"', "my fixtureTemp()")
       .replace("save targetAttachment in POSIX file tempPath", "my fixtureSave(targetAttachment, tempPath)");
     expect(template).not.toContain('tell application "Mail"');
+    expect(template).not.toContain("my requireMessage(");
     expect(template).not.toContain("save targetAttachment in");
     const result = run([
       "using terms from application \"Mail\"",

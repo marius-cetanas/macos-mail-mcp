@@ -9,13 +9,16 @@ vi.mock("../../../src/bridge/applescript-runner.js", async (original) => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  stat: vi.fn().mockResolvedValue({ isDirectory: () => true }),
+  access: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   mkdtemp: vi.fn().mockResolvedValue("/tmp/mail-mcp-att-XXXXXX"),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { runAppleScript } from "../../../src/bridge/applescript-runner.js";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, access, mkdtemp, writeFile, rm } from "node:fs/promises";
 
 const mockRunAppleScript = vi.mocked(runAppleScript);
 const mockMkdtemp = vi.mocked(mkdtemp);
@@ -211,6 +214,47 @@ describe("messages tools - attachments", () => {
       { messageId: "123", mailboxName: "INBOX", accountName: "Gmail", savePath: homedir() + "/Downloads" },
       { timeout: 120_000 }
     );
+  });
+
+  it.each(["single", "all"])("prepares the %s save directory before Mail or name-file setup", async (kind) => {
+    const handlers = await import("../../../src/domains/messages/messages.tools.js");
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    if (kind === "single") await handlers.handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "/tmp/new/nested");
+    else await handlers.handleSaveAllAttachments(123, "INBOX", "Gmail", "/tmp/new/nested");
+    expect(mkdir).toHaveBeenCalledWith("/tmp/new/nested", { recursive: true });
+    expect(vi.mocked(access).mock.invocationCallOrder[0]).toBeLessThan(mockRunAppleScript.mock.invocationCallOrder[0]!);
+    if (kind === "single") expect(vi.mocked(access).mock.invocationCallOrder[0]).toBeLessThan(mockMkdtemp.mock.invocationCallOrder[0]!);
+    expect(mockRunAppleScript.mock.calls[0]?.[1]).toMatchObject({ savePath: "/tmp/new/nested" });
+  });
+
+  it.each(["single", "all"])("forwards the exact prepared destination through the %s save handler", async (kind) => {
+    const destination = '/tmp/mail-mcp exact "quotes" \\ café e\u0301 👩‍💻\r\nnext';
+    const handlers = await import("../../../src/domains/messages/messages.tools.js");
+    mockRunAppleScript.mockResolvedValue({ success: true });
+    if (kind === "single") await handlers.handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", destination);
+    else await handlers.handleSaveAllAttachments(123, "INBOX", "Gmail", destination);
+    expect(mkdir).toHaveBeenCalledWith(destination, { recursive: true });
+    expect(mockRunAppleScript).toHaveBeenCalledTimes(1);
+    expect(mockRunAppleScript.mock.calls[0]?.[0]).toBe(`messages/scripts/${kind === "single" ? "save-attachment" : "save-all-attachments"}.applescript`);
+    expect(mockRunAppleScript.mock.calls[0]?.[1]?.savePath).toBe(destination);
+    expect(mockRunAppleScript.mock.calls[0]?.[2]).toEqual({ timeout: 120_000 });
+  });
+
+  it.each(["single", "all"])("fails the %s save path before Mail/temp setup", async (kind) => {
+    vi.mocked(access).mockRejectedValueOnce(new Error("EACCES: directory denied"));
+    const handlers = await import("../../../src/domains/messages/messages.tools.js");
+    const result = kind === "single" ? handlers.handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "/tmp/denied") : handlers.handleSaveAllAttachments(123, "INBOX", "Gmail", "/tmp/denied");
+    await expect(result).rejects.toThrow('Cannot prepare savePath "/tmp/denied"');
+    expect(mockRunAppleScript).not.toHaveBeenCalled();
+    expect(mockMkdtemp).not.toHaveBeenCalled();
+    expect(mockWriteFile).not.toHaveBeenCalled();
+  });
+
+  it("keeps save_attachment name-file cleanup after a Mail failure", async () => {
+    mockRunAppleScript.mockRejectedValueOnce(new Error("Mail denied saving"));
+    const { handleSaveAttachment } = await import("../../../src/domains/messages/messages.tools.js");
+    await expect(handleSaveAttachment(123, "INBOX", "Gmail", "file.pdf", "/tmp/prepared")).rejects.toThrow("Mail denied saving");
+    expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-att-XXXXXX", { recursive: true, force: true });
   });
 
   it("read_attachment calls runAppleScript for text files and cleans up", async () => {

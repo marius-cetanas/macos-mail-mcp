@@ -1,0 +1,1 @@
+- Prepare attachment save directories recursively with actionable path errors before contacting Mail, and report unknown message IDs with plain decimal IDs and requested account/mailbox context while preserving unrelated native errors and partial bulk-move results.

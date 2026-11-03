@@ -15,22 +15,23 @@ end buildRecipientsJson
 
 tell application "Mail"
     try
-        set targetId to {{messageId}} as integer
+        set targetId to {{messageId}}
+        my integerForJson(targetId)
         set theAccount to account "{{accountName}}"
         set foundMsg to missing value
         set foundMboxName to ""
 
         repeat with mb in every mailbox of theAccount
-            try
-                set msg to (first message of mb whose id is targetId)
+            set msg to my findMessageInMailbox(mb, targetId)
+            if msg is not missing value then
                 set foundMsg to msg
                 set foundMboxName to name of mb
                 exit repeat
-            end try
+            end if
         end repeat
 
         if foundMsg is missing value then
-            return "{\"error\": \"Message with ID " & my integerForJson(targetId) & " not found in any mailbox of account {{accountName}}\", \"errorNumber\": -1}"
+            error (my messageNotFoundText(targetId, "{{accountName}}", missing value)) number -1728
         end if
 
         set msg to foundMsg

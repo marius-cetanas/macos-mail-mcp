@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
-import { sanitize, expandTilde, toolError } from "../../utils.js";
+import { sanitize, toolError } from "../../utils.js";
 import { searchInputSchema, searchMessages } from "./search-controller.js";
+import { prepareSaveDirectory } from "./save-directory.js";
 
 export async function handleListMessages(
   accountName: string,
@@ -166,6 +167,7 @@ export async function handleSaveAttachment(
   attachmentName: string,
   savePath: string
 ): Promise<unknown> {
+  const preparedPath = await prepareSaveDirectory(String(savePath));
   const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-att-"));
   try {
     // Write attachment name to temp file to avoid AppleScript string escaping issues
@@ -178,7 +180,7 @@ export async function handleSaveAttachment(
         mailboxName: sanitize(String(mailboxName)),
         accountName: sanitize(String(accountName)),
         attNameFile,
-        savePath: expandTilde(String(savePath)),
+        savePath: preparedPath,
       },
       { timeout: EXTENDED_TIMEOUT }
     );
@@ -193,13 +195,14 @@ export async function handleSaveAllAttachments(
   accountName: string,
   savePath: string
 ): Promise<unknown> {
+  const preparedPath = await prepareSaveDirectory(String(savePath));
   return runAppleScript(
     "messages/scripts/save-all-attachments.applescript",
     {
       messageId: String(messageId),
       mailboxName: sanitize(String(mailboxName)),
       accountName: sanitize(String(accountName)),
-      savePath: expandTilde(String(savePath)),
+      savePath: preparedPath,
     },
     { timeout: EXTENDED_TIMEOUT }
   );
@@ -418,7 +421,7 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "save_attachment",
-    "Save a specific attachment from a message to disk.",
+    "Save a specific attachment from a message to disk. Creates the destination directory recursively before contacting Mail.",
     {
       messageId: z.number().int().describe("The numeric ID of the message"),
       mailboxName: z.string().describe("The name of the mailbox containing the message"),
@@ -440,7 +443,7 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "save_all_attachments",
-    "Save all downloaded attachments from a message to disk.",
+    "Save all downloaded attachments from a message to disk. Creates the destination directory recursively before contacting Mail.",
     {
       messageId: z.number().int().describe("The numeric ID of the message"),
       mailboxName: z.string().describe("The name of the mailbox containing the message"),
