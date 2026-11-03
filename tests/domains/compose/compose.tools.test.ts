@@ -7,18 +7,23 @@ vi.mock("../../../src/bridge/applescript-runner.js", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  stat: vi.fn().mockResolvedValue({ isFile: () => true }),
+  access: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   mkdtemp: vi.fn().mockResolvedValue("/tmp/mail-mcp-body-abc123"),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { runAppleScript } from "../../../src/bridge/applescript-runner.js";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { access, stat, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { constants } from "node:fs";
 
 const mockRunAppleScript = vi.mocked(runAppleScript);
 const mockMkdtemp = vi.mocked(mkdtemp);
 const mockWriteFile = vi.mocked(writeFile);
 const mockRm = vi.mocked(rm);
+const mockStat = vi.mocked(stat);
+const mockAccess = vi.mocked(access);
 
 describe("compose tools", () => {
   beforeEach(() => {
@@ -29,6 +34,8 @@ describe("compose tools", () => {
     mockMkdtemp.mockResolvedValue("/tmp/mail-mcp-body-abc123" as any);
     mockWriteFile.mockResolvedValue(undefined);
     mockRm.mockResolvedValue(undefined);
+    mockStat.mockReset().mockResolvedValue({ isFile: () => true } as any);
+    mockAccess.mockReset().mockResolvedValue(undefined);
   });
 
   it("send_message passes bodyFile instead of body and cleans up temp dir", async () => {
@@ -50,7 +57,7 @@ describe("compose tools", () => {
     await handleSendMessage("bob@test.com", "Hi", "Hello");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "compose/scripts/send-message.applescript",
-      expect.objectContaining({ cc: "__NONE__", bcc: "__NONE__", attachmentPathsFile: "__NONE__" })
+      expect.objectContaining({ cc: "__NONE__", bcc: "__NONE__", attachmentPathsFile: "__NONE__", attachmentCount: "0" })
     );
   });
 
@@ -64,8 +71,67 @@ describe("compose tools", () => {
     );
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "compose/scripts/send-message.applescript",
-      expect.objectContaining({ attachmentPathsFile: "/tmp/mail-mcp-body-abc123/attachments.txt" })
+      expect.objectContaining({ attachmentPathsFile: "/tmp/mail-mcp-body-abc123/attachments.txt", attachmentCount: "2" })
     );
+    expect(mockStat.mock.calls).toEqual([["/tmp/a.pdf"], ["/tmp/b.pdf"]]);
+    expect(mockAccess.mock.calls).toEqual([["/tmp/a.pdf", constants.R_OK], ["/tmp/b.pdf", constants.R_OK]]);
+  });
+
+  describe("attachment preflight", () => {
+    it.each(["", "relative.txt", "~/Downloads/a.txt", "/tmp/a\nb.txt", "/tmp/a\rb.txt", "/tmp/a\0b.txt"])(
+      "rejects an unrepresentable or non-absolute path %j before Mail or temp setup", async (path) => {
+        const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+        await expect(handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, [path], "Google"))
+          .rejects.toThrow(/absolute path without CR, LF or NUL/);
+        expect(mockRunAppleScript).not.toHaveBeenCalled();
+        expect(mockMkdtemp).not.toHaveBeenCalled();
+      }
+    );
+
+    it.each(["missing", "directory", "unreadable"])("rejects a %s attachment before Mail or temp setup", async (failure) => {
+      if (failure === "missing") mockStat.mockRejectedValueOnce(new Error("ENOENT"));
+      if (failure === "directory") mockStat.mockResolvedValueOnce({ isFile: () => false } as any);
+      if (failure === "unreadable") mockAccess.mockRejectedValueOnce(new Error("EACCES"));
+      const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+      await expect(handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, ["/tmp/problem.txt"], "Google"))
+        .rejects.toThrow(/Cannot attach.*\/tmp\/problem.txt/);
+      expect(mockRunAppleScript).not.toHaveBeenCalled();
+      expect(mockMkdtemp).not.toHaveBeenCalled();
+    });
+
+    it("validates every file before creating a message when a later path fails", async () => {
+      mockStat.mockResolvedValueOnce({ isFile: () => true } as any).mockRejectedValueOnce(new Error("ENOENT"));
+      const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+      await expect(handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, ["/tmp/a.txt", "/tmp/missing.txt"]))
+        .rejects.toThrow(/\/tmp\/missing.txt/);
+      expect(mockRunAppleScript).not.toHaveBeenCalled();
+      expect(mockMkdtemp).not.toHaveBeenCalled();
+    });
+
+    it("preserves path order, duplicates and special characters", async () => {
+      const paths = ["/tmp/café's \"report\" \\ file.txt", "/tmp/second.txt", "/tmp/second.txt"];
+      const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+      await handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, paths);
+      expect(mockWriteFile).toHaveBeenCalledWith(expect.stringContaining("attachments.txt"), paths.join("\n"), "utf8");
+      expect(mockRunAppleScript).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ attachmentCount: "3" }));
+    });
+
+    it("treats an empty list as no attachments", async () => {
+      const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+      await handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, []);
+      expect(mockStat).not.toHaveBeenCalled();
+      expect(mockAccess).not.toHaveBeenCalled();
+      expect(mockRunAppleScript).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ attachmentPathsFile: "__NONE__", attachmentCount: "0" }));
+    });
+
+    it.each(["write", "script"])("cleans temp files after a %s failure", async (failure) => {
+      if (failure === "write") mockWriteFile.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("disk full"));
+      if (failure === "script") mockRunAppleScript.mockRejectedValueOnce(new Error("Attachment count mismatch"));
+      const { handleSendMessage } = await import("../../../src/domains/compose/compose.tools.js");
+      await expect(handleSendMessage("b@t.com", "Hi", "Hello", undefined, undefined, ["/tmp/a.txt"]))
+        .rejects.toThrow();
+      expect(mockRm).toHaveBeenCalledWith("/tmp/mail-mcp-body-abc123", { recursive: true, force: true });
+    });
   });
 
   it("reply_to_message passes bodyFile and replyAll as string and cleans up", async () => {

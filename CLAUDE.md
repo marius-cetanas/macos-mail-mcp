@@ -55,7 +55,10 @@ checks that the required status check `verify` is one a workflow here actually r
   mock rather than code that runs — which is how a handler that threw on any emoji subject shipped
   unexercised, found by an outside contributor (#33) rather than by the suite.
   `tests/bridge/escape-for-json.applescript.test.ts` executes the escaping handler through
-  `osascript` for real. It **runs only on macOS and is skipped everywhere else, including CI**, so
+  `osascript` for real. `tests/domains/compose/send-attachments.applescript.test.ts` also executes
+  the attachment path parser and count/send guards, and compiles the full send template with
+  shared handlers without executing Mail. Neither suite exercises native Mail attachment
+  insertion, enumeration or delivery. These executable checks **run only on macOS and are skipped elsewhere, including CI**, so
   those assertions run on a maintainer's machine and never in the merge gate. Run
   `npm run test:coverage` locally before touching anything under `src/**/*.applescript`; the runner
   cannot do it for you.
@@ -119,10 +122,18 @@ Two details in it are guards rather than optimisations, and both are pinned by t
 
 AppleScript string literals cannot span multiple lines. Any content that may contain newlines is written to a temp file in TypeScript and read via `do shell script "cat ..."` in AppleScript:
 - **Email body** — compose tools write to `body.txt`
-- **Attachment paths** — send_message writes to `attachments.txt` (one path per line)
+- **Attachment paths** — send_message writes to `attachments.txt` (one path per line). It checks
+  absolute paths, regular-file status and read access before sender lookup or temp setup, and
+  rejects CR, LF and NUL in a path. The send script reads shell output as `paragraphs`, which
+  accepts the LF-to-CR conversion, and checks the parsed count against the requested count.
 - **Attachment names** — save/read_attachment write to `attname.txt`
 
 Always clean up temp files in a `finally` block.
+
+Before `send_message` calls `send`, it checks `attachments of content of newMsg` against the
+requested count; a mismatch raises an error without sending. Outgoing `content` is rich text
+with `attachment` elements in Mail's dictionary; `mail attachment` is the received-message class.
+The script also rejects any `send` result other than `true`. Neither check confirms delivery.
 
 ### Sender Resolution
 
