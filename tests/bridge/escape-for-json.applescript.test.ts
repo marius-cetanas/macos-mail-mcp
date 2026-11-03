@@ -84,6 +84,17 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
     it("escapes a control character embedded in ordinary text", () => {
       expect(escape(`"a" & ${codePoints(0x01)} & "b"`)).toBe("a\\u0001b");
     });
+
+    it.each([
+      [[0xfeff], "\ufeff"],
+      [[0xfeff, 0x61], "\ufeffa"],
+      [[0xfeff, 0x61, 0x0a], "\ufeffa\n"],
+      [[0x61, 0xfeff, 0x62], "a\ufeffb"],
+      [[0x0a, 0xfeff, 0x61], "\n\ufeffa"],
+    ])("preserves U+FEFF through JSON for code points %j", (points, expected) => {
+      const value = escape(codePoints(...(points as number[])));
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: expected });
+    });
   });
 
   describe("the output is valid JSON, which is the actual contract", () => {
@@ -223,6 +234,11 @@ describe.skipIf(!onMacOS)("escapeForJson, executed", () => {
 
     it("escapes a control character landing exactly on the boundary", () => {
       expect(escapeAt(run(500, 0x01))).toBe(`${"a".repeat(500)}\\u0001`);
+    });
+
+    it("preserves U+FEFF at the beginning of a new run buffer", () => {
+      const value = escapeAt(run(500, 0xfeff, 0x62, 0x0a));
+      expect(JSON.parse(`{"v":"${value}"}`)).toEqual({ v: `${"a".repeat(500)}\ufeffb\n` });
     });
 
     /**

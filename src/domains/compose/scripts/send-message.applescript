@@ -1,5 +1,5 @@
 -- Read body from temp file to preserve newlines
-set bodyContent to do shell script "cat " & quoted form of "{{bodyFile}}"
+set bodyContent to my readUtf8File("{{bodyFile}}")
 set subjectText to "{{subject}}"
 
 tell application "Mail"
@@ -47,8 +47,7 @@ tell application "Mail"
 end tell
 
 on readAttachmentPaths(pathsFile, expectedCount)
-    -- Shell output converts LF to CR; paragraphs accepts either separator.
-    set attachmentData to do shell script "cat " & quoted form of pathsFile
+    set attachmentData to my readUtf8File(pathsFile)
     set pathList to paragraphs of attachmentData
     my requireAttachmentCount(count of pathList, expectedCount)
     return pathList

@@ -243,8 +243,9 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 
 An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95; 2.1.0 changed
 nothing in the server. The current source inserts reply/forward text and validates readback (#84),
-and validates multiple attachment paths and prepared attachment counts (#85). Executable local
-AppleScript helper tests and Mail dictionary compilation cover these changes. Native Mail content
+and validates multiple attachment paths and prepared attachment counts (#85). File reads now
+preserve valid UTF-8 text, line endings and trailing newlines (#86). Executable AppleScript
+helper tests and Mail dictionary compilation cover these changes. Native Mail content
 insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
 them (#94). The rest are in the [open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
@@ -271,6 +272,12 @@ On macOS, `tests/domains/compose/send-attachments.applescript.test.ts` executes 
 attachment path parser and count/send guards and compiles the complete send template with its
 shared handlers. It never creates or sends a Mail message. These executable AppleScript checks
 are skipped on other platforms; the template wiring assertions still run there.
+
+`tests/bridge/read-utf8-file.applescript.test.ts` executes the production body, attachment-path,
+attachment-name and inline-content reads against local UTF-8 fixtures, checking JSON roundtrips
+for LF, CRLF, CR, trailing newlines, empty files, Unicode, controls and BOMs. It also compiles all
+affected templates. These macOS checks do not exercise Mail's attachment saving, content insertion
+or delivery; other encodings and binary content are outside the UTF-8 reader's contract.
 
 ## Changelog
 

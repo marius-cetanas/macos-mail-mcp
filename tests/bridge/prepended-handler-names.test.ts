@@ -73,6 +73,7 @@ describe("handlers the bridge prepends are reserved names", () => {
       "escapeForJson",
       "joinStrings",
       "mailboxFullName",
+      "readUtf8File",
       "resolveMailbox",
     ]);
   });
