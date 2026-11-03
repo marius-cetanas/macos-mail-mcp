@@ -1,1 +1,0 @@
-- Remove automated Copilot review from CI and the required merge checks. Keep `verify`, `branch-freshness` and `analyze` pinned to GitHub Actions; review freshness remains the maintainer's responsibility.

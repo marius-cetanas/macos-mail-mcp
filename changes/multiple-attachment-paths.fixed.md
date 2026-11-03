@@ -1,1 +1,0 @@
-- Preserve multiple `send_message` attachment paths, reject invalid or unreadable files before composing, and fail before sending when Mail's outgoing attachment count differs from the request; require Mail to accept the send command before reporting success.
