@@ -132,11 +132,14 @@ On first use, macOS will prompt to grant automation permission for controlling M
 |---|---|
 | `list_mailboxes` | List mailboxes for an account or all accounts |
 | `get_mailbox_info` | Get mailbox details (message count, unread count) |
-| `create_mailbox` | Create a new mailbox (top-level or nested under a parent) |
+| `create_mailbox` | Ensure a mailbox exists (top-level or nested), reporting whether it was created or already existed |
 
 For `create_mailbox`, `parentMailboxName` can be an existing parent name or full path. The tool
-resolves that parent, creates the full slash path within the requested account, and returns the
-full path read back from Mail as `mailboxName`. Omit the parent to create at the account directly.
+resolves that parent, checks the full slash path within the requested account, and reuses an
+existing mailbox or creates an absent one. It returns the full path read back from Mail as
+`mailboxName`, with `created: false, alreadyExisted: true` for an existing target and
+`created: true, alreadyExisted: false` after creation. Lookup/permission failures return errors.
+Omit the parent to address the account directly.
 
 ### Messages (8)
 
@@ -255,7 +258,8 @@ nothing in the server. The current source inserts reply/forward text and validat
 and validates multiple attachment paths and prepared attachment counts (#85). File reads now
 preserve valid UTF-8 text, line endings and trailing newlines (#86), and numeric JSON formatting
 preserves mixed move results under comma-decimal coercion (#87). Nested mailbox creation uses
-resolved full paths at the account and validates path readback (#88). Executable AppleScript
+resolved full paths at the account and validates path readback (#88); existing targets are reused
+with explicit status metadata (#89). Executable AppleScript
 helper tests and Mail dictionary compilation cover these changes. Native Mail content
 insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
@@ -296,8 +300,9 @@ templates. Its macOS checks use pure serialization fixtures; native Mail lookups
 unexercised.
 
 `tests/domains/mailboxes/create-mailbox.applescript.test.ts` executes production path construction
-and readback guards and compiles the complete creation template. It checks JSON response assembly
-with full-path fixtures; native mailbox creation and provider behavior remain unexercised.
+and readback guards and compiles the complete creation template. It executes the production
+existence/status branches and response assembly with fixture Mail primitives, checking existing/new
+statuses and lookup/creation errors. Native mailbox creation and provider behavior remain unexercised.
 
 ## Changelog
 

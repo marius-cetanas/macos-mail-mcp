@@ -23,6 +23,38 @@ function run(body: string): string {
   }).replace(/\n$/, "");
 }
 
+function statusFlow(): string {
+  const match = template.match(/^\s*set alreadyExisted to \(exists mailbox requestedPath of theAccount\)[^]*?^\s*end if$/m);
+  expect(match, "production existing/new mailbox flow").not.toBeNull();
+  return match![0];
+}
+
+function runStatus(existed: boolean, lookupError = 0, createError = 0): unknown {
+  const flow = statusFlow()
+    .replace("(exists mailbox requestedPath of theAccount)", "my fixtureExists(requestedPath, theAccount)")
+    .replace("set newMbox to mailbox requestedPath of theAccount", "set newMbox to my fixtureMailbox(requestedPath, theAccount)")
+    .replace("make new mailbox with properties {name:requestedPath} at theAccount", "my fixtureCreate(requestedPath, theAccount)");
+  const resultLine = template.split("\n").find((line) => line.includes('return "{\\"success\\": true'))!;
+  const errorLine = template.split("\n").find((line) => line.includes('return "{\\"error\\":'))!;
+  return JSON.parse(run([
+    "script probe", "property makes : 0", "property reads : 0", "end script",
+    "on fixtureExists(pathName, accountName)",
+    'if pathName is not "Parent/Nested" or accountName is not "Fixture" then error "wrong scope"',
+    lookupError ? `error "lookup failed" number ${lookupError}` : `return ${existed}`,
+    "end fixtureExists",
+    "on fixtureMailbox(pathName, accountName)", "set reads of probe to (reads of probe) + 1", "return pathName", "end fixtureMailbox",
+    "on fixtureCreate(pathName, accountName)", "set makes of probe to (makes of probe) + 1",
+    createError ? `error "create failed" number ${createError}` : "return pathName",
+    "end fixtureCreate",
+    'set requestedPath to "Parent/Nested"', 'set theAccount to "Fixture"', "try", flow,
+    `if makes of probe is not ${existed ? 0 : 1} then error "wrong create count"`,
+    `if reads of probe is not ${existed ? 1 : 0} then error "wrong existing-reference count"`,
+    "set actualPath to newMbox", "my assertCreatedMailboxPath(requestedPath, actualPath)",
+    "set mboxName to my escapeForJson(actualPath)", "set acctName to my escapeForJson(theAccount)", resultLine,
+    "on error errMsg number errNum", errorLine, "end try",
+  ].join("\n")));
+}
+
 describe("create_mailbox account-scoped path wiring", () => {
   it("resolves a parent before constructing its full path and creating at the requested account", () => {
     const resolution = template.indexOf('my resolveMailbox("{{accountName}}", theParent)');
@@ -54,6 +86,13 @@ describe("create_mailbox account-scoped path wiring", () => {
 
   it("preserves locale-independent error numbers", () => {
     expect(template).toContain("my integerForJson(errNum)");
+  });
+
+  it("checks the constructed full path at the account without swallowing lookup errors", () => {
+    expect(statusFlow()).not.toMatch(/\btry\b/);
+    expect(template.indexOf("set alreadyExisted to")).toBeGreaterThan(template.indexOf("my mailboxCreationPath(my mailboxFullName(parentMbox)"));
+    expect(statusFlow()).toContain("set newMbox to mailbox requestedPath of theAccount");
+    expect(template.indexOf("set actualPath to my mailboxFullName(newMbox)")).toBeGreaterThan(template.indexOf("set alreadyExisted to"));
   });
 });
 
@@ -102,12 +141,25 @@ describe.skipIf(!onMacOS)("production mailbox creation path helpers, executed wi
     expect(resultLine).toBeDefined();
     const path = 'Parent \\ "quoted"/Nested 😀';
     const output = run([
+      'set statusJson to "\\\"created\\\": true, \\\"alreadyExisted\\\": false"',
       `set actualPath to ${literal(path)}`,
       "set mboxName to my escapeForJson(actualPath)",
       'set acctName to my escapeForJson("Fixture account")',
       resultLine!,
     ].join("\n"));
-    expect(JSON.parse(output)).toEqual({ success: true, mailboxName: path, accountName: "Fixture account" });
+    expect(JSON.parse(output)).toEqual({ success: true, created: true, alreadyExisted: false, mailboxName: path, accountName: "Fixture account" });
+  });
+
+  it.each([true, false])("reports existing=%s through the production branch and response without redundant creation", (existed) => {
+    expect(runStatus(existed)).toEqual({ success: true, created: !existed, alreadyExisted: existed, mailboxName: "Parent/Nested", accountName: "Fixture" });
+  });
+
+  it.each([-1743, -1728])("propagates existence lookup error %i rather than treating it as missing", (errorNumber) => {
+    expect(runStatus(false, errorNumber)).toEqual({ error: "lookup failed", errorNumber });
+  });
+
+  it("propagates creation errors without a successful status", () => {
+    expect(runStatus(false, 0, -10000)).toEqual({ error: "create failed", errorNumber: -10000 });
   });
 
   it("compiles the full substituted template without executing mailbox creation", () => {
