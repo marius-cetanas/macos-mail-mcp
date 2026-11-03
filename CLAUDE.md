@@ -154,6 +154,18 @@ helper handles empty files and restores a leading UTF-8 BOM removed by the nativ
 
 Always clean up temp files in a `finally` block.
 
+Inline attachment admission lives in the shared `attachment-mime.applescript` handlers. List,
+both get-message routes and read use `attachmentMimeType` with Mail's raw MIME property and the
+same extension fallback (including .ics → text/calendar). Missing/blank MIME and property errors
+use the fallback. The read script checks the same selected attachment before creating its save
+directory: legacy text extensions OR a case-insensitive text/*, application/json, application/xml
+or application/x-yaml base type. Parameters and outer spaces/tabs are ignored for matching;
+type/subtype tokens follow [RFC 2045 section 5.1](https://www.rfc-editor.org/rfc/rfc2045#section-5.1),
+and control characters other than horizontal tabs cannot qualify by MIME. Rejections include
+the effective MIME. This is metadata/filename admission, not content validation; the UTF-8 reader
+does not transcode encodings, stream or cap file sizes. Production helper/metadata/transport
+fixtures execute locally and all shared contexts compile; native Mail retrieval remains untested.
+
 Before `send_message` calls `send`, it checks `attachments of content of newMsg` against the
 requested count; a mismatch raises an error without sending. Outgoing `content` is rich text
 with `attachment` elements in Mail's dictionary; `mail attachment` is the received-message class.

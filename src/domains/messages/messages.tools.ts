@@ -147,8 +147,6 @@ export async function handleMarkRead(
   });
 }
 
-const TEXT_EXTENSIONS = [".txt", ".csv", ".json", ".html", ".md", ".xml", ".log"];
-
 export async function handleListAttachments(
   messageId: number,
   mailboxName: string,
@@ -213,13 +211,6 @@ export async function handleReadAttachment(
   accountName: string,
   attachmentName: string
 ): Promise<unknown> {
-  const dotIndex = attachmentName.lastIndexOf(".");
-  const ext = dotIndex >= 0 ? attachmentName.slice(dotIndex).toLowerCase() : "";
-  if (!TEXT_EXTENSIONS.includes(ext)) {
-    throw new Error(
-      "Binary file type not supported for inline reading. Use save_attachment instead."
-    );
-  }
   const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-att-"));
   try {
     // Write attachment name to temp file to avoid AppleScript string escaping issues
@@ -470,7 +461,7 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "read_attachment",
-    "Read the text content of a text-based attachment inline. Supported types: .txt, .csv, .json, .html, .md, .xml, .log. Use save_attachment for binary files.",
+    "Read valid UTF-8 attachment text inline. Accepts text/*, application/json, application/xml, application/x-yaml MIME types or .txt, .csv, .json, .html, .md, .xml, .log extensions. Uses extension-based MIME fallback when unavailable. Use save_attachment for binary files.",
     {
       messageId: z.number().int().describe("The numeric ID of the message"),
       mailboxName: z.string().describe("The name of the mailbox containing the message"),

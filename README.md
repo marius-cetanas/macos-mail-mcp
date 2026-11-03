@@ -216,7 +216,20 @@ retrying; repeated immediate searches can queue more work.
 | `list_attachments` | List attachments with filename, MIME type, size, download status |
 | `save_attachment` | Save a specific attachment to disk |
 | `save_all_attachments` | Save all attachments from a message |
-| `read_attachment` | Read text-based attachment content inline (.txt, .csv, .json, .html, .md, .xml, .log) |
+| `read_attachment` | Read UTF-8 attachment text inline using MIME type or a supported text extension |
+
+`read_attachment` accepts `text/*` (including `text/calendar` for `.ics`), `application/json`,
+`application/xml` and `application/x-yaml`, as well as the existing `.txt`, `.csv`, `.json`,
+`.html`, `.md`, `.xml` and `.log` extensions. MIME matching ignores case, surrounding spaces/tabs
+and parameters after `;`, and requires a valid type/subtype base. If Mail's MIME property is
+missing, blank or unavailable, it uses the same filename fallback as `list_attachments` and
+`get_message`, including `.ics` → `text/calendar`. Unsupported-type errors include that effective
+MIME type and suggest `save_attachment`.
+
+Admission uses metadata and filenames; it does not inspect bytes to prove the content is text.
+The inline reader supports valid UTF-8, preserves line endings and returns `{name, content}`.
+It does not transcode other charsets, stream content or impose a size cap; use `save_attachment`
+for binary files, other encodings or large attachments.
 
 ### Compose (3)
 
@@ -305,7 +318,7 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 ### Other Limitations
 
 - **Attachments on replies/forwards** — AppleScript does not support adding new attachments to reply/forward messages (Mail.app limitation).
-- **MIME type detection** — Uses extension-based fallback when Mail.app's native MIME type property returns `missing value`.
+- **MIME type detection** — Uses the same extension fallback for list/get/read when Mail.app's native MIME property is missing, blank or unavailable. It does not identify content from file bytes.
 - **Mailbox management** — Creating mailboxes is supported, but deleting and renaming mailboxes is not possible via AppleScript (Mail.app limitation).
 
 ### Known issues
@@ -318,9 +331,10 @@ preserves mixed move results under comma-decimal coercion (#87). Nested mailbox 
 resolved full paths at the account and validates path readback (#88); existing targets are reused
 with explicit status metadata (#89). Executable AppleScript
 helper tests and Mail dictionary compilation cover these changes. Native Mail content
-insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
-`read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
-them (#94). The rest are in the [open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
+insertion, attachment enumeration and delivery still require an end-to-end check. Inline attachment
+reading now accepts supported MIME types and shared filename fallbacks (#94); native Mail attachment
+retrieval remains unexercised by fixture tests. Other findings are in the
+[open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
 
 ### Roadmap
 
@@ -381,6 +395,12 @@ negative/zero epochs, offsets and year boundaries in English/Romanian process lo
 getter/JSON and filter reconstruction; registered/caller tests verify selective UTC environments
 and timestamp/error propagation. All shared script contexts compile. Native Mail date reads and
 provider behavior remain unexercised; host, Node and Mail timezone settings are unchanged.
+
+`tests/domains/messages/attachment-mime.applescript.test.ts` executes the production MIME helpers,
+all three metadata loops and the inline-read flow with local lookup/save fixtures. It checks MIME
+case/parameters/fallbacks, every existing extension mapping, admission before saving, UTF-8/JSON
+readback, errors and temp cleanup. All shared template contexts compile, and registered-tool tests
+cover result/error propagation. These checks do not read or save native Mail attachments.
 
 ## Changelog
 

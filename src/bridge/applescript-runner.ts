@@ -86,6 +86,7 @@ export function parseAppleScriptOutput(output: string): unknown {
  * - read-utf8-file: native text-file reads without shell newline conversion.
  * - integer-for-json: exact safe-integer JSON digits independent of locale.
  * - date-to-utc-iso: native date serialization guarded by the UTC subprocess environment.
+ * - attachment-mime: consistent attachment MIME fallback and inline text admission.
  */
 export const SHARED_HANDLER_FILES = [
   "escape-for-json.applescript",
@@ -94,6 +95,7 @@ export const SHARED_HANDLER_FILES = [
   "read-utf8-file.applescript",
   "integer-for-json.applescript",
   "date-to-utc-iso.applescript",
+  "attachment-mime.applescript",
 ];
 
 /**

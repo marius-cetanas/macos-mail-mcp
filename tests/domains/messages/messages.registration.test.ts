@@ -183,23 +183,42 @@ describe("messages tool registration", () => {
     });
   });
 
-  describe("read_attachment extension handling", () => {
-    it("refuses a binary extension", async () => {
+  describe("read_attachment MIME handling", () => {
+    it("reads calendar text through the unchanged public response", async () => {
+      const expected = { name: 'calendar "quoted" \\ 😀.ics', content: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n" };
+      mockRunAppleScript.mockResolvedValueOnce(expected);
+      const result = await tools.get("read_attachment")!.handler({ ...ID, attachmentName: expected.name });
+      expect(result.isError).toBeUndefined();
+      expect(payload(result)).toEqual(expected);
+      expect(mockRunAppleScript).toHaveBeenCalledWith("messages/scripts/read-attachment.applescript", expect.objectContaining({ messageId: "1", accountName: "Google", mailboxName: "INBOX" }), { timeout: 120_000 });
+    });
+
+    it("propagates a binary MIME rejection with the reported type", async () => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error("Inline reading is not supported for MIME type image/png. Use save_attachment instead."));
       const result = await tools.get("read_attachment")!.handler({
         ...ID,
         attachmentName: "photo.png",
       });
       expect(result.isError).toBe(true);
-      expect(result.content[0]!.text).toMatch(/Binary file type not supported/);
+      expect(result.content[0]!.text).toContain("MIME type image/png");
+      expect(result.content[0]!.text).toContain("save_attachment");
     });
 
-    it("refuses a name with no extension at all", async () => {
+    it("lets the script decide an extensionless attachment's MIME", async () => {
+      mockRunAppleScript.mockResolvedValueOnce({ name: "README", content: "read me\n" });
       const result = await tools.get("read_attachment")!.handler({
         ...ID,
         attachmentName: "README",
       });
+      expect(result.isError).toBeUndefined();
+      expect(payload(result)).toEqual({ name: "README", content: "read me\n" });
+    });
+
+    it.each(["Attachment not found", "Attachment is not yet downloaded. Open the message in Mail.app first.", "UTF8 read failed", "save failed"])("propagates %s through MCP", async (message) => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error(message));
+      const result = await tools.get("read_attachment")!.handler({ ...ID, attachmentName: "calendar.ics" });
       expect(result.isError).toBe(true);
-      expect(result.content[0]!.text).toMatch(/Binary file type not supported/);
+      expect(result.content[0]!.text).toContain(message);
     });
   });
 
