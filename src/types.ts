@@ -32,6 +32,7 @@ export interface MessageSummary {
   id: number;
   subject: string;
   sender: string;
+  /** UTC ISO 8601 timestamp at second precision, ending in Z. */
   dateReceived: string;
   readStatus: boolean;
   flagged: boolean;

@@ -58,9 +58,25 @@ describe("runAppleScript", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   describe("happy path", () => {
+    it.each(["list-messages", "search-messages", "get-message", "get-message-by-id"])("isolates UTC env for explicit %s opt-in without changing parent env", async (file) => {
+      vi.stubEnv("TZ", "America/New_York");
+      vi.stubEnv("MAIL_MCP_DATE_TEST", "preserved");
+      await runAppleScript(`messages/scripts/${file}.applescript`, {}, { utcDates: true });
+      const options = mockExec.mock.calls[0]![2] as { env?: NodeJS.ProcessEnv };
+      expect(options.env?.TZ).toBe("UTC");
+      expect(options.env?.MAIL_MCP_DATE_TEST).toBe("preserved");
+      expect(process.env.TZ).toBe("America/New_York");
+    });
+
+    it("leaves environment inheritance untouched without date opt-in", async () => {
+      await runAppleScript("accounts/scripts/list-accounts.applescript");
+      expect(Object.hasOwn(mockExec.mock.calls[0]![2], "env")).toBe(false);
+    });
+
     it("returns the parsed AppleScript output", async () => {
       await expect(runAppleScript("accounts/scripts/x.applescript")).resolves.toEqual({
         ok: true,

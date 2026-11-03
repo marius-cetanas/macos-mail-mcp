@@ -75,7 +75,7 @@ describe.skipIf(!onMacOS).each(files)("%s production recipient serialization, ex
       'set fixture_bcc to {{name:missing value, address:"bcc@example.invalid"}}',
       ...bindings,
       "set msgId to 1", 'set msgSubject to "subject"', 'set msgSender to "sender@example.invalid"',
-      'set msgDate to "2026-11-03"', "set msgRead to false", "set msgFlagged to false", "set msgFlagIndex to -1",
+      'set msgDate to "2026-11-03T00:00:00Z"', "set msgRead to false", "set msgFlagged to false", "set msgFlagIndex to -1",
       "set msgHasAttach to false", 'set msgBody to "body"', 'set msgHeaders to ""', 'set attachJson to ""',
       'set mboxNameEsc to "INBOX"', assembly,
     ].join("\n"));

@@ -27,7 +27,7 @@ export async function handleListMessages(
       afterSeconds: after !== undefined ? String(dateToSecondsFromNow(after)) : "0",
       beforeSeconds: before !== undefined ? String(dateToSecondsFromNow(before)) : "0",
     },
-    hasDateFilter ? { timeout: EXTENDED_TIMEOUT } : undefined
+    { utcDates: true, ...(hasDateFilter ? { timeout: EXTENDED_TIMEOUT } : {}) }
   );
 }
 
@@ -41,7 +41,7 @@ export async function handleGetMessage(
       messageId: String(messageId),
       mailboxName: sanitize(String(mailboxName)),
       accountName: sanitize(String(accountName)),
-    });
+    }, { utcDates: true });
   }
   return runAppleScript(
     "messages/scripts/get-message-by-id.applescript",
@@ -49,7 +49,7 @@ export async function handleGetMessage(
       messageId: String(messageId),
       accountName: sanitize(String(accountName)),
     },
-    { timeout: EXTENDED_TIMEOUT }
+    { timeout: EXTENDED_TIMEOUT, utcDates: true }
   );
 }
 

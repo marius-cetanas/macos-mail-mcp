@@ -70,6 +70,7 @@ describe("handlers the bridge prepends are reserved names", () => {
     // If the bridge is ever restructured, this must fail rather than silently check nothing.
     expect([...reserved.keys()].sort()).toEqual([
       "assertComposeReady",
+      "dateToUtcIso",
       "escapeForJson",
       "integerForJson",
       "joinStrings",

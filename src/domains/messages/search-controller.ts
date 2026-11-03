@@ -66,7 +66,7 @@ export async function searchMessages(input: unknown, signal?: AbortSignal): Prom
   let targets: Array<{ accountName: string; mailboxName: string }> = [];
   let targetIndex = -1;
 
-  async function bounded(script: string, params: Record<string, string>): Promise<unknown> {
+  async function bounded(script: string, params: Record<string, string>, utcDates = false): Promise<unknown> {
     if (signal?.aborted) throw new SearchStopped("cancelled");
     const budget = Math.min(SEARCH_TARGET_MS, Math.floor(deadline - performance.now()));
     if (budget <= 0) throw new SearchStopped("timeout");
@@ -85,7 +85,7 @@ export async function searchMessages(input: unknown, signal?: AbortSignal): Prom
     });
     const operation = Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
-      return runAppleScript(script, { ...params, eventTimeoutSeconds: String(Math.max(1, Math.ceil(budget / 1000) - 1)) }, { timeout: budget, signal: controller.signal });
+      return runAppleScript(script, { ...params, eventTimeoutSeconds: String(Math.max(1, Math.ceil(budget / 1000) - 1)) }, { timeout: budget, signal: controller.signal, ...(utcDates ? { utcDates: true } : {}) });
     });
     try {
       return await Promise.race([operation, interruption]);
@@ -128,7 +128,7 @@ export async function searchMessages(input: unknown, signal?: AbortSignal): Prom
         hasAfter: String(after !== undefined), hasBefore: String(before !== undefined),
         afterSeconds: String(after === undefined ? 0 : Math.floor((Date.now() - after) / 1000)),
         beforeSeconds: String(before === undefined ? 0 : Math.floor((Date.now() - before) / 1000)),
-      }));
+      }, true));
       for (const message of result) {
         const key = JSON.stringify([message.accountName.toLowerCase(), message.id]);
         if (seen.has(key)) continue;

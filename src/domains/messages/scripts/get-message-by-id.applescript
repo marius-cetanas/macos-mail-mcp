@@ -71,7 +71,7 @@ tell application "Mail"
         set msgId to id of msg
         set msgSubject to my escapeForJson(subject of msg as text)
         set msgSender to my escapeForJson(sender of msg as text)
-        set msgDate to date received of msg as «class isot» as string
+        set msgDate to my dateToUtcIso(date received of msg)
         set msgRead to read status of msg
         set msgFlagged to flagged status of msg
         set msgFlagIndex to flag index of msg
