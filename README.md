@@ -165,6 +165,11 @@ Omit the parent to address the account directly.
 In `get_message` results, an absent recipient display name is the empty string in `name`.
 The to/cc/bcc arrays preserve known names, addresses and recipient order.
 
+Every message `dateReceived` from list/search/get uses UTC ISO 8601 at second precision:
+`YYYY-MM-DDTHH:mm:ssZ`. It identifies an absolute instant for parsing and UTC-aware `after`/`before`
+inputs; clients can render it in their preferred local timezone. Message-date scripts run in
+isolated UTC subprocesses to avoid historical daylight-saving and repeated-clock ambiguity.
+
 `move_messages` validates every ID before looking up mailboxes or moving messages. Its result
 reports `moved`, `failed` and an `errors` list containing each failed numeric ID and error text.
 Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
@@ -369,6 +374,13 @@ Search controller tests use fake clocks/bridge calls to exercise budgets, count 
 results and SDK cancellation. Bridge tests verify abort checks, search-process SIGKILL options
 and temp cleanup; the search template's pure guards execute and its complete script compiles.
 These checks do not run native Mail searches or demonstrate cancellation of queued Apple events.
+
+`tests/bridge/date-to-utc-iso.applescript.test.ts` executes production date formatting with actual
+AppleScript dates at known instants, including historical DST, both fall-back occurrences,
+negative/zero epochs, offsets and year boundaries in English/Romanian process locales. It checks
+getter/JSON and filter reconstruction; registered/caller tests verify selective UTC environments
+and timestamp/error propagation. All shared script contexts compile. Native Mail date reads and
+provider behavior remain unexercised; host, Node and Mail timezone settings are unchanged.
 
 ## Changelog
 

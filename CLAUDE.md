@@ -212,6 +212,17 @@ All string parameters injected into AppleScript string literals (account names, 
 
 ISO 8601 dates are converted to seconds-from-now in TypeScript (`dateToSecondsFromNow()`), passed as `{{afterSeconds}}`/`{{beforeSeconds}}` to AppleScript, then reconstructed: `set afterDate to (current date) - {{afterSeconds}}`. This avoids locale-dependent date parsing in AppleScript. Post-filtering is applied inside the repeat loop, not in the `whose` clause (which can't dynamically combine text and date criteria).
 
+List/search/get/get-by-ID callers explicitly pass `utcDates:true` to the bridge. It overrides TZ
+only in that osascript child's copied environment, so native date reads and relative arithmetic
+run in UTC. Other scripts and parent/host/Mail settings retain their environments. All five
+dateReceived assignments use shared `dateToUtcIso`, which rejects missing/non-date values and
+fails closed outside a UTC subprocess, then emits ISO seconds with Z. Current `time to GMT`
+subtraction is unsuitable for historical DST; Foundation date coercion in a non-UTC fall-back
+hour also collapsed two instants in runtime probes. Native UTC processing avoids those paths.
+Tests execute actual date values/JSON/filter roundtrips and compile all contexts; native Mail
+date retrieval remains unexercised. AppleScript date arithmetic is documented in the
+[AppleScript Date reference](https://developer.apple.com/library/archive/documentation/AppleScript/Conceptual/AppleScriptLangGuide/reference/ASLR_classes.html).
+
 ## How to Add a New Tool
 
 1. Choose the domain (`accounts`, `mailboxes`, `messages`, or `compose`)

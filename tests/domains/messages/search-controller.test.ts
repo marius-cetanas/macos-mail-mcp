@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { onMacOS } from "../../helpers/run-applescript.js";
 
 vi.mock("../../../src/bridge/applescript-runner.js", async (original) => ({
   ...await original<typeof import("../../../src/bridge/applescript-runner.js")>(), runAppleScript: vi.fn(),
@@ -10,7 +13,7 @@ import { captureTools, payload } from "../../helpers/capture-tools.js";
 
 const bridge = vi.mocked(runAppleScript);
 const scope = (mailboxName = "INBOX", accountName = "Google") => ({ accountName, mailboxName });
-const message = (id: number, mailboxName = "INBOX", accountName = "Google") => ({ id, subject: "invoice", sender: "fixture@example.invalid", dateReceived: "2026-11-03T00:00:00", readStatus: false, flagged: false, flagIndex: -1, hasAttachments: false, mailboxName, accountName });
+const message = (id: number, mailboxName = "INBOX", accountName = "Google") => ({ id, subject: "invoice", sender: "fixture@example.invalid", dateReceived: "2026-11-03T00:00:00Z", readStatus: false, flagged: false, flagIndex: -1, hasAttachments: false, mailboxName, accountName });
 const inventory = [scope("Fast"), scope("Slow"), scope("Later")].map((target) => ({ name: target.mailboxName, accountName: target.accountName }));
 type Options = { field?: string; query?: string; accountName?: string; mailboxName?: string; limit?: number; after?: string; before?: string; allowSlow?: boolean; signal?: AbortSignal };
 const call = (options: Options = {}) => handleSearchMessages(options.field ?? "subject", options.query ?? "invoice", options.mailboxName, options.accountName, options.limit, options.after, options.before, options.allowSlow, options.signal);
@@ -28,6 +31,17 @@ afterEach(() => {
 });
 
 describe("search policy before Mail work", () => {
+  it.skipIf(!onMacOS)("feeds an emitted UTC timestamp back into both search bounds without shifting its instant", async () => {
+    const helper = readFileSync("src/bridge/date-to-utc-iso.applescript", "utf8");
+    const emitted = execFileSync("osascript", ["-"], {
+      input: `use framework "Foundation"\nuse scripting additions\n${helper}\nset fixtureDate to (current application's NSDate's dateWithTimeIntervalSince1970:1793514600) as date\nreturn my dateToUtcIso(fixtureDate)`,
+      encoding: "utf8", timeout: 20_000, env: { ...process.env, TZ: "UTC" },
+    }).trim();
+    expect(emitted).toBe("2026-11-01T06:30:00Z");
+    await scoped({ after: emitted, before: emitted, query: "", allowSlow: true });
+    expect(searchCalls()[0]![1]).toMatchObject({ hasAfter: "true", hasBefore: "true", afterSeconds: "149400", beforeSeconds: "149400" });
+  });
+
   it.each(["after", "before"].flatMap((bound) => [
     "2026-02-30", "2026-02-29", "2026-04-31", "1900-02-29",
     "2026-02-30T12:00:00+02:00", "2026-13-01", "2026-01-00",
@@ -67,7 +81,8 @@ describe("search policy before Mail work", () => {
     bridge.mockResolvedValueOnce({ messageCount });
     expect(await scoped()).toMatchObject({ messages: [], partial: false, cancelled: false, timedOut: [], skipped: [], errors: [], limitReached: false });
     expect(bridge.mock.calls[0]![0]).toContain("get-mailbox-info");
-    expect(searchCalls()[0]![2]).toMatchObject({ timeout: 10_000, signal: expect.any(AbortSignal) });
+    expect(searchCalls()[0]![2]).toMatchObject({ timeout: 10_000, signal: expect.any(AbortSignal), utcDates: true });
+    expect(bridge.mock.calls[0]![2]!.utcDates).toBeUndefined();
   });
 
   it("requires deliberate content opt-in and bypasses the count gate", async () => {

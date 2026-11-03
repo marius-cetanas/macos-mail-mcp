@@ -142,6 +142,30 @@ describe("messages tool registration", () => {
     });
   });
 
+  describe.each([
+    ["list_messages", { accountName: "Google", mailboxName: "INBOX", limit: 50, offset: 0 }],
+    ["get_message", { messageId: 1, accountName: "Google", mailboxName: "INBOX" }],
+    ["get_message", { messageId: 1, accountName: "Google" }],
+    ["search_messages", { field: "subject", query: "fixture", accountName: "Google", mailboxName: "INBOX", allowSlow: true }],
+  ])("UTC dateReceived through registered %s", (name, args) => {
+    it("preserves the UTC instant in the result", async () => {
+      const message = { id: 1, subject: "fixture", sender: "fixture@example.invalid", dateReceived: "2026-11-01T06:30:00Z", readStatus: false, flagged: false, flagIndex: -1, hasAttachments: false, accountName: "Google", mailboxName: "INBOX" };
+      mockRunAppleScript.mockResolvedValueOnce(name === "get_message" ? message : [message]);
+      const result = await tools.get(name)!.handler(args);
+      const value = payload(result) as { dateReceived?: string; messages?: Array<{ dateReceived: string }> } | Array<{ dateReceived: string }>;
+      const timestamp = Array.isArray(value) ? value[0]!.dateReceived : name === "search_messages" ? value.messages![0]!.dateReceived : value.dateReceived;
+      expect(timestamp).toBe(message.dateReceived);
+      expect(result.isError).toBeUndefined();
+    });
+
+    it("propagates an invalid-date failure instead of returning an invented timestamp", async () => {
+      mockRunAppleScript.mockRejectedValueOnce(new Error("Expected a Mail date for dateReceived."));
+      const result = await tools.get(name)!.handler(args);
+      if (name === "search_messages") expect(payload(result)).toMatchObject({ partial: true, errors: [{ message: "Expected a Mail date for dateReceived." }] });
+      else expect(result.isError).toBe(true);
+    });
+  });
+
   describe.each(["INBOX", undefined])("get_message recipients with mailbox %s", (mailboxName) => {
     it("preserves normalized recipient names and addresses through MCP", async () => {
       const response = { toRecipients: [{ name: "", address: "to@example.invalid" }], ccRecipients: [], bccRecipients: [] };

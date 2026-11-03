@@ -32,7 +32,7 @@ describe("messages tools - reading", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/list-messages.applescript",
       { accountName: "Gmail", mailboxName: "INBOX", limit: "10", offset: "5", hasDateFilter: "false", afterSeconds: "0", beforeSeconds: "0" },
-      undefined
+      { utcDates: true }
     );
   });
 
@@ -43,7 +43,7 @@ describe("messages tools - reading", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/list-messages.applescript",
       expect.objectContaining({ hasDateFilter: "true", accountName: "Gmail", mailboxName: "INBOX" }),
-      { timeout: 120_000 }
+      { timeout: 120_000, utcDates: true }
     );
   });
 
@@ -53,7 +53,8 @@ describe("messages tools - reading", () => {
     await handleGetMessage(12345, "Gmail", "INBOX");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/get-message.applescript",
-      { messageId: "12345", mailboxName: "INBOX", accountName: "Gmail" }
+      { messageId: "12345", mailboxName: "INBOX", accountName: "Gmail" },
+      { utcDates: true }
     );
   });
 
@@ -64,7 +65,7 @@ describe("messages tools - reading", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/get-message-by-id.applescript",
       { messageId: "12345", accountName: "Gmail" },
-      { timeout: 120_000 }
+      { timeout: 120_000, utcDates: true }
     );
   });
 
@@ -247,7 +248,7 @@ describe("messages tools - Gmail namespaced mailbox paths", () => {
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/list-messages.applescript",
       expect.objectContaining({ accountName: "Gmail", mailboxName: "[Gmail]/All Mail" }),
-      undefined
+      { utcDates: true }
     );
   });
 
@@ -257,7 +258,8 @@ describe("messages tools - Gmail namespaced mailbox paths", () => {
     await handleGetMessage(123, "Gmail", "[Gmail]/All Mail");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/get-message.applescript",
-      { messageId: "123", mailboxName: "[Gmail]/All Mail", accountName: "Gmail" }
+      { messageId: "123", mailboxName: "[Gmail]/All Mail", accountName: "Gmail" },
+      { utcDates: true }
     );
   });
 

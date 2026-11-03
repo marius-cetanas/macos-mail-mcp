@@ -85,6 +85,7 @@ export function parseAppleScriptOutput(output: string): unknown {
  *   `mailbox "<leaf>" of account` lookup cannot resolve.
  * - read-utf8-file: native text-file reads without shell newline conversion.
  * - integer-for-json: exact safe-integer JSON digits independent of locale.
+ * - date-to-utc-iso: native date serialization guarded by the UTC subprocess environment.
  */
 export const SHARED_HANDLER_FILES = [
   "escape-for-json.applescript",
@@ -92,6 +93,7 @@ export const SHARED_HANDLER_FILES = [
   "compose-guards.applescript",
   "read-utf8-file.applescript",
   "integer-for-json.applescript",
+  "date-to-utc-iso.applescript",
 ];
 
 /**
@@ -115,7 +117,7 @@ export function composeScript(
 export async function runAppleScript(
   scriptPath: string,
   params?: Record<string, string>,
-  options?: { timeout?: number; signal?: AbortSignal }
+  options?: { timeout?: number; signal?: AbortSignal; utcDates?: boolean }
 ): Promise<unknown> {
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
   const signal = options?.signal;
@@ -154,6 +156,7 @@ export async function runAppleScript(
       const result = await execFileAsync("osascript", [tempFile], {
         timeout,
         ...(signal ? { signal, killSignal: "SIGKILL" as const } : {}),
+        ...(options?.utcDates ? { env: { ...process.env, TZ: "UTC" } } : {}),
       });
       stdout = result.stdout;
       stderr = result.stderr;
