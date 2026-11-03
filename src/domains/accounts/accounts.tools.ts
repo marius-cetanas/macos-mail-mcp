@@ -19,7 +19,7 @@ export async function handleGetAccountDetail(
 export function registerAccountsTools(server: McpServer): void {
   server.tool(
     "list_accounts",
-    "List all Mail.app accounts with their type, enabled status, and email addresses",
+    "List all Mail.app accounts with their type, enabled status, and email addresses. Known types are canonicalized; other raw Mail type text is preserved, including backend-reported unknown.",
     {},
     async () => {
       try {
@@ -37,7 +37,7 @@ export function registerAccountsTools(server: McpServer): void {
 
   server.tool(
     "get_account_detail",
-    "Get detailed information about a specific Mail.app account by name",
+    "Get detailed information about a specific Mail.app account by name. Unavailable serverName, port and usesSsl values are null; account type preserves raw Mail values beyond known canonical types.",
     {
       accountName: z.string().describe("The name of the account to retrieve"),
     },

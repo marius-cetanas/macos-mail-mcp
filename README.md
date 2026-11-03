@@ -126,6 +126,14 @@ On first use, macOS will prompt to grant automation permission for controlling M
 | `list_accounts` | List all mail accounts (name, type, enabled, full name, emails) |
 | `get_account_detail` | Get full account details (server, port, SSL, mailbox count) |
 
+Account `type` is an open string: known IMAP/POP/iCloud/SMTP types use canonical names, and other
+raw Mail type text is preserved. Backend-reported `unknown` remains `unknown`; the account's name
+or email domain is not used to infer Exchange identity.
+
+**Breaking account-detail contract:** `serverName`, `port` and `usesSsl` can now be `null` when
+unsupported, missing or unavailable. Clients must handle null instead of relying on empty-string,
+zero or false defaults. Genuine available values, including SSL `false` and port `0`, are preserved.
+
 ### Mailboxes (3)
 
 | Tool | Description |
@@ -245,7 +253,11 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 
 ### Provider-Specific Behavior
 
-- **Exchange accounts** — Server details (hostname, port, SSL) are not exposed via AppleScript for Exchange/EWS accounts. Mailbox and message operations work normally.
+- **Account connection details** — Server getters are used for reported IMAP/POP/iCloud/SMTP types;
+  other types return null connection fields. The Mail dictionary inspected for this change declares
+  pop/smtp/imap/iCloud/unknown, with no Exchange enumerator. If a backend reports Exchange as unknown,
+  that value remains unknown; other raw type strings are preserved. Native Exchange/provider account
+  retrieval has not been exercised by the local fixture tests.
 - **Gmail labels** — `move_message` adds the destination label but may not remove the original (Gmail uses labels, not folders).
 
 ### Other Limitations
@@ -310,6 +322,11 @@ statuses and lookup/creation errors. Native mailbox creation and provider behavi
 `tests/domains/messages/recipient-names.applescript.test.ts` executes both production recipient
 serializers and message JSON assembly using local recipient records, and compiles both lookup
 templates. It does not read native Mail messages.
+
+`tests/domains/accounts/account-metadata.applescript.test.ts` executes production type mapping and
+account JSON with local records/getter fixtures, checks unavailable metadata and supported values,
+and compiles both account templates. It does not query native accounts. SMTP server settings are
+declared by Mail's dictionary; this does not establish that SMTP servers appear in account queries.
 
 ## Changelog
 
