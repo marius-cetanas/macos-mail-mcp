@@ -134,6 +134,10 @@ On first use, macOS will prompt to grant automation permission for controlling M
 | `get_mailbox_info` | Get mailbox details (message count, unread count) |
 | `create_mailbox` | Create a new mailbox (top-level or nested under a parent) |
 
+For `create_mailbox`, `parentMailboxName` can be an existing parent name or full path. The tool
+resolves that parent, creates the full slash path within the requested account, and returns the
+full path read back from Mail as `mailboxName`. Omit the parent to create at the account directly.
+
 ### Messages (8)
 
 | Tool | Description |
@@ -250,7 +254,8 @@ An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95;
 nothing in the server. The current source inserts reply/forward text and validates readback (#84),
 and validates multiple attachment paths and prepared attachment counts (#85). File reads now
 preserve valid UTF-8 text, line endings and trailing newlines (#86), and numeric JSON formatting
-preserves mixed move results under comma-decimal coercion (#87). Executable AppleScript
+preserves mixed move results under comma-decimal coercion (#87). Nested mailbox creation uses
+resolved full paths at the account and validates path readback (#88). Executable AppleScript
 helper tests and Mail dictionary compilation cover these changes. Native Mail content
 insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
@@ -289,6 +294,10 @@ or delivery; other encodings and binary content are outside the UTF-8 reader's c
 result assembly with large IDs, audits every dynamic integer JSON field, and compiles all domain
 templates. Its macOS checks use pure serialization fixtures; native Mail lookups and moves remain
 unexercised.
+
+`tests/domains/mailboxes/create-mailbox.applescript.test.ts` executes production path construction
+and readback guards and compiles the complete creation template. It checks JSON response assembly
+with full-path fixtures; native mailbox creation and provider behavior remain unexercised.
 
 ## Changelog
 
