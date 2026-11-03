@@ -55,7 +55,7 @@ one that compiles. Sixteen rules, sixteen citations in the table above.
 
 **The floor is declared, and the export diverges from it in exactly one parameter.** `floor` in the
 policy states this repository's live platform floor, and it was written from the live settings rather
-than from memory — `refs/heads/main`, the four required checks with their app pins, zero required
+than from memory — `refs/heads/main`, the three required checks with their app pins, zero required
 approving reviews, conversation resolution on. [`compile/github-ruleset.json`](compile/github-ruleset.json)
 is generated from it and matches the live configuration on every parameter but one:
 
@@ -125,64 +125,14 @@ prose is only what compiles to nothing, which the two bullets above already name
 
 | Setting | Value |
 |---|---|
-| Required status checks | `verify`, `copilot-reviewed`, `branch-freshness`, `analyze` |
+| Required status checks | `verify`, `branch-freshness`, `analyze` |
 | Branch protection | `main` — pull request required, no force-push, no deletion, `enforce_admins`, conversation resolution required, **not** strict |
 | Required approvals | 0 — GitHub forbids self-approval, and any higher number deadlocks a sole maintainer |
 
-**`copilot-reviewed` is the one required check with no app pin.** Measured live on 2026-08-22:
-`verify`, `branch-freshness` and `analyze` each carry `app_id 15368` (GitHub Actions), and
-`copilot-reviewed` carries `null`. A context with no pin is satisfiable by **any** app reporting that
-name, so the check that exists to stop a stale verdict is itself the least constrained of the four.
-The policy declares it unpinned because that is what is live, not because it should stay that way;
-pinning it is a branch-protection change, which is Gated (`change-branch-protection`).
-
-The `copilot-reviewed` check and the `copilot auto-review on pull requests` ruleset were a pair: the
-check waited for a round, the ruleset requested one. The payload is kept at
-`.github/rulesets/copilot-auto-review.json` so the ruleset is reviewable rather than remembered.
-
-**The check no longer depends on that pairing, because the ruleset does not cover every pull request
-it gates (#44).** Two holes were measured, with different causes. The ruleset is conditioned on
-`~DEFAULT_BRANCH`, so a pull request opened against any other branch never draws a round — #41 burned
-three full budgets that way. And a **bot author** draws none either: #47 was opened by Dependabot
-against `main`, condition satisfied and not a draft, and got nothing in 16 hours, where #43, #45, #46
-and #48 were each requested one second after opening. Both holes present identically — a red
-required check that no push can turn green, reading as though the change were at fault.
-
-**Be careful what the second claim rests on.** Every Dependabot pull request in this repository's
-history — 18 of them — has drawn zero automatic rounds, but 17 predate the ruleset (created
-2026-08-20) and are therefore explained by its absence rather than by the author. **#47 is the only
-probative case**, with the human pull requests opened after that date as controls. An earlier draft
-of this paragraph said *ten*, which reproduces from no query at all; the figure that does reproduce
-is 18, and it is the weaker half of the argument rather than the stronger.
-
-So the check now requests the round itself when none is pending, which is why its workflow holds
-`pull-requests: write`. That is enforcement moving from a ruleset that decides which pull requests to
-notice, to a check that asks for what it is waiting on. The ruleset stays: it is faster on the common
-path, and the check asking is the floor beneath it rather than a replacement.
-
-**Asking closes one of the two holes, not both (#58).** On a pull request against a non-default base
-the request records and the round comes. On a Dependabot pull request it does not: the mutation is
-accepted, the job's own log says `PullRequests: write`, and no `review_requested` event is ever
-recorded — measured on #55, #56 and #57 — because a Copilot review is billed to a licensed account,
-an app requesting on a bot's behalf has none, and GitHub's remedy is an organisation policy this
-user-owned repository cannot set. Since #63 the mutation's own answer says whether GitHub recorded
-the request, and since #64 the check, told no, waits for a person's review of the head instead — the
-answer it already gave a diff Copilot declines to read (#61) — and since #82 only a review that says
-something. A recorded request that has stood thirty minutes with no round on the head gets the same
-answer, since #104 drew none in thirty-eight (`DEFAULT_STALE_AFTER_MS`). So on a Dependabot pull
-request the floor beneath the ruleset is a person, not the check's request, and on any pull request
-it becomes one once Copilot has been silent for half an hour. The README beside the payload quotes only the common-path sentence above, which
-holds there. _(Two reviewers of #83 read this section as saying that asking closes both holes.)_
-
-**Requesting it takes GraphQL, and the REST spelling fails silently.**
-`POST /pulls/{n}/requested_reviewers` with `copilot-pull-request-reviewer[bot]` returns **201 Created
-and adds nobody** — measured on #48 on 2026-08-26. Copilot is a **Bot**, and that endpoint takes
-Users and Teams; a Bot matches neither, so it is accepted and dropped. (#44 recorded the status as
-200; either way it is a success code for an action that did not happen.) The working call is
-`requestReviews(input: {botIds: […], union: true})`, and `union` is what stops it evicting a human
-reviewer already on the pull request. A success status for an action that did not happen is exactly
-the failure *an error message that misleads costs more than one that is missing* names, so it is
-recorded in `scripts/copilot-round.mjs` beside the constant rather than left to be rediscovered.
+All three checks carry `app_id 15368` (GitHub Actions). Automated review is not part of the
+required-check floor, and the repository ships no automatic review ruleset payload or workflow.
+The disabled GitHub review ruleset is retained in settings so the change is reversible; it requests
+no reviews.
 
 `verify` is an aggregate job in `.github/workflows/verify.yml` that depends on the test matrix, the
 audit, `gate-policy` and `changelog`. It exists so branch protection has one stable context to
@@ -190,20 +140,13 @@ require: matrix job names change whenever the matrix does, and a required check 
 longer reports blocks every merge. Its job id and its `name:` are both `verify` so the reported
 context and the declared one cannot drift.
 
-**A rebase invalidates the verdict that preceded it**, and that rule is now a check rather than a
-habit. `copilot-reviewed` matches every round against the pull request's *current* head, so a
-verdict that predates the head cannot satisfy the gate — the re-request happens because the check is
-still waiting, not because somebody remembered.
-_(Provenance: `form=link` `href=https://github.com/marius-cetanas/macos-mail-mcp/pull/25` — merged
-2026-08-05 on a verdict predating its head. Nothing rode in on it; the defect was the process. It
-recurred on #37, which carried a round on a superseded head; the check refused it, which is the
-first time this rule caught something instead of describing it.)_
+**A rebase invalidates the verdict that preceded it. Review freshness is human-held.** Before a
+merge, the maintainer checks that the review verdict post-dates the current head and requests a new
+review after a rebase or another change to that head. CI does not enforce review freshness. Merging
+still requires explicit approval under `merge-a-pull-request`.
 
-**`strict` is off, deliberately.** It forced a rebase whenever `main` moved, and with a review round
-gating the merge every unrelated commit to `main` then cost a full round on a branch whose contents
-had not changed. `branch-freshness` replaces it with a bound that has a number in it: drift is
-allowed up to `DEFAULT_LIMIT` commits (5), which the tests pin.
+**`strict` is off, deliberately.** It would force a rebase whenever `main` moves.
+`branch-freshness` instead allows drift up to `DEFAULT_LIMIT` commits (5), which the tests pin.
 
-**Retire when:** superseded by the retirement condition in *The policy, and what compiles it* above.
-The original condition — *this repository compiles a `gates.json`* — was met on 2026-08-22 and was not
-the finish line it read as: the policy compiles, and the artifact it produces is machine-local.
+**Retire when:** the platform floor is superseded or the compiler can export this floor without the
+strict-check divergence documented above.

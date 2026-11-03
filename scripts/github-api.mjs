@@ -2,11 +2,8 @@
  * The GitHub reads the checks share, over an injected `fetch`: one header set, one refusal of
  * redirects, one refusal of a next page off api.github.com, one paged reader.
  *
- * Three scripts each built these for themselves. `copilot-round.mjs` had the paged reader, and
- * `changelog-sections.mjs` imported it from there — so the changelog check depended on the Copilot
- * gate for a loop that has nothing to do with Copilot, a direction `verify.yml` had to explain. And
- * `check-freshness.mjs` built its own headers and made the one request in `scripts/` that still
- * followed a redirect. One module, so a property measured once holds for every read.
+ * `changelog-sections.mjs` and `check-freshness.mjs` share this module, so a property measured once
+ * holds for every read.
  *
  * The jobs that run these scripts install nothing, and `tests/workflows/script-imports.test.ts` holds
  * this file, like the rest of `scripts/`, to Node's built-ins and to other files under `scripts/`.
