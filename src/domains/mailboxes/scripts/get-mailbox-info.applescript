@@ -11,8 +11,8 @@ tell application "Mail"
             set parentContainer to container of mbox
             set containerJson to "\"" & my escapeForJson(name of parentContainer) & "\""
         end try
-        return "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & mboxUnread & ", \"accountName\": \"" & acctName & "\", \"messageCount\": " & mboxCount & ", \"container\": " & containerJson & "}"
+        return "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & my integerForJson(mboxUnread) & ", \"accountName\": \"" & acctName & "\", \"messageCount\": " & my integerForJson(mboxCount) & ", \"container\": " & containerJson & "}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

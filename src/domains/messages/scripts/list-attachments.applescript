@@ -55,11 +55,11 @@ tell application "Mail"
             if attSize is missing value then set attSize to 0
             set attDownloaded to downloaded of att
             if attachJson is not "" then set attachJson to attachJson & ", "
-            set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & attSize & ", \"downloaded\": " & attDownloaded & "}"
+            set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & my integerForJson(attSize) & ", \"downloaded\": " & attDownloaded & "}"
         end repeat
 
         return "[" & attachJson & "]"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

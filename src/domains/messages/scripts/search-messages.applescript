@@ -42,13 +42,13 @@ on searchInMailbox(theMailbox, theField, theQuery, remainingLimit, seenIds, afte
                     set msgHasAttach to (count of attList) > 0
                     if resultList is not "" then set resultList to resultList & ", "
                     set resultList to resultList & "{"
-                    set resultList to resultList & "\"id\": " & msgId & ", "
+                    set resultList to resultList & "\"id\": " & my integerForJson(msgId) & ", "
                     set resultList to resultList & "\"subject\": \"" & msgSubject & "\", "
                     set resultList to resultList & "\"sender\": \"" & msgSender & "\", "
                     set resultList to resultList & "\"dateReceived\": \"" & msgDate & "\", "
                     set resultList to resultList & "\"readStatus\": " & msgRead & ", "
                     set resultList to resultList & "\"flagged\": " & msgFlagged & ", "
-                    set resultList to resultList & "\"flagIndex\": " & msgFlagIndex & ", "
+                    set resultList to resultList & "\"flagIndex\": " & my integerForJson(msgFlagIndex) & ", "
                     set resultList to resultList & "\"hasAttachments\": " & msgHasAttach & ", "
                     set resultList to resultList & "\"mailboxName\": \"" & mboxName & "\""
                     set resultList to resultList & "}"
@@ -129,6 +129,6 @@ tell application "Mail"
 
         return "[" & resultList & "]"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell
