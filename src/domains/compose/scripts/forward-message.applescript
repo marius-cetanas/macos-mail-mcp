@@ -31,6 +31,6 @@ tell application "Mail"
         if not (send fwdMsg) then error "Mail did not accept the forward for sending."
         return "{\"success\": true, \"sender\": \"" & my escapeForJson(actualSender) & "\"}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

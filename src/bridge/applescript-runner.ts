@@ -72,12 +72,14 @@ export function parseAppleScriptOutput(output: string): unknown {
  *   which handles Gmail's `[Gmail]/*` namespaced folders that a plain
  *   `mailbox "<leaf>" of account` lookup cannot resolve.
  * - read-utf8-file: native text-file reads without shell newline conversion.
+ * - integer-for-json: exact safe-integer JSON digits independent of locale.
  */
 export const SHARED_HANDLER_FILES = [
   "escape-for-json.applescript",
   "resolve-mailbox.applescript",
   "compose-guards.applescript",
   "read-utf8-file.applescript",
+  "integer-for-json.applescript",
 ];
 
 /**

@@ -120,6 +120,21 @@ Its shape is dictated by AppleScript's list performance rather than by taste (#4
 
 Two details in it are guards rather than optimisations, and both are pinned by tests. The "needs no escape" sentinel is compared with `(length of esc) = 0` rather than `esc is ""`, because `considering`/`ignoring` are dynamically scoped into called handlers and under `ignoring punctuation` a quote's escape compares equal to the empty string — measured, the handler then emitted raw quotes and backslashes. And every `string id runBuf` is guarded by a non-zero count because `string id {}` **segfaults `osascript`** (exit 139) rather than raising, so `try` cannot catch it.
 
+### Integer JSON Fields
+
+Every dynamic integer JSON field uses the reserved shared `my integerForJson(value)` handler,
+including IDs, sizes, counts, ports, flag indices and error numbers. It builds ASCII decimal digits
+directly and accepts only integral numeric values in JavaScript's safe range, ±9007199254740991.
+Text, booleans, fractions and values outside that range raise an error instead of emitting JSON.
+Numeric text coercion can use a locale's comma decimal separator and exponent notation, producing
+invalid JSON. Dot exponent notation is valid JSON and can represent an integer exactly.
+
+`move_messages` validates the entire ID list before mailbox lookup or moving any message, restores
+the caller's text item delimiters on success/error, and formats each failed ID and the final counts
+through the shared handler. `tests/bridge/integer-for-json.applescript.test.ts` executes production
+formatting and partial-result assembly, checks every dynamic integer field and compiles all domain
+templates on macOS. It does not execute native Mail lookups or moves.
+
 ### Multi-line Content via Temp Files
 
 Content that may contain newlines is written to a UTF-8 temp file in TypeScript and read through

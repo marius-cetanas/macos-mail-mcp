@@ -14,6 +14,6 @@ tell application "Mail"
         set acctName to my escapeForJson(name of theAccount)
         return "{\"success\": true, \"mailboxName\": \"" & mboxName & "\", \"accountName\": \"" & acctName & "\"}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

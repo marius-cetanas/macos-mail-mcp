@@ -4,6 +4,6 @@ tell application "Mail"
         delete msg
         return "{\"success\": true}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell
