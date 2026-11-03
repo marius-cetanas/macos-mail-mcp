@@ -61,7 +61,7 @@ const CASES = [
     invoke: () =>
       handleSendMessage(
         "bob@test.com", "Hi", "Hello",
-        "cc@t.com", "bcc@t.com", ["/tmp/a.pdf"], "Google"
+        "cc@t.com", "bcc@t.com", [join(process.cwd(), "README.md")], "Google"
       ),
   },
   {

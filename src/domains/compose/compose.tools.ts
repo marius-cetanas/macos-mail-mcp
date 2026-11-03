@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { writeFile, mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { access, stat, writeFile, mkdtemp, rm } from "node:fs/promises";
+import { constants } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAppleScript } from "../../bridge/applescript-runner.js";
 import { sanitize, toolError } from "../../utils.js";
@@ -28,6 +29,20 @@ export async function handleSendMessage(
   attachmentPaths?: string[],
   fromAccount?: string
 ): Promise<unknown> {
+  const paths = [...(attachmentPaths ?? [])];
+  for (const path of paths) {
+    if (!isAbsolute(path) || /[\r\n\0]/.test(path)) {
+      throw new Error(`Attachment ${JSON.stringify(path)} must be an absolute path without CR, LF or NUL.`);
+    }
+    try {
+      if (!(await stat(path)).isFile()) {
+        throw new Error("Not a regular file");
+      }
+      await access(path, constants.R_OK);
+    } catch (cause) {
+      throw new Error(`Cannot attach ${JSON.stringify(path)}: expected a readable regular file.`, { cause });
+    }
+  }
   const sender = await senderParam(fromAccount);
   const tempDir = await mkdtemp(join(tmpdir(), "mail-mcp-body-"));
   try {
@@ -36,9 +51,9 @@ export async function handleSendMessage(
     await writeFile(bodyFile, body, "utf8");
     // Write attachment paths to temp file (one per line) to avoid multi-line AppleScript string
     let attachmentPathsFile = "__NONE__";
-    if (attachmentPaths !== undefined && attachmentPaths.length > 0) {
+    if (paths.length > 0) {
       attachmentPathsFile = join(tempDir, "attachments.txt");
-      await writeFile(attachmentPathsFile, attachmentPaths.join("\n"), "utf8");
+      await writeFile(attachmentPathsFile, paths.join("\n"), "utf8");
     }
     return await runAppleScript("compose/scripts/send-message.applescript", {
       to: sanitize(String(to)),
@@ -47,6 +62,7 @@ export async function handleSendMessage(
       cc: cc !== undefined ? sanitize(String(cc)) : "__NONE__",
       bcc: bcc !== undefined ? sanitize(String(bcc)) : "__NONE__",
       attachmentPathsFile,
+      attachmentCount: String(paths.length),
       sender,
     });
   } finally {
@@ -133,7 +149,7 @@ export function registerComposeTools(server: McpServer): void {
       attachmentPaths: z
         .array(z.string())
         .optional()
-        .describe("List of absolute file paths to attach (optional)"),
+        .describe("Absolute paths to readable regular files to attach. CR, LF and NUL in paths are unsupported; invalid files fail before composing (optional)."),
       fromAccount: z.string().optional().describe(FROM_ACCOUNT_DESC),
     },
     async ({ to, subject, body, cc, bcc, attachmentPaths, fromAccount }) => {
