@@ -10,7 +10,7 @@ tell application "Mail"
                     set mboxName to my escapeForJson(my mailboxFullName(mbox))
                     set mboxUnread to unread count of mbox
                     if mailboxList is not "" then set mailboxList to mailboxList & ", "
-                    set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & mboxUnread & ", \"accountName\": \"" & acctName & "\"}"
+                    set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & my integerForJson(mboxUnread) & ", \"accountName\": \"" & acctName & "\"}"
                 end repeat
             end repeat
         else
@@ -21,11 +21,11 @@ tell application "Mail"
                 set mboxName to my escapeForJson(my mailboxFullName(mbox))
                 set mboxUnread to unread count of mbox
                 if mailboxList is not "" then set mailboxList to mailboxList & ", "
-                set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & mboxUnread & ", \"accountName\": \"" & acctName & "\"}"
+                set mailboxList to mailboxList & "{\"name\": \"" & mboxName & "\", \"unreadCount\": " & my integerForJson(mboxUnread) & ", \"accountName\": \"" & acctName & "\"}"
             end repeat
         end if
         return "[" & mailboxList & "]"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

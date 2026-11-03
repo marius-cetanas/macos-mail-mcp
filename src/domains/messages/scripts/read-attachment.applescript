@@ -37,7 +37,7 @@ tell application "Mail"
                 tell me to do shell script "rm -rf " & quoted form of tempDir
             end try
         end if
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell
 
@@ -52,7 +52,7 @@ if saveSucceeded then
         try
             do shell script "rm -rf " & quoted form of tempDir
         end try
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 else
     -- Fallthrough: should not be reached, but ensure cleanup

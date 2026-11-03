@@ -84,17 +84,17 @@ tell application "Mail"
             if attSize is missing value then set attSize to 0
             set attDownloaded to downloaded of att
             if attachJson is not "" then set attachJson to attachJson & ", "
-            set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & attSize & ", \"downloaded\": " & attDownloaded & "}"
+            set attachJson to attachJson & "{\"name\": \"" & attName & "\", \"mimeType\": \"" & attMime & "\", \"fileSize\": " & my integerForJson(attSize) & ", \"downloaded\": " & attDownloaded & "}"
         end repeat
 
         set result to "{"
-        set result to result & "\"id\": " & msgId & ", "
+        set result to result & "\"id\": " & my integerForJson(msgId) & ", "
         set result to result & "\"subject\": \"" & msgSubject & "\", "
         set result to result & "\"sender\": \"" & msgSender & "\", "
         set result to result & "\"dateReceived\": \"" & msgDate & "\", "
         set result to result & "\"readStatus\": " & msgRead & ", "
         set result to result & "\"flagged\": " & msgFlagged & ", "
-        set result to result & "\"flagIndex\": " & msgFlagIndex & ", "
+        set result to result & "\"flagIndex\": " & my integerForJson(msgFlagIndex) & ", "
         set result to result & "\"hasAttachments\": " & msgHasAttach & ", "
         set result to result & "\"toRecipients\": " & toJson & ", "
         set result to result & "\"ccRecipients\": " & ccJson & ", "
@@ -105,6 +105,6 @@ tell application "Mail"
         set result to result & "}"
         return result
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

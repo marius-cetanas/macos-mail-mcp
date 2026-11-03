@@ -51,6 +51,6 @@ tell application "Mail"
 
         return "{\"success\": true, \"savedFiles\": [" & savedFilesJson & "], \"savePath\": \"" & my escapeForJson(saveFolderPath) & "\"}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

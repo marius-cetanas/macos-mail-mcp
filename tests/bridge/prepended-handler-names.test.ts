@@ -71,6 +71,7 @@ describe("handlers the bridge prepends are reserved names", () => {
     expect([...reserved.keys()].sort()).toEqual([
       "assertComposeReady",
       "escapeForJson",
+      "integerForJson",
       "joinStrings",
       "mailboxFullName",
       "readUtf8File",

@@ -45,8 +45,8 @@ tell application "Mail"
             if rawFullName is not missing value then set acctFullName to my escapeForJson(rawFullName as text)
         end try
         set acctMailboxCount to count of mailboxes of acct
-        return "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"fullName\": \"" & acctFullName & "\", \"emails\": [" & emailsJson & "], \"serverName\": \"" & acctServer & "\", \"port\": " & acctPort & ", \"usesSsl\": " & acctSsl & ", \"userName\": \"" & acctUser & "\", \"mailboxCount\": " & acctMailboxCount & "}"
+        return "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"fullName\": \"" & acctFullName & "\", \"emails\": [" & emailsJson & "], \"serverName\": \"" & acctServer & "\", \"port\": " & my integerForJson(acctPort) & ", \"usesSsl\": " & acctSsl & ", \"userName\": \"" & acctUser & "\", \"mailboxCount\": " & my integerForJson(acctMailboxCount) & "}"
     on error errMsg number errNum
-        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & errNum & "}"
+        return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell

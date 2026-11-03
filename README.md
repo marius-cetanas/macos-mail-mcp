@@ -147,6 +147,11 @@ On first use, macOS will prompt to grant automation permission for controlling M
 | `flag_message` | Set/clear flag with optional color index (0-6) |
 | `mark_read` | Mark message as read or unread |
 
+`move_messages` validates every ID before looking up mailboxes or moving messages. Its result
+reports `moved`, `failed` and an `errors` list containing each failed numeric ID and error text.
+Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
+invalid or out-of-range numeric values raise an error.
+
 ### Attachments (4)
 
 | Tool | Description |
@@ -244,7 +249,8 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95; 2.1.0 changed
 nothing in the server. The current source inserts reply/forward text and validates readback (#84),
 and validates multiple attachment paths and prepared attachment counts (#85). File reads now
-preserve valid UTF-8 text, line endings and trailing newlines (#86). Executable AppleScript
+preserve valid UTF-8 text, line endings and trailing newlines (#86), and numeric JSON formatting
+preserves mixed move results under comma-decimal coercion (#87). Executable AppleScript
 helper tests and Mail dictionary compilation cover these changes. Native Mail content
 insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
@@ -278,6 +284,11 @@ attachment-name and inline-content reads against local UTF-8 fixtures, checking 
 for LF, CRLF, CR, trailing newlines, empty files, Unicode, controls and BOMs. It also compiles all
 affected templates. These macOS checks do not exercise Mail's attachment saving, content insertion
 or delivery; other encodings and binary content are outside the UTF-8 reader's contract.
+
+`tests/bridge/integer-for-json.applescript.test.ts` executes numeric formatting and partial move
+result assembly with large IDs, audits every dynamic integer JSON field, and compiles all domain
+templates. Its macOS checks use pure serialization fixtures; native Mail lookups and moves remain
+unexercised.
 
 ## Changelog
 
