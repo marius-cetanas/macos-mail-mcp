@@ -167,6 +167,12 @@ On first use, macOS will prompt to grant automation permission for controlling M
 All three accept an optional `fromAccount` to choose which account sends, and report
 the account actually used — see [Choosing the sending account](#choosing-the-sending-account).
 
+For `send_message`, `attachmentPaths` must contain absolute paths to readable regular files;
+paths containing CR, LF or NUL are rejected. Every file is checked before composing. The script
+checks both the parsed path count and the outgoing content's attachment count against the number
+requested before calling `send`. A mismatch fails without sending; Mail must also return `true`
+from `send` before the tool reports success. This confirms Mail accepted the send command, not delivery.
+
 ### Choosing the sending account
 
 By default Mail sends from whichever account is set under **Settings → Composing →
@@ -235,12 +241,11 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 
 ### Known issues
 
-An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95, all open on
-2026-09-15 and none touched by 2.1.0, which changed nothing in the server. The three that matter
-most when a result is relied on: `send_message` with two or more `attachmentPaths` delivers no
-attachments and reports success (#85); replies and forwards could lose their supplied body and
-inherited content (#84). The current source inserts text and validates readback before sending;
-native Mail insertion and delivered MIME still require an end-to-end check.
+An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95; 2.1.0 changed
+nothing in the server. The current source inserts reply/forward text and validates readback (#84),
+and validates multiple attachment paths and prepared attachment counts (#85). Executable local
+AppleScript helper tests and Mail dictionary compilation cover these changes. Native Mail content
+insertion, attachment enumeration and delivery still require an end-to-end check. Other findings:
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
 them (#94). The rest are in the [open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
 
@@ -261,6 +266,11 @@ npm run build         # Build for production
 The suite covers `src/` fully, and `vitest.config.ts` enforces 100% statement,
 branch, function and line thresholds. CI runs `test:coverage`, so new code
 without tests fails the build.
+
+On macOS, `tests/domains/compose/send-attachments.applescript.test.ts` executes the production
+attachment path parser and count/send guards and compiles the complete send template with its
+shared handlers. It never creates or sends a Mail message. These executable AppleScript checks
+are skipped on other platforms; the template wiring assertions still run there.
 
 ## Changelog
 

@@ -7,12 +7,15 @@ vi.mock("../../../src/bridge/applescript-runner.js", () => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  stat: vi.fn().mockResolvedValue({ isFile: () => true }),
+  access: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   mkdtemp: vi.fn().mockResolvedValue("/tmp/mail-mcp-body-abc123"),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { runAppleScript } from "../../../src/bridge/applescript-runner.js";
+import { stat } from "node:fs/promises";
 import { registerComposeTools } from "../../../src/domains/compose/compose.tools.js";
 
 const mockRunAppleScript = vi.mocked(runAppleScript);
@@ -126,6 +129,16 @@ describe("compose tool registration", () => {
   });
 
   describe("send_message handler", () => {
+    it("reports a missing attachment as an MCP error without calling Mail", async () => {
+      vi.mocked(stat).mockRejectedValueOnce(new Error("ENOENT"));
+      const result = await tools.get("send_message")!.handler({
+        to: "bob@test.com", subject: "Hi", body: "Hello", attachmentPaths: ["/tmp/missing.txt"],
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/Cannot attach.*\/tmp\/missing.txt/);
+      expect(mockRunAppleScript).not.toHaveBeenCalled();
+    });
+
     it("returns the resolved sender in the result", async () => {
       const result = await tools.get("send_message")!.handler({
         to: "bob@test.com",
