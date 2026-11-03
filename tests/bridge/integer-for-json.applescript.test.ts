@@ -55,8 +55,13 @@ describe("integer JSON serialization wiring", () => {
     expect(sites).toHaveLength(44);
   });
 
-  it.each(sites)("$file formats $field independently of locale", ({ expression }) => {
-    expect(expression).toMatch(/^my integerForJson\(\w+\)$/);
+  it.each(sites)("$file formats $field independently of locale", ({ file, field, expression }) => {
+    if (file === "src/domains/accounts/scripts/get-account-detail.applescript" && field === "port") {
+      expect(expression).toBe("acctPortJson");
+      expect(source(file)).toContain("if rawPort is not missing value then set acctPortJson to my integerForJson(rawPort)");
+    } else {
+      expect(expression).toMatch(/^my integerForJson\(\w+\)$/);
+    }
   });
 
   it("validates all move IDs before mailbox lookup or any move", () => {
@@ -98,7 +103,13 @@ describe.skipIf(!onMacOS)("production integer serialization, executed without Ma
     expect(run('set AppleScript\'s text item delimiters to "|"\nmy integerForJson(999999999)\nreturn AppleScript\'s text item delimiters as text')).toBe("|");
   });
 
-  it.each(sites)("$file emits exact integer JSON for $field", ({ expression }) => {
+  it.each(sites)("$file emits exact integer JSON for $field", ({ file, field, expression }) => {
+    if (file === "src/domains/accounts/scripts/get-account-detail.applescript" && field === "port") {
+      const assignment = source(file).split("\n").find((line) => line.includes("if rawPort is not missing value then set acctPortJson"));
+      expect(assignment).toBeDefined();
+      expect(run(`set rawPort to 999999999\n${assignment}\nreturn acctPortJson`)).toBe("999999999");
+      return;
+    }
     const variable = expression.match(/\((\w+)\)/)?.[1] ?? expression;
     const expected = variable === "errNum" ? -2147483647 : 999999999;
     const encoded = run(`set ${variable} to ${expected}\nreturn ${expression}`);

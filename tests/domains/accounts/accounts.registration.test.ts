@@ -57,6 +57,18 @@ describe("accounts tool registration", () => {
     expect([...tools.keys()].sort()).toEqual(["get_account_detail", "list_accounts"]);
   });
 
+  it("preserves raw types and unavailable server metadata through registered tools", async () => {
+    const account = { ...ACCOUNT, type: "exchange" };
+    mockRunAppleScript.mockResolvedValueOnce([account]);
+    const listed = await tools.get("list_accounts")!.handler({});
+    expect(JSON.parse(listed.content[0]!.text)).toEqual([account]);
+    const detail = { ...account, serverName: null, port: null, usesSsl: null, userName: "fixture-user", mailboxCount: 17 };
+    mockRunAppleScript.mockResolvedValueOnce(detail);
+    const result = await tools.get("get_account_detail")!.handler({ accountName: "Exchange" });
+    expect(JSON.parse(result.content[0]!.text)).toEqual(detail);
+    expect(result.isError).toBeUndefined();
+  });
+
   describe("list_accounts", () => {
     it("returns the account list, including the fullName senders are built from", async () => {
       const result = await tools.get("list_accounts")!.handler({});

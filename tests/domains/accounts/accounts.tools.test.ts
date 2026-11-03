@@ -19,7 +19,7 @@ describe("accounts tools", () => {
 
   it("list_accounts calls runAppleScript with correct script path", async () => {
     const mockAccounts: Account[] = [
-      { name: "Gmail", type: "imap", enabled: true, emails: ["user@gmail.com"] },
+      { name: "Gmail", type: "imap", enabled: true, fullName: "", emails: ["user@gmail.com"] },
     ];
     mockRunAppleScript.mockResolvedValue(mockAccounts);
 
@@ -47,11 +47,11 @@ describe("accounts tools", () => {
     );
   });
 
-  it("list_accounts handles Exchange accounts with unknown type", async () => {
+  it("list_accounts preserves raw Exchange type text when Mail supplies it", async () => {
     const mockAccounts: Account[] = [
-      { name: "iCloud", type: "iCloud", enabled: true, emails: ["user@icloud.com"] },
-      { name: "Google", type: "imap", enabled: true, emails: ["user@gmail.com"] },
-      { name: "Exchange", type: "unknown", enabled: true, emails: ["user@outlook.com"] },
+      { name: "iCloud", type: "iCloud", enabled: true, fullName: "", emails: ["user@icloud.com"] },
+      { name: "Google", type: "imap", enabled: true, fullName: "", emails: ["user@gmail.com"] },
+      { name: "Exchange", type: "exchange", enabled: true, fullName: "", emails: ["user@outlook.com"] },
     ];
     mockRunAppleScript.mockResolvedValue(mockAccounts);
 
@@ -60,18 +60,19 @@ describe("accounts tools", () => {
     );
     const result = await handleListAccounts();
     expect(result).toHaveLength(3);
-    expect((result as Account[])[2].type).toBe("unknown");
+    expect((result as Account[])[2].type).toBe("exchange");
   });
 
-  it("get_account_detail handles Exchange with empty server properties", async () => {
+  it("get_account_detail preserves explicit unavailable server properties", async () => {
     const mockDetail = {
       name: "Exchange",
-      type: "unknown",
+      type: "exchange",
       enabled: true,
       emails: ["user@outlook.com"],
-      serverName: "",
-      port: 0,
-      usesSsl: false,
+      fullName: "",
+      serverName: null,
+      port: null,
+      usesSsl: null,
       userName: "user@outlook.com",
       mailboxCount: 16,
     };
@@ -81,9 +82,9 @@ describe("accounts tools", () => {
       "../../../src/domains/accounts/accounts.tools.js"
     );
     const result = await handleGetAccountDetail("Exchange") as Record<string, unknown>;
-    expect(result.serverName).toBe("");
-    expect(result.port).toBe(0);
-    expect(result.usesSsl).toBe(false);
-    expect(result.type).toBe("unknown");
+    expect(result.serverName).toBeNull();
+    expect(result.port).toBeNull();
+    expect(result.usesSsl).toBeNull();
+    expect(result.type).toBe("exchange");
   });
 });

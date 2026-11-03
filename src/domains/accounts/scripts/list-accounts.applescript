@@ -4,16 +4,8 @@ tell application "Mail"
         set allAccounts to every account
         repeat with acct in allAccounts
             set acctName to my escapeForJson(name of acct)
-            set acctType to account type of acct as text
-            if acctType contains "imap" then
-                set acctType to "imap"
-            else if acctType contains "pop" then
-                set acctType to "pop"
-            else if acctType contains "iCloud" then
-                set acctType to "iCloud"
-            else
-                set acctType to "unknown"
-            end if
+            set acctType to my accountTypeName(account type of acct as text)
+            set acctTypeJson to my escapeForJson(acctType)
             set acctEnabled to enabled of acct
             set acctFullName to ""
             try
@@ -27,10 +19,18 @@ tell application "Mail"
                 set emailsJson to emailsJson & "\"" & my escapeForJson(item i of acctEmails) & "\""
             end repeat
             if accountList is not "" then set accountList to accountList & ", "
-            set accountList to accountList & "{\"name\": \"" & acctName & "\", \"type\": \"" & acctType & "\", \"enabled\": " & acctEnabled & ", \"fullName\": \"" & acctFullName & "\", \"emails\": [" & emailsJson & "]}"
+            set accountList to accountList & "{\"name\": \"" & acctName & "\", \"type\": \"" & acctTypeJson & "\", \"enabled\": " & acctEnabled & ", \"fullName\": \"" & acctFullName & "\", \"emails\": [" & emailsJson & "]}"
         end repeat
         return "[" & accountList & "]"
     on error errMsg number errNum
         return "{\"error\": \"" & my escapeForJson(errMsg) & "\", \"errorNumber\": " & my integerForJson(errNum) & "}"
     end try
 end tell
+
+on accountTypeName(rawType)
+    if rawType is "imap" then return "imap"
+    if rawType is "pop" then return "pop"
+    if rawType is "iCloud" then return "iCloud"
+    if rawType is "smtp" then return "smtp"
+    return rawType
+end accountTypeName

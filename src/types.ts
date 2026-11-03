@@ -1,16 +1,18 @@
 export interface Account {
   name: string;
-  type: "imap" | "pop" | "iCloud" | "unknown";
+  /** Known types use canonical names; other Mail-reported type text is preserved. */
+  type: string;
   enabled: boolean;
   /** Display name Mail sends as, e.g. "Marius Cetanas". Empty when Mail reports `missing value`. */
   fullName: string;
   emails: string[];
 }
 
+/** Server connection fields are null when unsupported or unavailable. */
 export interface AccountDetail extends Account {
-  serverName: string;
-  port: number;
-  usesSsl: boolean;
+  serverName: string | null;
+  port: number | null;
+  usesSsl: boolean | null;
   userName: string;
   mailboxCount: number;
 }

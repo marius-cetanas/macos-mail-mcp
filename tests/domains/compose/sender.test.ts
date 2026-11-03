@@ -54,6 +54,13 @@ describe("NO_SENDER", () => {
   });
 });
 
+describe("raw account types do not change sender resolution", () => {
+  it.each(["exchange", "future-provider"])("resolves enabled %s accounts by address", async (type) => {
+    withAccounts(account({ type }));
+    expect(await resolveSender("marius.cetanas@gmail.com")).toBe("Marius Cetanas <marius.cetanas@gmail.com>");
+  });
+});
+
 describe("resolveSender", () => {
   beforeEach(() => {
     vi.clearAllMocks();
