@@ -214,6 +214,41 @@ const tableRow = (named: string): Record<string, string> => {
 };
 
 describe("the exported ruleset and the floor it came from", () => {
+  const remainingChecks = [
+    { context: "verify", integration_id: 15368 },
+    { context: "branch-freshness", integration_id: 15368 },
+    { context: "analyze", integration_id: 15368 },
+  ];
+
+  it("requires the three remaining checks from GitHub Actions, in policy and export", () => {
+    expect(policy.floor!.checks).toEqual(remainingChecks);
+    expect(ruleOf("required_status_checks").required_status_checks).toEqual(remainingChecks);
+    expect(tableRow("Required status checks").Value).toBe(
+      remainingChecks.map(({ context }) => context).join(", "),
+    );
+  });
+
+  it("retains the pull request protections and blocks force-pushes and deletion without bypasses", () => {
+    expect(ruleOf("pull_request")).toEqual({
+      required_approving_review_count: 0,
+      dismiss_stale_reviews_on_push: true,
+      require_code_owner_review: false,
+      require_last_push_approval: false,
+      required_review_thread_resolution: true,
+    });
+    expect(ruleset.rules.map(({ type }: { type: string }) => type).sort()).toEqual(
+      ["pull_request", "required_status_checks", "non_fast_forward", "deletion"].sort(),
+    );
+    expect(ruleset.bypass_actors).toEqual([]);
+  });
+
+  it("names review freshness as a human-held duty after automated review is removed", () => {
+    expect(map).toContain("Review freshness is human-held");
+    expect(map).toContain("A rebase invalidates the verdict that preceded it");
+    expect(map).not.toContain("`copilot-reviewed`");
+    expect(JSON.stringify(policy)).not.toMatch(/copilot/i);
+  });
+
   it("protects exactly the branch the policy names", () => {
     expect(ruleset.conditions.ref_name.include).toEqual([`refs/heads/${policy.floor!.branch}`]);
   });

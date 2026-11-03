@@ -1,9 +1,7 @@
 # A pull request may drift behind `main`, but not far.
 #
 # GitHub's `strict` is binary — exactly up to date, or no requirement at all — and neither is what
-# this repository wants. `strict: true` forces a rebase every time `main` moves, and the gate map
-# records the cost: a rebase creates a new head after the last review, so every unrelated commit to
-# `main` spends a full Copilot round on a branch whose contents did not change. `strict: false`
+# this repository wants. `strict: true` forces a rebase every time `main` moves; `strict: false`
 # alone drops the churn and the bound together.
 #
 # So the bound lives where a bound with a number in it can live: a check. The number is
