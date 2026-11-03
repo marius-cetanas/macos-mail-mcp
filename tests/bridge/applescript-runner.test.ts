@@ -101,6 +101,7 @@ describe("SHARED_HANDLER_FILES", () => {
       "integer-for-json.applescript",
       "date-to-utc-iso.applescript",
       "attachment-mime.applescript",
+      "resolve-message.applescript",
     ]);
   });
 });

@@ -3,7 +3,7 @@ set saveFolderPath to "{{savePath}}"
 tell application "Mail"
     try
         set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
-        set msg to (first message of theMailbox whose id is {{messageId}})
+        set msg to my requireMessage(theMailbox, {{messageId}}, "{{accountName}}", "{{mailboxName}}")
         set savedFilesJson to ""
         set savedCount to 0
 

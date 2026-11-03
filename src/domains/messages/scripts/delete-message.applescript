@@ -1,6 +1,7 @@
 tell application "Mail"
     try
-        set msg to (first message of (my resolveMailbox("{{accountName}}", "{{mailboxName}}")) whose id is {{messageId}})
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
+        set msg to my requireMessage(theMailbox, {{messageId}}, "{{accountName}}", "{{mailboxName}}")
         delete msg
         return "{\"success\": true}"
     on error errMsg number errNum

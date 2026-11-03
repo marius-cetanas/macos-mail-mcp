@@ -202,6 +202,17 @@ All string parameters injected into AppleScript string literals (account names, 
 - Tool registrations use `toolError()` from utils.ts to format errors for MCP
 - All `errMsg` values in AppleScript are passed through `my escapeForJson(errMsg)` to prevent invalid JSON
 
+ID lookups use shared `findMessageInMailbox`/`requireMessage`. Only native -1719/-1728 from
+the first-ID lookup and forced ID readback mean missing; account-wide get skips only those
+missing results. Resolve mailboxes before the helper, and keep later property/action errors
+outside its catch. Human not-found text uses integerForJson and requested scope, then goes
+through the existing JSON escaper. Bulk moves retain original IDs/counts and per-item errors.
+
+Both save tools call `prepareSaveDirectory` before Mail and any name-file temp setup. It expands
+~/bare~, resolves an absolute path, recursively creates it, checks directory status and Node
+write/search access, and wraps failures with the path. Created directories remain on later
+failure. These checks do not eliminate filesystem races or establish Mail's own permissions.
+
 ### Timeouts
 
 - `DEFAULT_TIMEOUT` (30s) — most operations

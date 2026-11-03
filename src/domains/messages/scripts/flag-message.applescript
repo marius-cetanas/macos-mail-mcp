@@ -1,6 +1,7 @@
 tell application "Mail"
     try
-        set msg to (first message of (my resolveMailbox("{{accountName}}", "{{mailboxName}}")) whose id is {{messageId}})
+        set theMailbox to my resolveMailbox("{{accountName}}", "{{mailboxName}}")
+        set msg to my requireMessage(theMailbox, {{messageId}}, "{{accountName}}", "{{mailboxName}}")
         set flagged status of msg to {{flagged}}
         if {{flagIndex}} is not -1 then
             set flag index of msg to {{flagIndex}}

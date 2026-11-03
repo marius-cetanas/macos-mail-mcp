@@ -8,12 +8,16 @@ vi.mock("../../../src/bridge/applescript-runner.js", async (original) => ({
 }));
 
 vi.mock("node:fs/promises", () => ({
+  mkdir: vi.fn().mockResolvedValue(undefined),
+  stat: vi.fn().mockResolvedValue({ isDirectory: () => true }),
+  access: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
   mkdtemp: vi.fn().mockResolvedValue("/tmp/mail-mcp-att-abc123"),
   rm: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { runAppleScript } from "../../../src/bridge/applescript-runner.js";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { registerMessagesTools } from "../../../src/domains/messages/messages.tools.js";
 import { captureTools, payload, type RegisteredTool } from "../../helpers/capture-tools.js";
 
@@ -220,6 +224,24 @@ describe("messages tool registration", () => {
       expect(result.isError).toBe(true);
       expect(result.content[0]!.text).toContain(message);
     });
+  });
+
+  it.each(["save_attachment", "save_all_attachments"])("%s reports path errors without contacting Mail", async (name) => {
+    vi.mocked(mkdir).mockRejectedValueOnce(new Error("EACCES: create denied"));
+    const result = await tools.get(name)!.handler({ ...ID, attachmentName: "file.txt", savePath: "/tmp/denied" });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('Cannot prepare savePath "/tmp/denied"');
+    expect(result.content[0]!.text).toContain("create denied");
+    expect(mockRunAppleScript).not.toHaveBeenCalled();
+    expect(mkdtemp).not.toHaveBeenCalled();
+  });
+
+  it.each(TOOLS.filter(({ name }) => !["list_messages", "search_messages"].includes(name)))("$name preserves a canonical lookup error through MCP", async ({ name, args }) => {
+    const message = 'Message 999999999 not found in account "Google", mailbox "INBOX".';
+    mockRunAppleScript.mockRejectedValueOnce(new Error(message));
+    const result = await tools.get(name)!.handler({ ...args });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toBe("Error: " + message);
   });
 
   describe("search_messages optional scoping", () => {

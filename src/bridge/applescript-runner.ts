@@ -87,6 +87,7 @@ export function parseAppleScriptOutput(output: string): unknown {
  * - integer-for-json: exact safe-integer JSON digits independent of locale.
  * - date-to-utc-iso: native date serialization guarded by the UTC subprocess environment.
  * - attachment-mime: consistent attachment MIME fallback and inline text admission.
+ * - resolve-message: narrow missing-message lookup and actionable scope errors.
  */
 export const SHARED_HANDLER_FILES = [
   "escape-for-json.applescript",
@@ -96,6 +97,7 @@ export const SHARED_HANDLER_FILES = [
   "integer-for-json.applescript",
   "date-to-utc-iso.applescript",
   "attachment-mime.applescript",
+  "resolve-message.applescript",
 ];
 
 /**

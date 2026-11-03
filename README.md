@@ -170,6 +170,12 @@ Every message `dateReceived` from list/search/get uses UTC ISO 8601 at second pr
 inputs; clients can render it in their preferred local timezone. Message-date scripts run in
 isolated UTC subprocesses to avoid historical daylight-saving and repeated-clock ambiguity.
 
+Unknown message IDs report plain decimal IDs and the requested account/mailbox, for example
+`Message 999999999 not found in account "Work", mailbox "INBOX".` Account-wide `get_message`
+reports that all mailboxes were searched. Only native missing-object/index errors from the ID
+lookup are translated; permission, timeout, mailbox-resolution and later action/property errors
+retain their original meaning. Bulk moves preserve per-ID failures and successful move counts.
+
 `move_messages` validates every ID before looking up mailboxes or moving messages. Its result
 reports `moved`, `failed` and an `errors` list containing each failed numeric ID and error text.
 Dynamic integer fields use locale-independent decimal digits within JavaScript's safe integer range;
@@ -230,6 +236,13 @@ Admission uses metadata and filenames; it does not inspect bytes to prove the co
 The inline reader supports valid UTF-8, preserves line endings and returns `{name, content}`.
 It does not transcode other charsets, stream content or impose a size cap; use `save_attachment`
 for binary files, other encodings or large attachments.
+
+Both save tools create missing destination directories recursively before contacting Mail.
+`~` and `~/...` expand to the home directory; relative paths resolve from the server's working
+directory. Empty/NUL paths, regular-file destinations and failed directory/write/search checks
+produce a path-bearing error. Created directories remain if a later Mail operation fails.
+The filesystem can change after these checks, and Mail may have different privacy or filesystem
+permissions from Node; native save errors still propagate in those cases.
 
 ### Compose (3)
 
@@ -401,6 +414,13 @@ all three metadata loops and the inline-read flow with local lookup/save fixture
 case/parameters/fallbacks, every existing extension mapping, admission before saving, UTF-8/JSON
 readback, errors and temp cleanup. All shared template contexts compile, and registered-tool tests
 cover result/error propagation. These checks do not read or save native Mail attachments.
+
+`tests/bridge/resolve-message.applescript.test.ts` executes production lookup/error boundaries,
+account-wide search and partial bulk-move flows with replaced Mail transport, and audits all
+13 lookup sites. `tests/domains/messages/save-directory.test.ts` prepares real local directories
+and executes the save-path initialization/JSON expressions with special-character paths.
+Registered-tool tests cover path and message errors; all shared contexts compile. These checks
+do not perform native Mail lookups, moves or attachment saves, and do not prove Mail permissions.
 
 ## Changelog
 

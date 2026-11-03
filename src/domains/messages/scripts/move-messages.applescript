@@ -10,7 +10,7 @@ tell application "Mail"
 
         repeat with targetId in targetIds
             try
-                set msg to (first message of srcMailbox whose id is targetId)
+                set msg to my requireMessage(srcMailbox, targetId, "{{accountName}}", "{{mailboxName}}")
                 move msg to destMailbox
                 set movedCount to movedCount + 1
             on error errMsg
