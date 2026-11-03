@@ -238,8 +238,9 @@ Mail.app's internal message IDs are volatile — they can change when the app re
 An end-to-end run of every tool against 2.0.0 filed twelve findings, #84 to #95, all open on
 2026-09-15 and none touched by 2.1.0, which changed nothing in the server. The three that matter
 most when a result is relied on: `send_message` with two or more `attachmentPaths` delivers no
-attachments and reports success (#85); `reply_to_message` sends an empty body, and
-`forward_message` with a `body` drops the text, the quoted original and the attachments (#84);
+attachments and reports success (#85); replies and forwards could lose their supplied body and
+inherited content (#84). The current source inserts text and validates readback before sending;
+native Mail insertion and delivered MIME still require an end-to-end check.
 `read_attachment` refuses a text attachment whose extension is not on its allowlist, `.ics` among
 them (#94). The rest are in the [open issues](https://github.com/marius-cetanas/macos-mail-mcp/issues).
 

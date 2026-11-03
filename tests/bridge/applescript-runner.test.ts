@@ -91,6 +91,7 @@ describe("SHARED_HANDLER_FILES", () => {
     expect(SHARED_HANDLER_FILES).toEqual([
       "escape-for-json.applescript",
       "resolve-mailbox.applescript",
+      "compose-guards.applescript",
     ]);
   });
 });

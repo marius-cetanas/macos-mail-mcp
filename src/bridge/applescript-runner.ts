@@ -75,6 +75,7 @@ export function parseAppleScriptOutput(output: string): unknown {
 export const SHARED_HANDLER_FILES = [
   "escape-for-json.applescript",
   "resolve-mailbox.applescript",
+  "compose-guards.applescript",
 ];
 
 /**
