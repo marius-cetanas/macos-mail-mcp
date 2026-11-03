@@ -13,6 +13,18 @@ const execFileAsync = promisify(execFile);
 export const DEFAULT_TIMEOUT = 30_000;
 export const EXTENDED_TIMEOUT = 120_000;
 
+export class AppleScriptCommandError extends Error {
+  constructor(message: string, public readonly errorNumber: number) {
+    super(message);
+  }
+}
+
+export class AppleScriptTimeoutError extends Error {
+  constructor(timeout: number) {
+    super(`AppleScript timed out after ${Math.round(timeout / 1000)} seconds`);
+  }
+}
+
 /**
  * Escape a string value for safe embedding inside an AppleScript double-quoted string.
  * Backslashes must be escaped first, then double quotes.
@@ -58,7 +70,7 @@ export function parseAppleScriptOutput(output: string): unknown {
     "errorNumber" in parsed
   ) {
     const err = parsed as AppleScriptError;
-    throw new Error(err.error);
+    throw new AppleScriptCommandError(err.error, err.errorNumber);
   }
 
   return parsed;
@@ -103,9 +115,11 @@ export function composeScript(
 export async function runAppleScript(
   scriptPath: string,
   params?: Record<string, string>,
-  options?: { timeout?: number }
+  options?: { timeout?: number; signal?: AbortSignal }
 ): Promise<unknown> {
   const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
+  const signal = options?.signal;
+  signal?.throwIfAborted();
 
   // Resolve script path: from build/bridge/ up one level then into domains/
   const thisDir = dirname(fileURLToPath(import.meta.url));
@@ -122,22 +136,29 @@ export async function runAppleScript(
   // Substitute params if provided, then prepend the shared handlers
   const interpolated = params ? substituteParams(template, params) : template;
   const script = composeScript(sharedHandlers, interpolated);
+  signal?.throwIfAborted();
 
   // Write to temp file
   const tempDir = await mkdtemp(join(tmpdir(), "macos-mail-mcp-"));
   const tempFile = join(tempDir, "script.applescript");
 
   try {
+    signal?.throwIfAborted();
     await writeFile(tempFile, script, "utf8");
+    signal?.throwIfAborted();
 
     let stdout: string;
     let stderr: string;
 
     try {
-      const result = await execFileAsync("osascript", [tempFile], { timeout });
+      const result = await execFileAsync("osascript", [tempFile], {
+        timeout,
+        ...(signal ? { signal, killSignal: "SIGKILL" as const } : {}),
+      });
       stdout = result.stdout;
       stderr = result.stderr;
     } catch (err: unknown) {
+      signal?.throwIfAborted();
       const execError = err as NodeJS.ErrnoException & {
         killed?: boolean;
         stderr?: string;
@@ -145,9 +166,7 @@ export async function runAppleScript(
       };
 
       if (execError.killed) {
-        throw new Error(
-          `AppleScript timed out after ${Math.round(timeout / 1000)} seconds`
-        );
+        throw new AppleScriptTimeoutError(timeout);
       }
 
       const stderrText = execError.stderr ?? "";

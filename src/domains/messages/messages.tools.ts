@@ -5,6 +5,7 @@ import { writeFile, mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { runAppleScript, EXTENDED_TIMEOUT } from "../../bridge/applescript-runner.js";
 import { sanitize, expandTilde, toolError } from "../../utils.js";
+import { searchInputSchema, searchMessages } from "./search-controller.js";
 
 export async function handleListMessages(
   accountName: string,
@@ -65,23 +66,11 @@ export async function handleSearchMessages(
   accountName?: string,
   limit?: number,
   after?: string,
-  before?: string
+  before?: string,
+  allowSlow?: boolean,
+  signal?: AbortSignal
 ): Promise<unknown> {
-  const hasDateFilter = after !== undefined || before !== undefined;
-  return runAppleScript(
-    "messages/scripts/search-messages.applescript",
-    {
-      field: String(field),
-      query: String(query),
-      mailboxName: mailboxName !== undefined ? sanitize(String(mailboxName)) : "__ALL__",
-      accountName: accountName !== undefined ? sanitize(String(accountName)) : "__ALL__",
-      limit: limit !== undefined ? String(limit) : "50",
-      hasDateFilter: hasDateFilter ? "true" : "false",
-      afterSeconds: after !== undefined ? String(dateToSecondsFromNow(after)) : "0",
-      beforeSeconds: before !== undefined ? String(dateToSecondsFromNow(before)) : "0",
-    },
-    { timeout: EXTENDED_TIMEOUT }
-  );
+  return searchMessages({ field, query, mailboxName, accountName, limit, after, before, allowSlow }, signal);
 }
 
 export async function handleMoveMessage(
@@ -297,19 +286,11 @@ export function registerMessagesTools(server: McpServer): void {
 
   server.tool(
     "search_messages",
-    "Search messages by subject, sender, or content. Prefer 'subject' or 'sender' fields which are fast metadata lookups. The 'content' field searches message bodies and is significantly slower and less reliable — it may trigger full message downloads on IMAP accounts and can time out. WARNING: Mail.app loads all matching messages into memory before applying the limit, so searches on large mailboxes can be very slow. Always narrow results with mailboxName and accountName when possible.",
-    {
-      field: z.enum(["subject", "sender", "content"]).describe("The field to search in"),
-      query: z.string().default("").describe("The search query string (optional when using date filters)"),
-      mailboxName: z.string().optional().describe("Limit search to a specific mailbox (omit to search all mailboxes)"),
-      accountName: z.string().optional().describe("Limit search to a specific account (omit to search all accounts)"),
-      limit: z.number().int().positive().default(50).describe("Maximum number of results to return (default 50)"),
-      after: z.string().optional().describe("Only return messages received after this ISO 8601 date (e.g. 2024-01-15T00:00:00Z)"),
-      before: z.string().optional().describe("Only return messages received before this ISO 8601 date (e.g. 2024-12-31T23:59:59Z)"),
-    },
-    async ({ field, query, mailboxName, accountName, limit, after, before }) => {
+    "Search one mailbox safely by default. Broad, content or large-mailbox searches require explicit allowSlow. Returns an object with messages and partial/timeout/skipped/error metadata within a 45 second server budget. Mail's queued Apple events can outlive process cancellation; wait or restart Mail after a timeout.",
+    searchInputSchema.shape,
+    async ({ field, query, mailboxName, accountName, limit, after, before, allowSlow }, extra) => {
       try {
-        const result = await handleSearchMessages(field, query, mailboxName, accountName, limit, after, before);
+        const result = await handleSearchMessages(field, query, mailboxName, accountName, limit, after, before, allowSlow, extra?.signal);
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };

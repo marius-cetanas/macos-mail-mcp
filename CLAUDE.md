@@ -193,7 +193,20 @@ All string parameters injected into AppleScript string literals (account names, 
 ### Timeouts
 
 - `DEFAULT_TIMEOUT` (30s) — most operations
-- `EXTENDED_TIMEOUT` (120s) — attachment operations, search_messages, move_messages, get_message without mailboxName, date-filtered list_messages
+- `EXTENDED_TIMEOUT` (120s) — attachment operations, move_messages, get_message without mailboxName, date-filtered list_messages
+- Search uses a separate monotonic 45s overall budget and at most 10s per discovery/preflight/mailbox.
+  Its default single-mailbox metadata query requires an available safe message count ≤1000.
+  Broad subject/sender or scoped content/large-mailbox queries require explicit `allowSlow`;
+  content stays single-account/mailbox. Search limit is 1–200 (default 50) and its public response
+  is an object with messages/partial/cancelled/limitReached/timedOut/skipped/errors/warnings.
+  This replaces the prior array/unbounded-limit contract and is breaking.
+  The controller stops scheduling on timeout/cancellation/error, retains prior messages and
+  deduplicates by account+ID. SDK extra.signal reaches bridge execFile with SIGKILL for search;
+  other tool defaults remain unchanged. Pre-aborted calls do no file/process setup, and bridge
+  finally blocks clean temp dirs. Typed bridge errors retain AppleScript errorNumber (-1712 is
+  timeout) while preserving existing messages. Cancelled requests may receive no SDK reply.
+  Killing osascript does not cancel Mail's queued Apple events; tell users to wait/restart Mail
+  before retrying. No native search/backend cancellation is demonstrated by fixture/compile tests.
 
 ### Date Filtering Pattern
 

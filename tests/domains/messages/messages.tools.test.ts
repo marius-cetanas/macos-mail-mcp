@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { homedir } from "node:os";
 
-vi.mock("../../../src/bridge/applescript-runner.js", () => ({
+vi.mock("../../../src/bridge/applescript-runner.js", async (original) => ({
+  ...await original<typeof import("../../../src/bridge/applescript-runner.js")>(),
   runAppleScript: vi.fn(),
   EXTENDED_TIMEOUT: 120_000,
   DEFAULT_TIMEOUT: 30_000,
@@ -67,30 +68,32 @@ describe("messages tools - reading", () => {
     );
   });
 
-  it("search_messages passes __ALL__ for omitted optional params", async () => {
+  it("search_messages refuses omitted scope without slow-search opt-in", async () => {
     mockRunAppleScript.mockResolvedValue([]);
     const { handleSearchMessages } = await import("../../../src/domains/messages/messages.tools.js");
-    await handleSearchMessages("subject", "invoice", undefined, undefined, 50);
-    expect(mockRunAppleScript).toHaveBeenCalledWith(
-      "messages/scripts/search-messages.applescript",
-      { field: "subject", query: "invoice", mailboxName: "__ALL__", accountName: "__ALL__", limit: "50", hasDateFilter: "false", afterSeconds: "0", beforeSeconds: "0" },
-      { timeout: 120_000 }
-    );
+    await expect(handleSearchMessages("subject", "invoice", undefined, undefined, 50)).rejects.toThrow(/allowSlow/);
+    expect(mockRunAppleScript).not.toHaveBeenCalled();
   });
 
   it("search_messages passes date filter params when provided", async () => {
-    mockRunAppleScript.mockResolvedValue([]);
+    mockRunAppleScript.mockImplementation(async (script) => script.includes("get-mailbox-info") ? { messageCount: 10 } : []);
     const { handleSearchMessages } = await import("../../../src/domains/messages/messages.tools.js");
     await handleSearchMessages("subject", "invoice", "INBOX", "Gmail", 25, "2024-06-01T00:00:00Z", "2024-12-31T23:59:59Z");
     expect(mockRunAppleScript).toHaveBeenCalledWith(
       "messages/scripts/search-messages.applescript",
-      expect.objectContaining({ hasDateFilter: "true", field: "subject", query: "invoice", mailboxName: "INBOX", accountName: "Gmail" }),
-      { timeout: 120_000 }
+      expect.objectContaining({ hasAfter: "true", hasBefore: "true", field: "subject", query: "invoice", mailboxName: "INBOX", accountName: "Gmail" }),
+      expect.objectContaining({ timeout: 10_000, signal: expect.any(AbortSignal) })
     );
   });
 });
 
 describe("messages tools - managing", () => {
+  it("list_messages still rejects invalid date filters before running Mail", async () => {
+    mockRunAppleScript.mockClear();
+    const { handleListMessages } = await import("../../../src/domains/messages/messages.tools.js");
+    await expect(handleListMessages("Google", "INBOX", 50, 0, "invalid")).rejects.toThrow(/Invalid date/);
+    expect(mockRunAppleScript).not.toHaveBeenCalled();
+  });
   beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); });
 
   it("move_message passes all params", async () => {

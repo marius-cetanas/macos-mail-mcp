@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../../../src/bridge/applescript-runner.js", () => ({
+vi.mock("../../../src/bridge/applescript-runner.js", async (original) => ({
+  ...await original<typeof import("../../../src/bridge/applescript-runner.js")>(),
   runAppleScript: vi.fn(),
   EXTENDED_TIMEOUT: 120_000,
   DEFAULT_TIMEOUT: 30_000,
@@ -33,7 +34,7 @@ const TOOLS = [
   },
   {
     name: "search_messages",
-    args: { field: "subject", query: "invoice", limit: 50 },
+    args: { field: "subject", query: "invoice", limit: 50, accountName: "Google", mailboxName: "INBOX" },
     script: "messages/scripts/search-messages.applescript",
   },
   {
@@ -93,7 +94,7 @@ describe("messages tool registration", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRunAppleScript.mockResolvedValue({ ok: true });
+    mockRunAppleScript.mockImplementation(async (script) => script.includes("get-mailbox-info") ? { messageCount: 10 } : script.includes("search-messages") ? [] : { ok: true });
     tools = captureTools(registerMessagesTools);
   });
 
@@ -104,7 +105,8 @@ describe("messages tool registration", () => {
   describe.each(TOOLS)("$name", ({ name, args, script }) => {
     it("returns the handler result as JSON content", async () => {
       const result = await tools.get(name)!.handler({ ...args });
-      expect(payload(result)).toEqual({ ok: true });
+      if (name === "search_messages") expect(payload(result)).toMatchObject({ messages: [], partial: false });
+      else expect(payload(result)).toEqual({ ok: true });
       expect(result.isError).toBeUndefined();
     });
 
@@ -114,11 +116,16 @@ describe("messages tool registration", () => {
       expect(mockRunAppleScript.mock.calls.map((call) => call[0])).toContain(script);
     });
 
-    it("surfaces a failure as an MCP error", async () => {
+    it("reports bridge failures through the tool contract", async () => {
       mockRunAppleScript.mockRejectedValue(new Error("Mail.app is not running"));
       const result = await tools.get(name)!.handler({ ...args });
-      expect(result.isError).toBe(true);
-      expect(result.content[0]!.text).toMatch(/Mail\.app is not running/);
+      if (name === "search_messages") {
+        expect(payload(result)).toMatchObject({ partial: true, errors: [{ message: "Mail.app is not running" }] });
+        expect(result.isError).toBeUndefined();
+      } else {
+        expect(result.isError).toBe(true);
+        expect(result.content[0]!.text).toMatch(/Mail\.app is not running/);
+      }
     });
 
     it("has a non-empty description", () => {
@@ -173,17 +180,18 @@ describe("messages tool registration", () => {
   });
 
   describe("search_messages optional scoping", () => {
-    it("accepts a search with neither mailbox nor account", async () => {
+    it("refuses an unscoped search without explicit opt-in", async () => {
       const result = await tools.get("search_messages")!.handler({
         field: "sender",
         query: "bob@test.com",
         limit: 10,
       });
-      expect(result.isError).toBeUndefined();
+      expect(result.isError).toBe(true);
+      expect(result.content[0]!.text).toMatch(/allowSlow/);
     });
 
     it("defaults the limit when none is supplied", async () => {
-      await tools.get("search_messages")!.handler({ field: "subject", query: "x" });
+      await tools.get("search_messages")!.handler({ field: "subject", query: "x", accountName: "Google", mailboxName: "INBOX" });
       const params = mockRunAppleScript.mock.calls.find(([s]) =>
         String(s).includes("search-messages")
       )?.[1] as Record<string, string>;
@@ -196,6 +204,7 @@ describe("messages tool registration", () => {
         query: "x",
         limit: 10,
         after: "not-a-date",
+        accountName: "Google", mailboxName: "INBOX",
       });
       expect(result.isError).toBe(true);
       expect(result.content[0]!.text).toMatch(/Invalid date: not-a-date/);
@@ -207,6 +216,7 @@ describe("messages tool registration", () => {
         query: "",
         limit: 10,
         after: "2026-01-01T00:00:00Z",
+        accountName: "Google", mailboxName: "INBOX",
       });
       expect(result.isError).toBeUndefined();
     });
